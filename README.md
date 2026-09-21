@@ -6,7 +6,9 @@
 
 在有文件／命令权限的 AI 工具中，发送仓库地址并说：
 
-> 请浏览这个仓库，阅读 README.md 和 INSTALL.md，按我当前的 AI 工具安装 Drama Studio。先检查环境和已有安装，保留我的配置与修改，安装后验证技能发现和 mali-story MCP 连接。需要我登录时给出授权入口，不要启动创作或付费任务。
+> 请浏览 https://github.com/ZhiBoLingXi/drama-studio ，阅读 README.md 和 INSTALL.md，按我当前的 AI 工具安装 Drama Studio。先检查环境和已有安装，保留我的配置与修改，安装后验证技能发现和 mali-story MCP 连接。需要我登录时给出授权入口，不要启动创作或付费任务。
+
+仓库目前为私有：用户的 GitHub 账号需具有读取权限，AI 所在环境也需能通过该账号访问。仅将链接粘贴到未授权的网页聊天中，无法读取仓库；可改为导入已获授权下载的技能包。
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
@@ -57,6 +59,8 @@ python3 -B scripts/install.py package --host chatgpt
 ```
 
 生成 `dist/drama-studio-workbuddy.zip` 或 `dist/drama-studio-chatgpt.zip`。内容只有自包含技能，不包括仓库工作资料、视频或账号。输出已存在且内容不同时要求新路径，不静默覆盖。
+
+已打包的版本从 [GitHub Releases](https://github.com/ZhiBoLingXi/drama-studio/releases) 获取，同样需要仓库读取权限。
 
 本地工具（安装后使用安装目录中的同名脚本）：
 
