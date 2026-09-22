@@ -44,7 +44,9 @@ python3 scripts/drama_tools.py episode-check /absolute/path/to/episodes.md
 python3 scripts/drama_tools.py dup-check --new /absolute/path/to/new.md --source /absolute/path/to/reference.md
 ```
 
-实际执行时把脚本也解析为安装目录下的绝对路径。工具只用 Python 3.10+ 标准库，退出码 0=本次操作／检查通过，1=输入或执行错误，2=检查未过。阈值可通过 `--help` 查看并按制作规格调整。
+实际执行时把脚本也解析为安装目录下的绝对路径。工具只用 Python 3.10+ 标准库。剧集检查默认只统计，`passed: null`，不能称为质量通过。已有明确项目规格才使用 `--config` 或显式阈值；未指定的规则不启用，不为消除报告而擅改规格。历史 AIGC 规则仅在 `--preset legacy-aigc` 下启用。
+
+退出码 0 表示执行完成（可能只是统计）；1 为输入／执行错误；2 为显式约束不满足或无法核验，或字面查重未过。自动流程必须读取结构化状态，不能以退出码 0 代替编辑验收。详细契约见 [剧集检查](references/episode-check.md)。
 
 先检查解释器版本；若 `python3` 过旧，使用环境中已有的 `python3.10` 或更新解释器，不修改系统软链接。方法与工具来源见 [来源说明](references/provenance.md)。
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 import platform
 import sys
@@ -12,7 +11,7 @@ import uuid
 
 sys.dont_write_bytecode = True
 from checks.dup_check import run_dup_check
-from checks.episode_check import run_episode_check
+from checks.episode_check import PRESETS, run_episode_check
 
 
 def initialize(path: Path, title: str) -> dict:
@@ -40,7 +39,10 @@ def main() -> int:
     init.add_argument("--title", required=True)
     episode = commands.add_parser("episode-check")
     episode.add_argument("path")
-    for key in ("min-chars", "min-scenes", "min-rounds", "max-locations"):
+    episode.add_argument("--config", dest="config_path", help="Explicit project constraints JSON; never auto-discovered")
+    episode.add_argument("--preset", choices=sorted(PRESETS), help="Opt-in historical example, not a quality standard")
+    episode.add_argument("--min-rounds", type=int, help="Deprecated alias for --min-speaker-changes")
+    for key in ("min-chars", "min-scenes", "min-speaker-changes", "max-locations"):
         episode.add_argument("--" + key, type=int)
     for key in ("min-delta-ratio", "min-paren-ratio"):
         episode.add_argument("--" + key, type=float)
@@ -60,16 +62,11 @@ def main() -> int:
             result = initialize(args.path, args.title)
         elif args.command == "episode-check":
             overrides = {k: v for k, v in vars(args).items() if k not in ("command", "path") and v is not None}
-            if any(not math.isfinite(v) or v < 0 for v in overrides.values()):
-                raise ValueError("Thresholds must be finite and nonnegative")
-            if overrides.get("min_paren_ratio", 0) > 1:
-                raise ValueError("Parenthetical ratio must be between 0 and 1")
             result = run_episode_check(args.path, **overrides)
-            result["note"] = "结构和计数检查；说话人交替不等于戏剧冲突。结果不代表模型评审或编辑验收。"
         else:
             result = run_dup_check(args.new, args.source, ks=args.k, threshold=args.threshold)
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 1 if not result.get("ok") else (2 if result.get("passed") is False else 0)
+        return 1 if not result.get("ok") else (2 if result.get("passed") is False or result.get("constraint_status") == "not_evaluable" else 0)
     except (OSError, ValueError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 1

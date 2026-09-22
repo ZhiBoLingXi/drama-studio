@@ -1,23 +1,77 @@
-"""逐集客观检查：把"可数的质量"脚本化，作为正文闸门（落地第一步）。
-
-针对竖屏短剧/AIGC 漫剧分场剧本（格式：`# 第X集` / `场X-Y 地点 日/夜 内/外` / `人物：…` / `△…` / `角色（括注）：台词`）。
-逐集计算：汉字数、场数、△行/台词行比、物理地点数、冲突回合（说话人交替次数）、对白括注率、结尾留扣（启发式）。
-与硬线对比（可配置）：字数≥1200、场数≥10、回合≥6、△比≥20%、地点≤3、括注率（AIGC 画面规格）。
-
-这些指标为什么重要：2 分钟竖屏体量靠冲突回合与可拍场次撑满；△是喂给 AIGC 的生成参数，密度不够画面就随机；
-地点数直接决定制作成本；结尾留"扣"是集间留存的命脉。脚本只卡"可数"的，情绪振幅/反派智商等交批评者。
-"""
+"""Measure episodes; enforce explicit production constraints, never creative quality."""
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass, field
+import json
+import math
+from pathlib import Path
 import re
-from dataclasses import dataclass, field, asdict
 
 EP_RE = re.compile(r"^#{1,2}\s*第([0-9一二三四五六七八九十百零〇]+)集")
-SCENE_RE = re.compile(r"^场\s*(\d+)[-–](\d+)\s+(.+?)\s+(日|夜|晨|黄昏|清晨|深夜)\s+(内|外)")
+SCENE_RE = re.compile(r"^场\s*\d+[-–]\d+\s+(.+?)\s+(日|夜|晨|黄昏|清晨|深夜)\s+(内|外)\s*$")
 SCENE_LOOSE_RE = re.compile(r"^场\s*\d+[-–]\d+\s+(.+)$")
 DIALOG_RE = re.compile(r"^([^△#场\s【（(：:]{1,12})(（[^）]*）|\([^)]*\))?\s*[：:]\s*(.+)$")
-HOOK_HINTS = ("？", "?", "——", "…", "会不会", "究竟", "到底", "怎么办", "要来了", "拉开", "还没", "谁", "为何", "为什么", "能否", "是否")
-DEFAULTS = dict(min_chars=1200, min_scenes=10, min_rounds=6, min_delta_ratio=0.20, max_locations=3, min_paren_ratio=0.6)
+
+# Available only through explicit selection; not universal writing standards.
+PRESETS = {"legacy-aigc": dict(min_chars=1200, min_scenes=10, min_speaker_changes=6,
+                              min_delta_ratio=0.20, max_locations=3, min_paren_ratio=0.6)}
+RULES = {
+    "min_chars": ("chars", "min", "汉字数"),
+    "min_scenes": ("scenes", "min", "已识别场标题数"),
+    "min_speaker_changes": ("speaker_changes", "min", "场内说话人交替次数"),
+    "min_delta_ratio": ("delta_ratio", "min", "动作行／台词行比"),
+    "max_locations": ("locations", "max", "已识别地点标签数"),
+    "min_paren_ratio": ("paren_ratio", "min", "对白括注率"),
+}
+COUNT_RULES = {"min_chars", "min_scenes", "min_speaker_changes", "max_locations"}
+
+
+def validate_constraints(values: dict) -> dict:
+    if not isinstance(values, dict):
+        raise ValueError("constraints must be an object")
+    for key, value in values.items():
+        if key not in RULES:
+            raise ValueError(f"Unknown constraint: {key}")
+        if (isinstance(value, bool) or not isinstance(value, (int, float)) or
+                (isinstance(value, float) and not math.isfinite(value)) or value < 0):
+            raise ValueError(f"{key} must be finite and nonnegative")
+        if key in COUNT_RULES and not isinstance(value, int):
+            raise ValueError(f"{key} must be an integer")
+        if key == "min_paren_ratio" and value > 1:
+            raise ValueError("min_paren_ratio must be between 0 and 1")
+    return values
+
+
+def resolve_constraints(config_path=None, preset=None, **overrides) -> tuple[dict, dict, list]:
+    values, sources, warnings = {}, {}, []
+    if preset:
+        if preset not in PRESETS:
+            raise ValueError(f"Unknown preset: {preset}")
+        values.update(PRESETS[preset])
+        sources.update({key: f"preset:{preset}" for key in values})
+        warnings.append("legacy-aigc 是历史示例规格，不是行业标准或质量认证。")
+    if config_path is not None:
+        path = Path(config_path).expanduser().resolve()
+        config = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(config, dict) or set(config) != {"schemaVersion", "source", "constraints"}:
+            raise ValueError("Config requires exactly schemaVersion, source and constraints")
+        if type(config["schemaVersion"]) is not int or config["schemaVersion"] != 1:
+            raise ValueError("Unsupported config schemaVersion")
+        if not isinstance(config["source"], str) or not config["source"].strip():
+            raise ValueError("Config source must describe the project specification")
+        configured = validate_constraints(config["constraints"])
+        values.update(configured)
+        sources.update({key: f"config:{path} ({config['source']})" for key in configured})
+    overrides = {key: value for key, value in overrides.items() if value is not None}
+    if "min_rounds" in overrides:
+        if "min_speaker_changes" in overrides:
+            raise ValueError("Use min_speaker_changes or legacy min_rounds, not both")
+        overrides["min_speaker_changes"] = overrides.pop("min_rounds")
+        warnings.append("min_rounds 已弃用：它统计说话人交替，不是冲突回合；请用 min_speaker_changes。")
+    validate_constraints(overrides)
+    values.update(overrides)
+    sources.update({key: "explicit_argument" for key in overrides})
+    return values, sources, warnings
 
 
 @dataclass
@@ -29,130 +83,127 @@ class EpisodeStats:
     location_list: list = field(default_factory=list)
     delta_lines: int = 0
     dialog_lines: int = 0
-    delta_ratio: float = 0.0
-    rounds: int = 0
-    paren_ratio: float = 0.0
-    ending_hook: str = "unknown"
-    slots: int = 0            # 梗机制插槽数（【SLOT-N…】标记），规则每集 ≤1，超出只提示不判死
+    delta_ratio: float | None = None
+    speaker_changes: int = 0
+    paren_ratio: float | None = None
+    slots: int = 0
     warnings: list = field(default_factory=list)
-    fails: list = field(default_factory=list)
+    checks: list = field(default_factory=list)
 
 
-def _han_count(s: str) -> int:
-    return len(re.sub(r"[^一-鿿]", "", s))
-
-
-def _norm_location(loc: str) -> str:
-    # "镇魔渊 内殿" / "临渊城 血祭台" → 取主地点（第一个空格前）合并子区域，避免同地点切细被算成多地点
-    loc = loc.strip()
-    return loc.split(" ")[0].split("/")[0]
+def _episode_number(value: str) -> int:
+    if value.isascii() and value.isdigit():
+        return int(value)
+    digits = dict(zip("零〇一二三四五六七八九", (0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9)))
+    if all(char in digits for char in value):
+        return int("".join(str(digits[char]) for char in value))
+    total, current = 0, 0
+    for char in value:
+        if char in digits:
+            current = digits[char]
+        else:
+            total += (current or 1) * {"十": 10, "百": 100}[char]
+            current = 0
+    return total + current
 
 
 def split_episodes(text: str) -> list[tuple[str, list[str]]]:
-    eps, cur, buf = [], None, []
+    episodes, current, lines = [], None, []
     for line in text.splitlines():
-        m = EP_RE.match(line.strip())
-        if m:
-            if cur is not None:
-                eps.append((cur, buf))
-            cur, buf = f"第{m.group(1)}集", []
-        elif cur is not None:
-            buf.append(line)
-    if cur is not None:
-        eps.append((cur, buf))
-    return eps
+        match = EP_RE.match(line.strip())
+        if match:
+            if current is not None:
+                episodes.append((current, lines))
+            current, lines = f"第{_episode_number(match.group(1))}集", []
+        elif current is not None:
+            lines.append(line)
+    if current is not None:
+        episodes.append((current, lines))
+    return episodes
 
 
-def analyze_episode(name: str, lines: list[str], th: dict) -> EpisodeStats:
-    st = EpisodeStats(episode=name)
-    content = []
-    for l in lines:
-        s = l.strip()
-        if not s or s.startswith("【"):  # 跳过自检/说明块
+def analyze_episode(name: str, lines: list[str], constraints: dict, sources: dict) -> EpisodeStats:
+    stats = EpisodeStats(episode=name)
+    content = [line.strip() for line in lines if line.strip() and not line.strip().startswith("【")]
+    body = [line for line in content if not line.startswith(("场", "人物", "#"))]
+    if not body or not any(re.search(r"\w", line) for line in body):
+        raise ValueError(f"{name} 正文为空（场标题与人物清单不算正文）")
+    stats.chars = sum(len(re.sub(r"[^一-鿿]", "", line)) for line in body)
+    stats.slots = sum(line.count("【SLOT-") for line in content)
+    locations, previous_speaker, with_parenthetical = [], None, 0
+    for line in content:
+        if line.startswith("场"):
+            previous_speaker = None
+            match = SCENE_RE.match(line)
+            if match:
+                stats.scenes += 1
+                locations.append(match.group(1).strip())
+            else:
+                if SCENE_LOOSE_RE.match(line):
+                    stats.scenes += 1
+                stats.warnings.append(f"场标题未完整识别，地点数量可能不完整：{line}")
             continue
-        content.append(s)
-    st.chars = sum(_han_count(s) for s in content)
-    st.slots = sum(s.count("【SLOT-") for s in content)
-    if st.slots > 1:
-        st.warnings.append(f"梗插槽 {st.slots} 处 > 1（规则每集≤1，只放切片位）")
-    locs, prev_speaker, dialog_with_paren = [], None, 0
-    last_content = ""
-    for s in content:
-        if s.startswith("场"):
-            m = SCENE_RE.match(s) or SCENE_LOOSE_RE.match(s)
-            if m:
-                st.scenes += 1
-                loc = m.group(3) if m.re is SCENE_RE else m.group(1).split(" 日")[0].split(" 夜")[0]
-                locs.append(_norm_location(loc))
-                prev_speaker = None
+        if line.startswith(("人物", "#")):
             continue
-        if s.startswith("人物"):
+        if line.startswith("△"):
+            stats.delta_lines += 1
             continue
-        if s.startswith("△"):
-            st.delta_lines += 1
-            last_content = s
-            continue
-        dm = DIALOG_RE.match(s)
-        if dm:
-            st.dialog_lines += 1
-            if dm.group(2):
-                dialog_with_paren += 1
-            spk = dm.group(1)
-            if prev_speaker and spk != prev_speaker:
-                st.rounds += 1
-            prev_speaker = spk
-            last_content = s
-    st.location_list = sorted(set(locs))
-    st.locations = len(st.location_list)
-    st.delta_ratio = round(st.delta_lines / st.dialog_lines, 2) if st.dialog_lines else 0.0
-    st.paren_ratio = round(dialog_with_paren / st.dialog_lines, 2) if st.dialog_lines else 0.0
-    st.ending_hook = "疑似留扣" if any(h in last_content for h in HOOK_HINTS) else "疑似收尾（请人工确认是否留扣）"
-    # 硬线
-    if st.chars < th["min_chars"]:
-        st.fails.append(f"字数 {st.chars} < {th['min_chars']}")
-    if st.scenes < th["min_scenes"]:
-        st.fails.append(f"场数 {st.scenes} < {th['min_scenes']}")
-    if st.rounds < th["min_rounds"]:
-        st.fails.append(f"冲突回合 {st.rounds} < {th['min_rounds']}")
-    if st.delta_ratio < th["min_delta_ratio"]:
-        st.fails.append(f"△/台词比 {st.delta_ratio:.2f} < {th['min_delta_ratio']:.2f}")
-    if st.locations > th["max_locations"]:
-        st.fails.append(f"物理地点 {st.locations} > {th['max_locations']}")
-    if st.paren_ratio < th["min_paren_ratio"]:
-        st.fails.append(f"对白括注率 {st.paren_ratio:.2f} < {th['min_paren_ratio']:.2f}（AIGC 画面规格：每句台词带情绪/动作括注）")
-    return st
+        match = DIALOG_RE.match(line)
+        if match:
+            stats.dialog_lines += 1
+            with_parenthetical += bool(match.group(2))
+            speaker = match.group(1)
+            if previous_speaker and speaker != previous_speaker:
+                stats.speaker_changes += 1
+            previous_speaker = speaker
+        else:
+            stats.warnings.append(f"未识别为动作或台词，相关计数可能不完整：{line}")
+    stats.location_list = sorted(set(locations))
+    stats.locations = len(stats.location_list)
+    if stats.dialog_lines:
+        stats.delta_ratio = stats.delta_lines / stats.dialog_lines
+        stats.paren_ratio = with_parenthetical / stats.dialog_lines
+    if not stats.scenes:
+        stats.warnings.append("未识别到场标题；场数与地点数不能作为完整制作统计。")
+    for key, expected in constraints.items():
+        metric, operator, label = RULES[key]
+        actual = getattr(stats, metric)
+        unavailable = actual is None or (key != "min_chars" and bool(stats.warnings))
+        status = ("not_evaluable" if unavailable else
+                  "met" if (actual >= expected if operator == "min" else actual <= expected) else "unmet")
+        stats.checks.append({"rule": key, "metric": metric, "label": label, "operator": operator,
+                             "expected": expected, "actual": actual, "source": sources[key], "status": status})
+    return stats
 
 
-def run_episode_check(path: str, **overrides) -> dict:
-    th = {**DEFAULTS, **{k: v for k, v in overrides.items() if v is not None}}
-    text = open(path, encoding="utf-8").read()
-    eps = split_episodes(text)
-    if not eps:
+def run_episode_check(path: str, *, config_path=None, preset=None, **overrides) -> dict:
+    constraints, sources, warnings = resolve_constraints(config_path, preset, **overrides)
+    episodes = split_episodes(Path(path).read_text(encoding="utf-8"))
+    if not episodes:
         return {"ok": False, "error": "未识别到 `# 第X集` 集标题，检查正文格式"}
-    names = [name for name, _ in eps]
+    names = [name for name, _ in episodes]
     if len(set(names)) != len(names):
         return {"ok": False, "error": "存在重复集标题，先核对集序"}
-    results = [asdict(analyze_episode(n, ls, th)) for n, ls in eps]
-    failed = [r["episode"] for r in results if r["fails"]]
-    return {"ok": True, "thresholds": th, "episodes": results, "failed_episodes": failed, "passed": not failed}
+    results = [asdict(analyze_episode(name, lines, constraints, sources)) for name, lines in episodes]
+    statuses = [check["status"] for result in results for check in result["checks"]]
+    status = ("not_configured" if not constraints else "unmet" if "unmet" in statuses else
+              "not_evaluable" if "not_evaluable" in statuses else "met")
+    return {"ok": True, "schema_version": 2, "mode": "constraints" if constraints else "measurements",
+            "thresholds": constraints, "rule_sources": sources, "warnings": warnings, "episodes": results,
+            "constraint_status": status, "passed": True if status == "met" else False if status == "unmet" else None,
+            "review_status": "not_run", "note": "统计与明确制作规格的核对，不代表创作质量、模型评审或编辑验收。"}
 
 
-def format_report(r: dict) -> str:
-    if not r.get("ok"):
-        return f"[error] {r.get('error')}"
-    th = r["thresholds"]
-    head = (
-        f"硬线: 字数≥{th['min_chars']} 场数≥{th['min_scenes']} 回合≥{th['min_rounds']} "
-        f"△比≥{th['min_delta_ratio']:.2f} 地点≤{th['max_locations']} 括注率≥{th['min_paren_ratio']:.2f}"
-    )
-    rows = ["| 集 | 字数 | 场数 | 回合 | △/台词 | 括注率 | 地点 | SLOT | 结尾 | 结果 |", "|---|---|---|---|---|---|---|---|---|---|"]
-    for e in r["episodes"]:
-        res = "✅" if not e["fails"] else "❌ " + "；".join(e["fails"])
-        if e.get("warnings"):
-            res += " ⚠ " + "；".join(e["warnings"])
-        rows.append(
-            f"| {e['episode']} | {e['chars']} | {e['scenes']} | {e['rounds']} | {e['delta_ratio']:.2f} | "
-            f"{e['paren_ratio']:.2f} | {e['locations']} | {e.get('slots', 0)} | {e['ending_hook']} | {res} |"
-        )
-    tail = "全部过闸 ✅" if r["passed"] else f"未过闸集: {', '.join(r['failed_episodes'])} ❌"
-    return "\n".join([head, "", *rows, "", tail])
+def format_report(result: dict) -> str:
+    if not result.get("ok"):
+        return f"[error] {result.get('error')}"
+    heading = "尚未配置验收标准，仅报告统计。" if result["constraint_status"] == "not_configured" else "仅核对明确配置的制作规格。"
+    rows = [heading, "创作评审：未执行。", *result["warnings"]]
+    for episode in result["episodes"]:
+        rows.append(f"{episode['episode']}：汉字 {episode['chars']}，场标题 {episode['scenes']}，"
+                    f"说话人交替 {episode['speaker_changes']}，地点标签 {episode['locations']}")
+        rows.extend(episode["warnings"])
+        rows.extend(f"{check['label']}：实际 {check['actual']} / {check['operator']} {check['expected']}；"
+                    f"{check['status']}；来源 {check['source']}" for check in episode["checks"])
+    rows.append(f"规格核对状态：{result['constraint_status']}；此结果不评价剧本好坏。")
+    return "\n".join(rows)

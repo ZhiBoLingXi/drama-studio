@@ -173,10 +173,128 @@ class HelperTests(unittest.TestCase):
         for value in ("nan", "inf", "-1"):
             self.assertEqual(self.run_tool("episode-check", sample, "--min-delta-ratio", value)[0], 1)
 
-    def test_short_episode_fails_quality_counts(self):
+    def test_default_measures_without_quality_verdict(self):
         code, result = self.run_tool("episode-check", ROOT / "examples/sample-episode.md")
+        self.assertEqual(code, 0)
+        self.assertIsNone(result["passed"])
+        self.assertEqual(result["constraint_status"], "not_configured")
+        self.assertEqual(result["thresholds"], {})
+        self.assertEqual(result["review_status"], "not_run")
+        self.assertEqual(result["episodes"][0]["checks"], [])
+        self.assertNotIn("rounds", result["episodes"][0])
+        self.assertNotIn("ending_hook", result["episodes"][0])
+
+    def test_legacy_preset_is_explicit(self):
+        code, result = self.run_tool("episode-check", ROOT / "examples/sample-episode.md", "--preset", "legacy-aigc")
         self.assertEqual(code, 2)
         self.assertFalse(result["passed"])
+        self.assertEqual(result["thresholds"]["min_chars"], 1200)
+        self.assertEqual(result["rule_sources"]["min_chars"], "preset:legacy-aigc")
+        self.assertTrue(result["warnings"])
+
+    def test_explicit_rule_does_not_enable_other_rules(self):
+        sample = ROOT / "examples/sample-episode.md"
+        code, result = self.run_tool("episode-check", sample, "--min-chars", "1")
+        self.assertEqual(code, 0)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["thresholds"], {"min_chars": 1})
+        self.assertEqual(result["rule_sources"], {"min_chars": "explicit_argument"})
+        self.assertEqual(result["review_status"], "not_run")
+        self.assertEqual(self.run_tool("episode-check", sample, "--min-chars", "9999")[0], 2)
+
+    def test_project_config_and_override_provenance(self):
+        config = self.base / "spec.json"
+        config.write_text(json.dumps({"schemaVersion": 1, "source": "Producer brief revision 3",
+                                      "constraints": {"min_chars": 1, "max_locations": 2}}))
+        sample = ROOT / "examples/sample-episode.md"
+        # A nearby config must never silently activate rules.
+        self.assertEqual(self.run_tool("episode-check", sample)[1]["thresholds"], {})
+        code, result = self.run_tool("episode-check", sample, "--config", config, "--min-chars", "2")
+        self.assertEqual(code, 0)
+        self.assertEqual(result["thresholds"], {"min_chars": 2, "max_locations": 2})
+        self.assertIn("Producer brief revision 3", result["rule_sources"]["max_locations"])
+        self.assertEqual(result["rule_sources"]["min_chars"], "explicit_argument")
+        result = self.run_tool("episode-check", sample, "--preset", "legacy-aigc", "--config", config)[1]
+        self.assertEqual(result["thresholds"]["min_chars"], 1)
+        self.assertEqual(result["rule_sources"]["min_scenes"], "preset:legacy-aigc")
+
+    def test_invalid_configs_fail_instead_of_using_defaults(self):
+        config = self.base / "spec.json"
+        sample = ROOT / "examples/sample-episode.md"
+        for constraints in ({"minimum_chars": 5}, {"min_chars": True}, {"min_chars": 1.5},
+                            {"min_chars": None}, {"min_delta_ratio": float("nan")},
+                            {"min_paren_ratio": 1.1}, {"max_locations": -1}, []):
+            with self.subTest(constraints=constraints):
+                config.write_text(json.dumps({"schemaVersion": 1, "source": "Brief", "constraints": constraints}))
+                self.assertEqual(self.run_tool("episode-check", sample, "--config", config)[0], 1)
+        for raw in ('{"schemaVersion":1,"constraints":{}}', '[]', '{broken'):
+            config.write_text(raw)
+            self.assertEqual(self.run_tool("episode-check", sample, "--config", config)[0], 1)
+        self.assertEqual(self.run_tool("episode-check", sample, "--config", self.base / "missing.json")[0], 1)
+
+    def test_legacy_rounds_alias_warns_and_conflict_is_rejected(self):
+        sample = ROOT / "examples/sample-episode.md"
+        code, result = self.run_tool("episode-check", sample, "--min-rounds", "0")
+        self.assertEqual(code, 0)
+        self.assertEqual(result["thresholds"], {"min_speaker_changes": 0})
+        self.assertTrue(result["warnings"])
+        self.assertEqual(self.run_tool("episode-check", sample, "--min-rounds", "1", "--min-speaker-changes", "2")[0], 1)
+
+    def test_empty_body_is_an_input_error(self):
+        path = self.base / "empty.md"
+        for content in ("# 第1集\n", "# 第1集\n场1-1 门口 日 外\n人物：甲\n", "# 第1集\n△\n"):
+            path.write_text(content, encoding="utf-8")
+            self.assertEqual(self.run_tool("episode-check", path)[0], 1)
+
+    def test_equivalent_episode_numbers_are_duplicates(self):
+        path = self.base / "duplicate.md"
+        path.write_text("# 第01集\n△甲推门。\n# 第一集\n△乙站起来。", encoding="utf-8")
+        self.assertEqual(self.run_tool("episode-check", path)[0], 1)
+
+    def test_no_dialogue_ratio_is_unknown_not_zero(self):
+        path = self.base / "silent.md"
+        path.write_text("# 第1集\n场1-1 门口 日 外\n△他合上信封，走入雨中。", encoding="utf-8")
+        code, result = self.run_tool("episode-check", path)
+        self.assertEqual(code, 0)
+        self.assertIsNone(result["episodes"][0]["delta_ratio"])
+        code, result = self.run_tool("episode-check", path, "--min-paren-ratio", "0")
+        self.assertEqual(code, 2)
+        self.assertEqual(result["constraint_status"], "not_evaluable")
+        self.assertIsNone(result["passed"])
+
+    def test_incomplete_format_cannot_certify_location_budget(self):
+        path = self.base / "loose.md"
+        path.write_text("# 第1集\n场1-1 门口\n△他转身。", encoding="utf-8")
+        code, result = self.run_tool("episode-check", path, "--max-locations", "1")
+        self.assertEqual(code, 2)
+        self.assertEqual(result["constraint_status"], "not_evaluable")
+        self.assertTrue(result["episodes"][0]["warnings"])
+
+    def test_location_labels_are_not_merged_by_first_word(self):
+        path = self.base / "rooms.md"
+        path.write_text("# 第1集\n场1-1 医院 病房 日 内\n△他醒了。\n场1-2 医院 大厅 日 内\n△她等着。", encoding="utf-8")
+        code, result = self.run_tool("episode-check", path, "--max-locations", "1")
+        self.assertEqual(code, 2)
+        self.assertEqual(result["episodes"][0]["locations"], 2)
+
+    def test_threshold_comparison_uses_unrounded_ratio(self):
+        path = self.base / "ratio.md"
+        path.write_text("# 第1集\n场1-1 门口 日 外\n△他停下。\n甲：你来。\n乙：等着。\n甲：好。", encoding="utf-8")
+        code, result = self.run_tool("episode-check", path, "--min-delta-ratio", "0.334")
+        self.assertEqual(code, 2)
+        self.assertAlmostEqual(result["episodes"][0]["delta_ratio"], 1 / 3)
+        # Rounding 1/3 to 0.33 before comparison would incorrectly reject 0.332.
+        self.assertEqual(self.run_tool("episode-check", path, "--min-delta-ratio", "0.332")[0], 0)
+
+    def test_every_episode_is_checked_and_unknowns_remain_visible(self):
+        path = self.base / "mixed.md"
+        path.write_text("# 第1集\n场1-1 门口 日 外\n△他推门。\n甲：你好。\n"
+                        "# 第2集\n场2-1 门口 日 外\n△她离开。", encoding="utf-8")
+        code, result = self.run_tool("episode-check", path, "--min-chars", "999", "--min-paren-ratio", "0.5")
+        self.assertEqual(code, 2)
+        self.assertEqual(result["constraint_status"], "unmet")
+        self.assertEqual(len(result["episodes"]), 2)
+        self.assertEqual(result["episodes"][1]["checks"][1]["status"], "not_evaluable")
 
     def test_duplicate_episode_titles_rejected(self):
         path = self.base / "episodes.md"

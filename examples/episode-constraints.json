@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "source": "示例规格，需替换为本项目已确认的制作要求与版本",
+  "constraints": {
+    "max_locations": 2
+  }
+}
