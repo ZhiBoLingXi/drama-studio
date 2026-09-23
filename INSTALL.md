@@ -24,14 +24,14 @@ python3 -B scripts/install.py verify --host codex
 
 安装只写一个 `drama-studio` 技能目录与安装回执，不改 AGENTS.md、CLAUDE.md、模型密钥或整个 MCP 配置。相同内容重复运行不修改。不同版本要升级时用 `--upgrade`；安装器检查原回执、拒绝覆盖用户修改，并保留旧目录。遇到无回执的同名目录或修改冲突时，说明具体位置，保留内容，不能删掉或强制覆盖。
 
-## 3. ChatGPT／WorkBuddy 技能导入
+## 3. ChatGPT／WorkBuddy 技能包与入口确认
 
 ```sh
 python3 -B scripts/install.py package --host chatgpt
 python3 -B scripts/install.py package --host workbuddy
 ```
 
-选择与当前宿主匹配的一个。ZIP 根目录是 SKILL.md，附带 references 和 scripts；WorkBuddy 版本增加其要求的双语描述、版本和作者字段。导入入口和账号支持按当前宿主实际界面确认。这是技能包，不是已经审核上架的商店应用。
+选择与当前宿主匹配的一个。ZIP 根目录是 SKILL.md，附带 references 和 scripts；WorkBuddy 版本增加其要求的双语描述、版本和作者字段。这只是生成技能包，不是账号安装。先按[宿主指南](docs/hosts.md)区分 ChatGPT 桌面本地技能与网页插件；没有实际兼容入口时，不假定可导入 ZIP，不将附件上传或本地 Codex 安装记为云端安装。当前仓库未发布跨端 ChatGPT 插件。
 
 如果当前 AI 不能运行打包命令，从仓库维护者提供的真实 release 附件获取相应包；没有发布附件时明确这一缺口，不编造下载链接。可以临时让宿主读取技能说明辅助工作，但不得把临时阅读当作持久安装成功。
 

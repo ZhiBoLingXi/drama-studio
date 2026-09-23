@@ -22,9 +22,13 @@ AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Pytho
 
 > 继续这个项目，读取编剧修订后的集纲，再写下一批正文。
 
-工作流：市场研究 → 对标确认 → 优先复用模板／必要时获取视频并调用 mali-story 拉片 → 原创选题 → 蓝图与集纲 → 方向样稿 → 全剧正文 → 审查、交付和反馈修订。
+> 在现有方向和制作条件内自主优化。保留当前完整稿，补充有来源的生活材料，探索不同因果的方案，先试关键场面再决定是否扩写；分别报告可编辑性、辨识度和阅读反馈。
+
+工作流：市场研究 → 对标确认 → 优先复用模板／必要时获取视频并调用 mali-story 拉片 → 生活材料与创作立场 → 不同因果选题与场面试写 → 蓝图与集纲 → 方向样稿 → 全剧正文 → 审查、交付和反馈修订。已有阶段成果可直接接续。
 
 按需加载方法参考，不依赖用户另装 DramaRewrite、DramaContinuation 等个人技能目录。模型负责判断与创作，脚本负责能客观计算的检查，编剧决定关键方向和稿件采用。
+
+[创作开发方法](skills/drama-studio/references/development-lab.md) 随技能分发，附开发记录和分阶段阅读模板，由 AI 按需填写。当前完整稿与探索片段分别保存，避免失败探索覆盖可用版本。评审分别判断因果底线、辨识度和阅读偏好，不以字面低重合或平均高分宣称优质；无独立上下文时如实使用串行自评。
 
 ## 各入口的安装方式
 
@@ -33,9 +37,9 @@ AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Pytho
 | Codex | 复制到标准技能目录，支持用户级／项目级 | 宿主发现技能、mali-story 授权 |
 | Claude Code | 复制到标准技能目录，支持用户级／项目级 | 宿主发现技能、mali-story 授权 |
 | WorkBuddy | 带所需元数据的 ZIP；确认目录后也可本地安装 | 当前版本导入、MCP 连接、本地命令能力 |
-| ChatGPT | Skill ZIP 与远程 MCP 接入说明 | 账号是否支持导入／插件开发、本地与云端执行边界 |
+| ChatGPT | 桌面本地技能指南、Skill ZIP 与远程 MCP 说明 | 桌面技能发现；网页插件尚未发布，ZIP不等于云端安装 |
 
-纯网页聊天不能因为读了仓库就自动获得本机文件和桌面操作权限。无命令权限时走技能导入与远程连接；缺少可用远程检查服务时如实标注“客观检查未执行”。
+纯网页聊天不能因为读了仓库就自动获得本机文件和桌面操作权限。无命令权限时先确认是否存在兼容的技能／插件入口与远程连接；缺少可用远程检查服务时如实标注“客观检查未执行”。
 
 ## 开发者与手动安装命令
 
@@ -60,7 +64,7 @@ python3 -B scripts/install.py package --host chatgpt
 
 生成 `dist/drama-studio-workbuddy.zip` 或 `dist/drama-studio-chatgpt.zip`。内容只有自包含技能，不包括仓库工作资料、视频或账号。输出已存在且内容不同时要求新路径，不静默覆盖。
 
-已打包的版本从 [GitHub Releases](https://github.com/ZhiBoLingXi/drama-studio/releases) 获取，同样需要仓库读取权限。
+已发布的包从 [GitHub Releases](https://github.com/ZhiBoLingXi/drama-studio/releases) 获取，同样需要仓库读取权限。Release 不自动跟随 main 更新；测试当前改动请克隆 main 后安装或重新打包，不能用旧版附件替代。
 
 本地工具（安装后使用安装目录中的同名脚本）：
 
@@ -69,6 +73,7 @@ python3 -B skills/drama-studio/scripts/drama_tools.py doctor
 python3 -B skills/drama-studio/scripts/drama_tools.py init-project ../my-drama --title '我的新剧'
 python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sample-episode.md
 python3 -B skills/drama-studio/scripts/drama_tools.py dup-check --new examples/sample-episode.md --source examples/sample-reference.md
+python3 -B skills/drama-studio/scripts/drama_tools.py reference-check /absolute/path/to/template-detail.json
 ```
 
 逐集检查默认只统计，返回 `constraint_status: not_configured`、`passed: null`；退出码 0 仅表示统计已完成。它不会因示例短而判剧本不合格，也不评价创作质量。
@@ -84,6 +89,8 @@ python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sam
 第二条只检查显式指定的字数约束，示例应返回退出码 2。第三条显式启用历史 AIGC 示例规格，不代表行业标准。规则格式、来源、优先级及结果解释见 [剧集检查说明](skills/drama-studio/references/episode-check.md)。
 
 `doctor` 只证明离线工具可加载，不能证明 MCP 已连接。项目初始化只建立本地工作目录，不创建远端项目。完整命令参数使用 `--help` 查看。
+
+`reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 
 ## 成果与状态
 
@@ -101,6 +108,10 @@ python3 -B scripts/validate.py
 - [AI 安装协议](INSTALL.md)
 - [宿主接入与验证边界](docs/hosts.md)
 - [验证记录与下一步](docs/verification.md)
+- [模拟新用户安装与创作测试](docs/manual-test.md)
+- [剧本结果验收方法](evals/screenplay-outcomes/README.md)与[首轮开发者试跑](evals/screenplay-outcomes/run-2026-09-22.md)：已有六集待审稿，尚无真实编剧采用结论。
+- [防同质化行为用例](evals/screenplay-outcomes/diversity-regression.md)与[方法接入自查](evals/screenplay-outcomes/diversity-run-2026-09-22.md)：校准候选与证据判断，不等同于优质剧本验收。
 - [来源说明](docs/provenance.md)
+- [多场景结果验收矩阵](evals/screenplay-outcomes/scenario-matrix.md)：按创作、接续、阅读、资料与宿主分别记录，未测试项目不计入成功率。
 
 依赖资料与工具规则持续版本化；不承诺剧本必成爆款，不将字面查重称为原创认证。

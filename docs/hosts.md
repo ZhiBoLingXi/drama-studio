@@ -31,7 +31,9 @@ MCP 使用当前 CLI 的 HTTP 连接入口；先读取 `claude mcp add --help`�
 
 ## ChatGPT
 
-提供 `package --host chatgpt` 生成的自包含技能包。根据账号和工作区当前支持的技能／插件导入入口安装，再配置 mali-story 远程 MCP。开发者模式和发布流程受账号／工作区策略影响，本仓库未发布公共 ChatGPT 插件。
+先区分桌面本地技能与网页／云端插件。ChatGPT 桌面端支持独立技能，可在 Skills 中查看并用 `@` 选择；本地 Codex 技能目录可用本仓库 `--host codex` 路径安装，但文件安装成功后仍须在实际使用的桌面模式、新会话中验证发现，不能据此宣称网页账号已安装。
+
+`package --host chatgpt` 只生成自包含技能 ZIP，不会自动注册账号或连接 MCP。网页／云端通过插件分发的接入与本地技能不同；本仓库尚未发布跨端 ChatGPT 插件。只有实际界面提供兼容的导入入口时才使用该 ZIP，普通聊天附件上传不算持久安装。`install --host chatgpt` 不会写入猜测的宿主目录。登录和 mali-story MCP 连接另行验证。
 
 普通网页会话不能因为导入技能获得本机终端和夸克客户端控制权限。若会话有代码执行，可在该环境运行随包检查，但它仍不等于获得用户电脑访问权。若无执行能力且未连接远程检查工具，则只进行有明确标注的模型审阅。
 
@@ -39,7 +41,7 @@ MCP 使用当前 CLI 的 HTTP 连接入口；先读取 `claude mcp add --help`�
 
 ## 官方依据
 
-2026-09-21 阅读核对；安装时应以目标产品版本为准：
+OpenAI Skills 文档于2026-09-23再次核对，其余依据为2026-09-21；安装时以目标产品版本及实际界面为准：
 
 - [OpenAI Skills：目录与触发方式](https://learn.chatgpt.com/docs/build-skills)
 - [OpenAI 插件架构：Skills、MCP 与界面](https://developers.openai.com/plugins/concepts/plugins)

@@ -12,6 +12,7 @@ import uuid
 sys.dont_write_bytecode = True
 from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
+from checks.reference_check import run_reference_check
 
 
 def initialize(path: Path, title: str) -> dict:
@@ -51,6 +52,9 @@ def main() -> int:
     duplicate.add_argument("--source", nargs="+", required=True)
     duplicate.add_argument("--k", nargs="+", type=int, default=[5, 8, 13])
     duplicate.add_argument("--threshold", type=float, default=40)
+    reference = commands.add_parser("reference-check", help="Inspect saved template detail coverage, not source truth")
+    reference.add_argument("path")
+    reference.add_argument("--expected-episodes", type=int)
     args = parser.parse_args()
     try:
         if args.command == "doctor":
@@ -63,10 +67,12 @@ def main() -> int:
         elif args.command == "episode-check":
             overrides = {k: v for k, v in vars(args).items() if k not in ("command", "path") and v is not None}
             result = run_episode_check(args.path, **overrides)
+        elif args.command == "reference-check":
+            result = run_reference_check(args.path, args.expected_episodes)
         else:
             result = run_dup_check(args.new, args.source, ks=args.k, threshold=args.threshold)
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 1 if not result.get("ok") else (2 if result.get("passed") is False or result.get("constraint_status") == "not_evaluable" else 0)
+        return 1 if not result.get("ok") else (2 if result.get("passed") is False or result.get("constraint_status") == "not_evaluable" or result.get("coverage_status") == "needs_review" else 0)
     except (OSError, ValueError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 1
