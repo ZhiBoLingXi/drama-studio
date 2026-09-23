@@ -1,0 +1,22 @@
+[
+  {
+    "id": "template-a",
+    "title": "纸灯之家",
+    "version": 2,
+    "episodesTotal": 5,
+    "cast": [
+      "演员乙"
+    ],
+    "season": "第二季",
+    "status": "ready"
+  },
+  {
+    "id": "template-b",
+    "title": "纸灯之家",
+    "version": 1,
+    "episodesTotal": 5,
+    "cast": [],
+    "season": null,
+    "status": "ready"
+  }
+]

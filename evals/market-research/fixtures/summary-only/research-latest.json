@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-09-23T12:00:00+08:00",
+  "status": {
+    "current_ranked_works": 100,
+    "current_works_with_details": 80
+  },
+  "rankings": {
+    "comic": {
+      "topics": {
+        "source_date": "2026-09-22",
+        "sample_size": 100,
+        "platform_categories": [
+          {
+            "tag": "家庭",
+            "works": 60,
+            "percent_of_sample": 60,
+            "examples": [
+              {
+                "series_id": "92001",
+                "title": "楼上那家人",
+                "rank": 9
+              }
+            ]
+          },
+          {
+            "tag": "悬疑",
+            "works": 55,
+            "percent_of_sample": 55,
+            "examples": [
+              {
+                "series_id": "92001",
+                "title": "楼上那家人",
+                "rank": 9
+              }
+            ]
+          }
+        ],
+        "details_available": 80,
+        "episode_statistics": {
+          "known_works": 80,
+          "missing_works": 20,
+          "mean": 70,
+          "median": 68,
+          "minimum": 30,
+          "maximum": 100
+        },
+        "detail_observation_range": [
+          "2026-09-21T10:00:00+08:00"
+        ]
+      },
+      "seven_day_top10": {
+        "observed_days": 1,
+        "requested_days": 7,
+        "window_complete": false,
+        "comparison_ready": false,
+        "entries": []
+      }
+    }
+  }
+}

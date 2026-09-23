@@ -1,0 +1,45 @@
+{
+  "template": {
+    "id": "template-confirmed",
+    "version": 3,
+    "title": "纸灯之家",
+    "episodesTotal": 5,
+    "status": "ready",
+    "seriesOutlineMd": "episodesTotal: 5"
+  },
+  "content": {
+    "fullOutline": "episodesTotal: 5",
+    "episodeOutlines": [
+      {
+        "episodeIndex": 1,
+        "hasOutline": true,
+        "outlineMd": "第1集：姐姐与弟弟发现旧承诺的另一处矛盾。",
+        "rawMd": "虚构第1集证据片段：双方对同一张纸灯图样各有解释；未核验视频声音。"
+      },
+      {
+        "episodeIndex": 2,
+        "hasOutline": true,
+        "outlineMd": "第2集：姐姐与弟弟发现旧承诺的另一处矛盾。",
+        "rawMd": "虚构第2集证据片段：双方对同一张纸灯图样各有解释；未核验视频声音。"
+      },
+      {
+        "episodeIndex": 3,
+        "hasOutline": true,
+        "outlineMd": "第3集：姐姐与弟弟发现旧承诺的另一处矛盾。",
+        "rawMd": "虚构第3集证据片段：双方对同一张纸灯图样各有解释；未核验视频声音。"
+      },
+      {
+        "episodeIndex": 4,
+        "hasOutline": true,
+        "outlineMd": "第4集：姐姐与弟弟发现旧承诺的另一处矛盾。",
+        "rawMd": "虚构第4集证据片段：双方对同一张纸灯图样各有解释；未核验视频声音。"
+      },
+      {
+        "episodeIndex": 5,
+        "hasOutline": true,
+        "outlineMd": "第5集：姐姐与弟弟发现旧承诺的另一处矛盾。",
+        "rawMd": "虚构第5集证据片段：双方对同一张纸灯图样各有解释；未核验视频声音。"
+      }
+    ]
+  }
+}

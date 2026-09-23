@@ -11,7 +11,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 
 | 当前需要 | 按需读取 | 交付成果 |
 | --- | --- | --- |
-| 研究市场、选择对标 | [市场研究](references/market.md) | 有来源和日期的比较、推荐及缺口 |
+| 研究市场、选择对标 | [市场研究](references/market.md)；已有红果榜单时读 [可选数据源](references/hongguo-rank.md) | 有来源和日期的比较、推荐及缺口 |
 | 找模板、下载视频、拉片 | [资料与拉片](references/mali-story.md)；需要下载时再读 [夸克适配](references/quark.md) | 可追溯的模板、任务、集序与证据 |
 | 原创选题、人物与集纲 | [策划](references/planning.md) | 原创方向、设定、蓝图与完整分集纲 |
 | 摆脱换皮、探索不同故事 | [创作开发](references/development-lab.md) | 生活材料、创作立场、不同因果候选及场面试写 |

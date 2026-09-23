@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-09-23T10:00:00+08:00",
+  "status": {
+    "current_ranked_works": 3,
+    "current_works_with_details": 3
+  },
+  "rankings": {
+    "comic": {
+      "topics": {
+        "rank_key": "comic",
+        "source_date": "2026-09-20",
+        "requested_top_n": 100,
+        "sample_size": 3,
+        "coverage_complete": false,
+        "platform_categories": [
+          {
+            "tag": "家庭",
+            "works": 1,
+            "percent_of_sample": 33.3,
+            "examples": [
+              {
+                "series_id": "91001",
+                "title": "纸灯之家",
+                "rank": 1
+              }
+            ]
+          }
+        ]
+      },
+      "seven_day_top10": {
+        "rank_key": "comic",
+        "start_date": "2026-09-17",
+        "end_date": "2026-09-23",
+        "requested_days": 7,
+        "observed_days": 3,
+        "missing_dates": [
+          "2026-09-19",
+          "2026-09-21",
+          "2026-09-22",
+          "2026-09-23"
+        ],
+        "window_complete": false,
+        "top_n": 3,
+        "coverage_by_date": {
+          "2026-09-17": 3,
+          "2026-09-18": 3,
+          "2026-09-20": 3
+        },
+        "insufficient_coverage_dates": [],
+        "comparison_ready": false,
+        "entries": [
+          {
+            "series_id": "91001",
+            "title": "纸灯之家",
+            "days_in_top_n": 3,
+            "longest_confirmed_streak_days": 2,
+            "observed_dates_in_top_n": [
+              "2026-09-17",
+              "2026-09-18",
+              "2026-09-20"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

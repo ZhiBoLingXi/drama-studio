@@ -30,6 +30,12 @@ AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Pytho
 
 [创作开发方法](skills/drama-studio/references/development-lab.md) 随技能分发，附开发记录和分阶段阅读模板，由 AI 按需填写。当前完整稿与探索片段分别保存，避免失败探索覆盖可用版本。评审分别判断因果底线、辨识度和阅读偏好，不以字面低重合或平均高分宣称优质；无独立上下文时如实使用串行自评。
 
+## 可选榜单数据
+
+可复用 Yoki 红果榜单 MCP 的历史排名、持续性、题材统计和作品检索；也可读取其 JSON／Markdown 导出。安装 Drama Studio 不会安装该服务、复制数据库或创建定时任务。已有连接优先复用，没有连接仍可使用其他来源。详见[接入与数据边界](skills/drama-studio/references/hongguo-rank.md)及[候选交接模板](skills/drama-studio/templates/benchmark-research.md)。榜单辅助选研究对象，实际拉片继续复用 mali-story。
+
+试用：“用已有红果榜单资料，筛选适合两人两室的家庭悬疑漫剧对标，说明持续性证据与缺口；我选定后再核对 mali-story 模板。” [合成场景验收](evals/market-research/README.md)覆盖文件降级与片段模板交接。
+
 ## 各入口的安装方式
 
 | 入口 | 本仓库提供 | 实际使用前还需确认 |

@@ -1,0 +1,21 @@
+{
+  "status": "compared",
+  "rank_key": "comic",
+  "from_date": "2026-09-17",
+  "to_date": "2026-09-20",
+  "elapsed_days": 3,
+  "compared_top_n": 3,
+  "risers": [
+    {
+      "series_id": "91001",
+      "title": "纸灯之家",
+      "rank_before": 3,
+      "rank_after": 1,
+      "rank_change": 2,
+      "heat_before": 10000000,
+      "heat_after": 20000000,
+      "heat_change_approx": 10000000,
+      "heat_change_percent_approx": 100.0
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "exported_at": "2026-09-23T10:00:00+08:00",
+  "rankings": [
+    {
+      "rank_key": "comic",
+      "name": "合成漫剧榜",
+      "source_date": "2026-09-20",
+      "fetched_at": "2026-09-20T10:00:00+08:00",
+      "entries": [
+        {
+          "rank": 1,
+          "series_id": "91001",
+          "title": "纸灯之家",
+          "heat": 20000000,
+          "display": {
+            "heat": "2000万热度"
+          },
+          "categories": [
+            "家庭"
+          ],
+          "url": "https://example.invalid/work/91001"
+        },
+        {
+          "rank": 2,
+          "series_id": "91002",
+          "title": "九重云战",
+          "heat": 19000000,
+          "display": {
+            "heat": "1900万热度"
+          },
+          "categories": [
+            "奇幻"
+          ],
+          "url": "https://example.invalid/work/91002"
+        },
+        {
+          "rank": 3,
+          "series_id": "91003",
+          "title": "雨停前的钟表铺",
+          "heat": 17000000,
+          "display": {
+            "heat": "1700万热度"
+          },
+          "categories": [
+            "悬疑"
+          ],
+          "url": "https://example.invalid/work/91003"
+        }
+      ]
+    }
+  ]
+}

@@ -39,6 +39,22 @@ MCP 使用当前 CLI 的 HTTP 连接入口；先读取 `claude mcp add --help`�
 
 云端接续需依赖 mali-story 已部署的项目、候选与采用契约，不能依赖某台电脑的 PROJECT.md。缺少远端能力时显示未同步，不能声称跨设备完整接续。视频可由用户在 mali-story 中上传后继续。
 
+## 可选 Yoki 红果榜单
+
+上游[红果组件](https://github.com/yokichen9149-byte/yoki-data-analysis/tree/main/mcp/hongguo-rank)目前以本地 SQLite 加 stdio MCP 提供查询，采集独立执行。支持本地命令型 MCP 的宿主可复用既有部署；先确认实际路径、依赖与连接，不因安装本技能启动第二套服务或日更任务。查询不会自动采集，新用户没有历史数据时不能获得过去多日趋势。
+
+只有用户需要新接入时，按宿主实际界面或CLI帮助配置。命令使用该组件现有虚拟环境的 Python，参数为该部署的 `server.py` 绝对路径；不得复制其他机器的虚拟环境。新环境依赖以其锁文件为准，留在可选组件环境中，不加入 Drama Studio 运行依赖。
+
+本地stdio配置示例仅供已确认路径后适配宿主，不能整段覆盖用户配置：
+
+```toml
+[mcp_servers.hongguo_local]
+command = "/absolute/path/to/existing/hongguo-rank/.venv/bin/python"
+args = ["/absolute/path/to/existing/hongguo-rank/server.py"]
+```
+
+ChatGPT网页等不能启动本地进程的环境使用用户提供的导出文件，或由用户另行提供已部署的远程服务；本项目不附带远程榜单地址。实际查询与文件格式见[可选数据源](../skills/drama-studio/references/hongguo-rank.md)。Yoki拉片和采购审核仍为独立可选能力，不随此接入安装。
+
 ## 官方依据
 
 OpenAI Skills 文档于2026-09-23再次核对，其余依据为2026-09-21；安装时以目标产品版本及实际界面为准：
