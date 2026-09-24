@@ -6,13 +6,19 @@
 
 在有文件／命令权限的 AI 工具中，发送仓库地址并说：
 
-> 请浏览 https://github.com/ZhiBoLingXi/drama-studio ，阅读 README.md 和 INSTALL.md，按我当前的 AI 工具安装 Drama Studio。先检查环境和已有安装，保留我的配置与修改，安装后验证技能发现和 mali-story MCP 连接。需要我登录时给出授权入口，不要启动创作或付费任务。
+> 请浏览 https://github.com/ZhiBoLingXi/drama-studio ，阅读 README.md 和 INSTALL.md，按我当前的 AI 工具安装 Drama Studio。先检查环境和已有安装，保留我的配置与修改，安装后引导我初始化工作目录、数据更新方式与常用偏好；询问是否开启定时采集，开启时确认时间和时区。验证技能发现，并按选择验证 mali-story MCP 连接。需要我登录时给出授权入口，不要启动创作或付费任务。
 
 仓库目前为私有：用户的 GitHub 账号需具有读取权限，AI 所在环境也需能通过该账号访问。仅将链接粘贴到未授权的网页聊天中，无法读取仓库；可改为导入已获授权下载的技能包。
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
 当前源码版本 `0.2.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+
+## 初始化工作室
+
+安装后由 AI 检查已有环境和配置，分步询问必要选择，不要求用户手写配置。可直接说“初始化工作室”“把榜单采集改到每天北京时间9点”或“检查自动更新状态”。更改时间只修改已授权任务；没有已开启任务时先询问是否开启。
+
+[初始化模块](skills/drama-studio/references/initialization.md)涵盖工作目录、数据入口、定时更新、账号连接、创作偏好、交付、费用和数据维护；选择与实际验证状态保存为工作目录中的 `STUDIO.md`。默认不开定时采集、付费任务、自动上传或对外通知。完整方案与尚未实现的执行器能力见[初始化设计](docs/initialization-design.md)。
 
 ## 装好后怎么用
 
@@ -32,7 +38,7 @@ AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Pytho
 
 ## 可选榜单数据
 
-可复用 Yoki 红果榜单 MCP 的历史排名、持续性、题材统计和作品检索；也可读取其 JSON／Markdown 导出。安装 Drama Studio 不会安装该服务、复制数据库或创建定时任务。已有连接优先复用，没有连接仍可使用其他来源。详见[接入与数据边界](skills/drama-studio/references/hongguo-rank.md)及[候选交接模板](skills/drama-studio/templates/benchmark-research.md)。榜单辅助选研究对象，实际拉片继续复用 mali-story。
+可直接运行已有 Yoki 红果部署的采集／查询脚本，无需启动 MCP；已有红果 MCP 或 JSON／Markdown 导出也可复用。安装器本身不创建数据库或定时任务。安装后的[初始化引导](skills/drama-studio/references/initialization.md)让用户选择是否采集、是否定时，以及时间、时区和范围；未选择不启用。详见[接入与数据边界](skills/drama-studio/references/hongguo-rank.md)及[候选交接模板](skills/drama-studio/templates/benchmark-research.md)。榜单辅助选研究对象，实际拉片继续复用 mali-story。
 
 试用：“用已有红果榜单资料，筛选适合两人两室的家庭悬疑漫剧对标，说明持续性证据与缺口；我选定后再核对 mali-story 模板。” [合成场景验收](evals/market-research/README.md)覆盖文件降级与片段模板交接。
 
