@@ -456,6 +456,8 @@ def _join(chunks: list[dict]) -> tuple[str | None, str | None]:
     identity = {(c["projectId"], c["artifactId"], c["revision"], c["fingerprint"], c["totalCharacters"]) for c in chunks}
     if len(identity) > 1:
         return None, "chunks disagree on projectId, artifactId, revision, fingerprint or totalCharacters"
+    # a read at offset == totalCharacters returns an empty chunk; it adds no text, so drop it
+    chunks = [c for c in chunks if not (c["from"] == c["to"] == c["totalCharacters"] and c["text"] == "")] or chunks
     by_start: dict[int, dict] = {}
     for chunk in chunks:
         if len(chunk["text"]) != chunk["to"] - chunk["from"]:

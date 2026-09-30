@@ -491,6 +491,17 @@ class CacheTests(ProjectCase):
                 self.assertFalse(result["passed"])
                 self.assertNothingCached()
 
+    def test_empty_chunk_at_the_end_is_accepted(self):
+        def at_end(value):
+            data = value["structuredContent"]["data"]
+            end = data["totalCharacters"]
+            data.update(offset=end, text="", nextOffset=None, atEnd=True, coveredRange={"from": end, "to": end})
+        empty = self.variant(CHUNKS[3], at_end, "empty-end.json")
+        result = self.cache(*CHUNKS, empty, "03-get.response.json")
+        self.assertTrue(result["passed"], result)
+        self.assertTrue(result["entry"]["verified"])
+        self.assertEqual(self.cached.read_bytes(), self.body.encode("utf-8"))
+
     def test_identical_duplicate_chunks_are_dropped(self):
         self.assertTrue(self.cache(*CHUNKS, CHUNKS[1], "03-get.response.json")["passed"])
 
