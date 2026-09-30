@@ -71,21 +71,16 @@ def _parse(value, keysets, shape: list[str], status=None) -> dict:
     if not isinstance(value, dict):
         raise ValueError("Unrecognised response shape: expected a JSON object")
     if isinstance(value.get("content"), list):
-        if isinstance(value.get("structuredContent"), dict):
-            return _parse(value["structuredContent"], keysets, shape + ["CallToolResult.structuredContent"])
-        text = next((item.get("text") for item in value["content"] if isinstance(item, dict) and item.get("type") == "text"), None)
-        try:
-            inner = json.loads(text)
-        except (TypeError, ValueError) as error:
-            raise Unparseable("CallToolResult text is missing or not JSON") from error
-        shape = shape + ["CallToolResult.text"]
-        if value.get("isError") and isinstance(inner, dict) and inner.get("error") is True:  # unexpectedMcpFailure text
-            return _error(_code(inner), None, None, shape)
-        return _parse(inner, keysets, shape)
+        result = _call_tool_result(value, keysets, shape)
+        if value.get("isError") is True and result["ok"]:
+            raise Unparseable("contradictory response: isError is true but the result says ok")
+        return result
     if value.get("schemaVersion") == TOOL_RESULT:
         transport = value.get("transport") if isinstance(value.get("transport"), dict) else {}
         status = transport.get("status") if _is_int(transport.get("status")) else None
         if value.get("ok") is True:
+            if status is not None and status >= 400:
+                raise Unparseable(f"contradictory response: ok is true but transport.status is {status}")
             return _data(value.get("data"), keysets, shape + [TOOL_RESULT], status)
         recovery = value.get("recovery") if isinstance(value.get("recovery"), dict) else {}
         return _error(_code(value.get("error")), status, recovery.get("retrySafe"), shape + [TOOL_RESULT])
@@ -103,6 +98,20 @@ def _parse(value, keysets, shape: list[str], status=None) -> dict:
     if keysets and any(all(key in value for key in keys) for keys in keysets):
         return _data(value, keysets, shape + ["bare data"], status)
     raise ValueError("Unrecognised response shape: not a CallToolResult, mali-tool-result/v1, dispatch envelope, REST envelope or bare data")
+
+
+def _call_tool_result(value: dict, keysets, shape: list[str]) -> dict:
+    if isinstance(value.get("structuredContent"), dict):
+        return _parse(value["structuredContent"], keysets, shape + ["CallToolResult.structuredContent"])
+    text = next((item.get("text") for item in value["content"] if isinstance(item, dict) and item.get("type") == "text"), None)
+    try:
+        inner = json.loads(text)
+    except (TypeError, ValueError) as error:
+        raise Unparseable("CallToolResult text is missing or not JSON") from error
+    shape = shape + ["CallToolResult.text"]
+    if value.get("isError") and isinstance(inner, dict) and inner.get("error") is True:  # unexpectedMcpFailure text
+        return _error(_code(inner), None, None, shape)
+    return _parse(inner, keysets, shape)
 
 
 def parse_response(value, operation: str) -> dict:

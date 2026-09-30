@@ -74,6 +74,16 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ValueError):  # a read chunk is not a save response
             receipt.parse_response(fixture("08-read-chunk-1.response.json"), "save_story_artifact")
 
+    def test_contradictory_responses_are_unparseable(self):
+        flagged = fixture("02-save.response.json")
+        flagged["isError"] = True
+        status = fixture("02-save.response.json")
+        status["structuredContent"]["transport"]["status"] = 500
+        for label, value in [("isError with ok", flagged), ("status >= 400 with ok", status)]:
+            with self.subTest(label):
+                with self.assertRaises(receipt.Unparseable):
+                    receipt.parse_response(value, "save_story_artifact")
+
     def test_outcome_mapping(self):
         def parsed(ok, status=None, code=None, safe=None):
             return {"ok": ok, "httpStatus": status, "errorCode": code, "retrySafe": safe}
@@ -238,6 +248,15 @@ class RecordTests(ProjectCase):
             chunk.write_bytes(b"\xef\xbb\xbf" + (FIXTURES / name).read_bytes())
             chunks.append(str(chunk))
         self.assertTrue(receipt.cache(str(self.project), chunks + [str(FIXTURES / "03-get.response.json")])["passed"])
+
+    def test_contradictory_response_records_unknown(self):
+        value = fixture("02-save.response.json")
+        value["isError"] = True
+        path = Path(self.temp.name) / "contradictory.json"
+        path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+        result = self.save(path)
+        self.assertEqual((result["receipt"]["outcome"], result["receipt"]["retryAllowed"]), ("unknown", False))
+        self.assertIn("contradict", result["receipt"]["evidence"])
 
     def test_conflict_response_is_rejected_conflict(self):
         result = self.save("06-conflict.response.json", "d1-save-4", self.input_as("02-save.input.json", "d1-save-4"))
