@@ -119,12 +119,13 @@ python3 -B skills/drama-studio/scripts/drama_tools.py context-pack ../my-drama -
 ```
 
 - 只读 `--task`、`--selection`、`.drama/cache/manifest.json` 指向的缓存文件（路径必须在 `.drama/cache/` 内）和 `knowledge/cards/<cardId>@r<修订>.json`；只写 `.drama/snapshots/<snapshotId>.json` 与 `.sha256`。不联网、不调用模型，也不代表远端已核验。
-- 第 0 项总是任务本身（`task` 分区，由工具按 `--task` 填入，选材清单里不能写 `task` 分区）。选材清单为空时输出只含任务的最小快照。
-- `range` 是按 Unicode 码点截取（`text[start:end]`，中文一字计 1），不是字节。`chars` 与各项 `sha256` 由工具按实际截取文本计算；清单里宿主估算的 `chars` 被忽略。
+- 第 0 项总是任务本身（`task` 分区，由工具按 `--task` 填入，选材清单里不能写 `task` 分区）。选材清单为空时输出只含任务的最小快照；任务字数计入 `--budget`。
+- `range` 是按 Unicode 码点截取（`text[start:end]`，中文一字计 1），不是字节。`chars` 与各项 `sha256` 由工具按实际截取文本计算；清单里宿主估算的 `chars` 被忽略。知识卡按卡片 JSON 文件原文计数和截取（含 JSON 标点），不是只算正文字段。
 - 快照 ID 为 `ctx-` 加内容哈希前 16 位，不含时间戳；同一输入重跑产出逐字节相同的文件，已存在且相同时报告 `existing: true`，内容不同则拒绝，绝不覆盖。
 - 缓存或知识卡不存在 → 记入 `omitted`（reason `missing`），必需项缺失时 `completeness: incomplete`，退出码仍为 0；退役知识卡记为 `not_relevant`。
 - 退出码 2（不写任何文件，错误指出选材序号与引用）：超预算（按分区报告字数与超出量，不截断）、缓存字节与 manifest 的 sha256 不符、manifest 标 `verified: false`、同一 slot 出现两个修订或同一知识卡两个修订、`evaluation_only`／`comparison_only` 进入不允许的角色、`reader_effect` 带 `current_plan`、最终快照未通过 `contract-check`。退出码 1：输入错误，如区间越界（指出引用与文本长度）、引用类型不是 `remote_artifact`／`knowledge_card`、修订为空、任务未指定工位。
-- `--dry-run` 执行全部检查并打印将装入的项、字数与遗漏，不写文件。`--allow-unverified` 允许装入服务端指纹未核验的缓存，并在快照 `unknowns` 写明 `服务端指纹未核验：<artifactId>@r<修订>`。
+- `.drama/cache/`、`knowledge/cards/`、`.drama/snapshots/` 若是指向项目外的符号链接，退出码 1；知识卡的 `scope.projectId` 必须等于任务的 `project.localId`，否则退出码 2。写入先落临时文件再硬链接到位，中断不会留下半截快照。
+- `--dry-run` 执行全部检查（含已存在快照的冲突检查）并打印将装入的项、字数与遗漏，输出 `would_write` 而非 `snapshot_path`，不写文件。`--allow-unverified` 允许装入服务端指纹未核验的缓存，并在快照 `unknowns` 写明 `服务端指纹未核验：<artifactId>@r<修订>`。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 

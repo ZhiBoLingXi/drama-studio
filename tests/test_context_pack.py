@@ -143,6 +143,10 @@ class ContextPackTests(unittest.TestCase):
         self.assertEqual(result["omitted_count"], 2)
 
     def test_ac4_over_budget_exits_2_and_writes_nothing(self):
+        code, _ = self.pack([])
+        self.assertEqual(code, 0)
+        before = self.snapshots()
+        self.assertEqual(len(before), 2)
         code, result = self.pack(budget=100)
         self.assertEqual(code, 2)
         self.assertFalse(result["passed"])
@@ -150,7 +154,7 @@ class ContextPackTests(unittest.TestCase):
         self.assertIn("exceed --budget 100 by", error)
         self.assertIn("project_facts=", error)
         self.assertIn("current_plan=", error)
-        self.assertEqual(self.snapshots(), [])
+        self.assertEqual(self.snapshots(), before)
 
     def test_ac5_reader_effect_rejects_author_plan_and_names_the_item(self):
         code, result = self.pack(role="reader_effect")
@@ -199,6 +203,8 @@ class ContextPackTests(unittest.TestCase):
         self.assertEqual((result["written"], result["dry_run"]), (False, True))
         self.assertEqual(len(result["items"]), 5)
         self.assertEqual(self.snapshots(), [])
+        self.assertNotIn("snapshot_path", result)
+        self.assertTrue(result["would_write"].endswith(result["snapshot_id"] + ".json"))
         code, result = self.pack(None, "author", 100, None, "--dry-run")
         self.assertEqual(code, 2)
         self.assertEqual(self.snapshots(), [])
@@ -250,6 +256,7 @@ class ContextPackTests(unittest.TestCase):
 
     def test_existing_snapshot_is_never_overwritten(self):
         code, result = self.pack()
+        self.assertEqual(code, 0, result)
         path = Path(result["snapshot_path"])
         path.write_bytes(path.read_bytes() + b" ")
         tampered = path.read_bytes()
@@ -257,6 +264,56 @@ class ContextPackTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("never overwritten", result["errors"][0])
         self.assertEqual(path.read_bytes(), tampered)
+        code, result = self.pack(None, "author", 20000, None, "--dry-run")
+        self.assertEqual(code, 2, "dry-run must report the same conflict as a real run")
+
+    def test_missing_sidecar_is_restored_without_touching_the_snapshot(self):
+        code, result = self.pack()
+        body = Path(result["snapshot_path"]).read_bytes()
+        Path(result["sha256_path"]).unlink()
+        code, result = self.pack()
+        self.assertEqual(code, 0, result)
+        self.assertEqual((result["existing"], result["written_files"]), (True, [result["snapshot_id"] + ".sha256"]))
+        self.assertEqual(Path(result["snapshot_path"]).read_bytes(), body)
+        self.assertEqual([name for name in self.snapshots() if name.endswith(".tmp")], [])
+
+    def test_symlinked_folders_outside_the_project_are_refused(self):
+        outside = self.base / "outside"
+        outside.mkdir()
+        for relative, items in ((".drama/snapshots", []), ("knowledge/cards", [card_ref("kc-cost")]), (".drama/cache", [cache_ref("art-ep01", 1)])):
+            with self.subTest(folder=relative):
+                project = self.make_project(self.base / relative.replace("/", "_"))
+                folder = project / relative
+                if folder.exists():
+                    folder.rename(outside / relative.replace("/", "_"))
+                    folder.symlink_to(outside / relative.replace("/", "_"), target_is_directory=True)
+                else:
+                    (outside / "snap").mkdir()
+                    folder.symlink_to(outside / "snap", target_is_directory=True)
+                code, result = self.pack(items, project=project)
+                self.assertEqual(code, 1, result)
+                self.assertIn("outside the project", result["error"])
+        self.assertEqual(list((outside / "snap").iterdir()), [])
+
+    def test_card_from_another_project_is_refused(self):
+        other = card("kc-foreign")
+        other["scope"]["projectId"] = "some-other-project"
+        (self.project / "knowledge/cards/kc-foreign@r1.json").write_text(json.dumps(other, ensure_ascii=False), encoding="utf-8")
+        code, result = self.pack([card_ref("kc-foreign")])
+        self.assertEqual(code, 2)
+        self.assertTrue(any("some-other-project" in e and "selection.items[0]" in e for e in result["errors"]), result["errors"])
+
+    def test_omitted_items_keep_pinned_hash_and_manifest_revision_is_strict(self):
+        pinned = "sha256:" + "b" * 64
+        code, result = self.pack([cache_ref("art-ep09", 1, ref={"sha256": pinned})])
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.written(result)["omitted"][0]["ref"]["sha256"], pinned)
+        manifest_path = self.project / ".drama/cache/manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["entries"][0]["revision"] = True
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        code, result = self.pack([cache_ref("art-ep01", 1)])
+        self.assertEqual((code, result["omitted"][0]["reason"]), (0, "missing"))
 
     def test_manifest_path_outside_cache_is_refused(self):
         secret = self.project / "planning" / "secret.md"
@@ -277,7 +334,9 @@ class ContextPackTests(unittest.TestCase):
         cases = [[{"ref": {"kind": "local_file", "id": "notes.md", "revision": 1}, "partition": "project_facts", "required": True, "reason": "x"}],
                  [cache_ref("art-ep01", None)],
                  [cache_ref("art-ep01", 1, partition="task")],
-                 [card_ref("kc-cost", usage="evaluation_only")]]
+                 [card_ref("kc-cost", usage="evaluation_only")],
+                 [card_ref("../cards/kc-cost")],
+                 [cache_ref("art-ep09", 1, ref={"range": {"start": 5, "end": 1}})]]
         for items in cases:
             with self.subTest(items=items):
                 code, result = self.pack(items)

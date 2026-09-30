@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 
@@ -24,6 +25,13 @@ def _sha(data: bytes) -> str:
 def _label(ref: dict) -> str:
     span = ref.get("range")
     return f"{ref.get('kind')} {ref.get('id')}@r{ref.get('revision')}" + (f" [{span['start']}:{span['end']}]" if span else "")
+
+
+def _inside(path: Path, root: Path, what: str) -> Path:
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root.resolve()):
+        raise ValueError(f"{what} resolves outside the project ({resolved}); symlinked folders are refused")
+    return resolved
 
 
 def _load_json(path: Path, what: str):
@@ -46,7 +54,7 @@ def _manifest(cache: Path) -> list:
 def _read_cache(root: Path, cache: Path, entries: list, ref: dict, where: str, allow_unverified: bool,
                 errors: list[str], unknowns: list[str]):
     matches = [entry for entry in entries if isinstance(entry, dict)
-               and entry.get("artifactId") == ref["id"] and entry.get("revision") == ref["revision"]]
+               and entry.get("artifactId") == ref["id"] and type(entry.get("revision")) is int and entry["revision"] == ref["revision"]]
     if not matches:
         return "missing", None
     if len({(entry.get("path"), entry.get("sha256"), entry.get("slot")) for entry in matches}) > 1:
@@ -77,10 +85,13 @@ def _read_cache(root: Path, cache: Path, entries: list, ref: dict, where: str, a
     return "ok", (data, entry["slot"])
 
 
-def _read_card(cards: Path, ref: dict, where: str, errors: list[str]):
-    path = cards / f"{ref['id']}@r{ref['revision']}.json"
-    if path.resolve().parent != cards.resolve():
+def _read_card(cards: Path, ref: dict, where: str, project_id: str, errors: list[str]):
+    if "/" in ref["id"] or "\\" in ref["id"] or ref["id"] in (".", ".."):
         raise ValueError(f"{where}: card id must be a plain file name inside knowledge/cards/")
+    path = cards / f"{ref['id']}@r{ref['revision']}.json"
+    if path.is_symlink() and not path.resolve().is_relative_to(cards.resolve()):
+        errors.append(f"{where}: card file is a symlink pointing outside knowledge/cards/; refused to read it")
+        return "error", None
     if not path.is_file():
         return "missing", None
     data = path.read_bytes()
@@ -91,6 +102,9 @@ def _read_card(cards: Path, ref: dict, where: str, errors: list[str]):
         return "error", None
     if card["cardId"] != ref["id"] or card["revision"] != ref["revision"]:
         errors.append(f"{where}: card file declares {card['cardId']}@r{card['revision']}")
+        return "error", None
+    if card["scope"]["projectId"] != project_id:
+        errors.append(f"{where}: card belongs to project {card['scope']['projectId']!r}, not this task's project {project_id!r}")
         return "error", None
     if card["processing"] == "retired":
         return "retired", None
@@ -136,6 +150,9 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
     item_labels, omitted, omitted_labels = [f"task {task_doc['taskId']}"], [], []
     errors, unknowns = [], list(chosen.get("unknowns", []))
     cache, cards = root / ".drama" / "cache", root / "knowledge" / "cards"
+    for folder, what in ((cache, ".drama/cache"), (cards, "knowledge/cards")):
+        if folder.exists():
+            _inside(folder, root, what)
     entries, slots, card_revisions = None, {}, {}
     for index, item in enumerate(chosen["items"]):
         ref = item["ref"]
@@ -144,12 +161,15 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             raise ValueError(f"{where}: kind must be remote_artifact (cache) or knowledge_card")
         if not isinstance(ref["revision"], int) or isinstance(ref["revision"], bool):
             raise ValueError(f"{where}: revision must pin an integer revision")
-        clean = {key: ref[key] for key in ("kind", "id", "revision", "range") if key in ref}
+        span = ref.get("range")
+        if span and span["start"] > span["end"]:
+            raise ValueError(f"{where}: range start {span['start']} is after end {span['end']}")
+        clean = {key: ref[key] for key in ("kind", "id", "revision", "sha256", "range") if key in ref}
         if ref["kind"] == "remote_artifact":
             entries = _manifest(cache) if entries is None else entries
             status, loaded = _read_cache(root, cache, entries, ref, where, allow_unverified, errors, unknowns)
         else:
-            status, loaded = _read_card(cards, ref, where, errors)
+            status, loaded = _read_card(cards, ref, where, task_doc["project"]["localId"], errors)
         if status in ("missing", "retired"):
             omitted.append({"ref": clean, "required": item["required"], "reason": "missing" if status == "missing" else "not_relevant"})
             omitted_labels.append(where)
@@ -173,9 +193,8 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             text = data.decode("utf-8")
         except UnicodeDecodeError as error:
             raise ValueError(f"{where}: file is not UTF-8 text: {error}") from error
-        span = ref.get("range")
         if span:
-            if span["start"] > span["end"] or span["end"] > len(text):
+            if span["end"] > len(text):
                 raise ValueError(f"{where}: range {span['start']}:{span['end']} is outside the text (length {len(text)} code points)")
             text = text[span["start"]:span["end"]]
         if "sha256" in ref and ref["sha256"] != _sha(data):
@@ -229,16 +248,36 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
     folder = root / ".drama" / "snapshots"
     target, sidecar = folder / f"{snapshot_id}.json", folder / f"{snapshot_id}.sha256"
     sidecar_body = f"{digest}  {snapshot_id}.json\n".encode("utf-8")
-    result.update(snapshot_id=snapshot_id, snapshot_path=str(target), sha256_path=str(sidecar),
-                  snapshot_sha256="sha256:" + digest, unknowns=unknowns)
+    result.update(snapshot_id=snapshot_id, snapshot_sha256="sha256:" + digest, unknowns=unknowns)
+    result["would_write" if dry_run else "snapshot_path"] = str(target)
     if not dry_run:
-        pending = [(path, content) for path, content in ((target, body), (sidecar, sidecar_body)) if not path.exists()]
-        for path, content in ((target, body), (sidecar, sidecar_body)):
-            if path.exists() and path.read_bytes() != content:
-                return {**result, "passed": False, "errors": [f"{path.name} already exists with different bytes; snapshots are never overwritten"]}
+        result["sha256_path"] = str(sidecar)
+    if folder.exists() or folder.is_symlink():
+        _inside(folder, root, ".drama/snapshots")
+    for path, content in ((target, body), (sidecar, sidecar_body)):
+        if path.exists() and path.read_bytes() != content:
+            return {**result, "passed": False, "errors": [f"{path.name} already exists with different bytes; snapshots are never overwritten"]}
+    if not dry_run:
         folder.mkdir(parents=True, exist_ok=True)
-        for path, content in pending:
-            with open(path, "xb") as handle:
-                handle.write(content)
-        result.update(written=any(path == target for path, _ in pending), existing=target not in [path for path, _ in pending])
+        _inside(folder, root, ".drama/snapshots")
+        written = [path.name for path, content in ((target, body), (sidecar, sidecar_body)) if _publish(path, content)]
+        result.update(written=target.name in written, existing=target.name not in written, written_files=written)
     return {**result, "passed": True, "errors": []}
+
+
+def _publish(path: Path, content: bytes) -> bool:
+    """Write complete bytes to a temp file, then hard-link it into place; never replaces an existing file."""
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(temp, "wb") as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+    try:
+        os.link(temp, path)
+        return True
+    except FileExistsError:
+        if path.read_bytes() != content:
+            raise ValueError(f"{path.name} appeared concurrently with different bytes; snapshots are never overwritten")
+        return False
+    finally:
+        temp.unlink()
