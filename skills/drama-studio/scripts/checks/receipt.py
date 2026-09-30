@@ -22,7 +22,10 @@ except ImportError:  # loaded as a top-level module
     from contract_check import check_contract
 
 SCHEMA = "drama-studio/remote-receipt/v0"
+MANIFEST = "drama-studio/cache-manifest/v0"
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+FINGERPRINT = re.compile(r"sha256:[a-f0-9]{64}")
+KINDS = ("research", "adaptation_options", "characters", "series_outline", "episode_outline", "episode_draft", "review")
 READ_KEYS = ("fingerprint", "coveredRange")
 EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("record",),),
             "read_story_artifact": (READ_KEYS,), "get_writing_context": (("snapshotId",),),
@@ -140,8 +143,8 @@ def drama_dir(project: str) -> Path:
     return path
 
 
-def write_new(path: Path, content: bytes) -> None:
-    """Atomically create a file; callers check existence first and never overwrite."""
+def atomic_write(path: Path, content: bytes) -> None:
+    """Temp file in the same folder + os.replace. Receipt and cache callers check existence first."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
@@ -274,7 +277,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         return {**base, "passed": False, "status": "conflict", "path": str(path),
                 "existingInputFingerprint": old[7:19], "newInputFingerprint": new[7:19],
                 "error": f"requestId {request_id} already recorded with inputFingerprint {old[7:19]}…; new input is {new[7:19]}…. Existing receipt kept; never reuse a requestId for different input."}
-    write_new(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    atomic_write(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return {**base, "passed": True, "status": "written", "path": str(path), "receipt": doc}
 
 
@@ -329,3 +332,130 @@ def show(project: str, request_id: str) -> dict:
     errors = check_contract("remote-receipt", doc)
     return {"ok": True, "path": str(path), "passed": not errors, "errors": errors, "receipt": doc,
             "enforcement": "S", "remote_verified": False, "adoption_verified": False}
+
+
+def _chunk(data: dict, name: str) -> dict:
+    span = data.get("coveredRange") if isinstance(data.get("coveredRange"), dict) else {}
+    fields = {"projectId": data.get("projectId"), "artifactId": data.get("artifactId"), "revision": data.get("revision"),
+              "fingerprint": data.get("fingerprint"), "totalCharacters": data.get("totalCharacters"),
+              "text": data.get("text"), "from": span.get("from"), "to": span.get("to"), "nextOffset": data.get("nextOffset")}
+    kinds = {"projectId": str, "artifactId": str, "fingerprint": str, "text": str}
+    for key, value in fields.items():
+        if key == "nextOffset" and value is None:
+            continue
+        if not (isinstance(value, kinds[key]) if key in kinds else _is_int(value)):
+            raise ValueError(f"{name}: read_story_artifact chunk has no valid {key}")
+    if not FINGERPRINT.fullmatch(fields["fingerprint"]):
+        raise ValueError(f"{name}: fingerprint is not sha256:<hex>")
+    safe_id(fields["artifactId"], "artifactId")
+    return fields
+
+
+def _refuse(error: str) -> dict:
+    return {"ok": True, "passed": False, "status": "refused", "error": error + "; nothing written",
+            "remote_verified": False, "adoption_verified": False}
+
+
+def _join(chunks: list[dict]) -> tuple[str | None, str | None]:
+    """Return (text, None) for a complete verified sequence, else (None, reason)."""
+    identity = {(c["projectId"], c["artifactId"], c["revision"], c["fingerprint"], c["totalCharacters"]) for c in chunks}
+    if len(identity) > 1:
+        return None, "chunks disagree on projectId, artifactId, revision, fingerprint or totalCharacters"
+    by_start: dict[int, dict] = {}
+    for chunk in chunks:
+        if len(chunk["text"]) != chunk["to"] - chunk["from"]:
+            return None, f"chunk at {chunk['from']} holds {len(chunk['text'])} code points but covers {chunk['from']}-{chunk['to']}"
+        seen = by_start.setdefault(chunk["from"], chunk)
+        if seen != chunk:
+            return None, f"two different chunks start at offset {chunk['from']}"
+    ordered, expected = [by_start[key] for key in sorted(by_start)], 0
+    for index, chunk in enumerate(ordered):
+        if chunk["from"] != expected:
+            return None, f"gap: expected a chunk at offset {expected}, next starts at {chunk['from']}"
+        expected = chunk["to"]
+        if index < len(ordered) - 1 and chunk["nextOffset"] != chunk["to"]:
+            return None, f"chunk at {chunk['from']} says nextOffset {chunk['nextOffset']}, not {chunk['to']}"
+    last = ordered[-1]
+    if last["nextOffset"] is not None or last["to"] != last["totalCharacters"]:
+        return None, f"final chunk missing: read stops at {last['to']} of {last['totalCharacters']} (nextOffset {last['nextOffset']})"
+    text = "".join(chunk["text"] for chunk in ordered)
+    digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if digest != last["fingerprint"]:
+        return None, f"joined text hashes to {digest[:19]}…, server fingerprint is {last['fingerprint'][:19]}…"
+    return text, None
+
+
+def cache(project: str, response_paths: list[str], slot: str | None = None, kind: str | None = None,
+          episode_ref: str | None = None) -> dict:
+    """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified)."""
+    drama = drama_dir(project)
+    chunks, records = [], {}
+    for name in response_paths:
+        parsed = _parse(json.loads(Path(name).read_text(encoding="utf-8")), (READ_KEYS, ("record",)), [])
+        if not parsed["ok"]:
+            raise ValueError(f"{name}: the saved call failed ({parsed['errorCode']}); nothing to cache")
+        if isinstance(parsed["data"].get("record"), dict):
+            record = parsed["data"]["record"]
+            records[canonical_json(record)] = record
+        else:
+            chunks.append(_chunk(parsed["data"], name))
+    if len(records) > 1:
+        raise ValueError("Pass at most one get_story_artifact response per call")
+    record = next(iter(records.values()), None)
+    if record is not None:
+        if not (isinstance(record.get("body"), str) and _is_int(record.get("revision"))):
+            raise ValueError("get_story_artifact record has no body or revision")
+        safe_id(record.get("id"), "artifactId")
+        given = {"slot": slot, "kind": kind, "episodeRef": episode_ref}
+        clash = [key for key, value in given.items() if value is not None and value != record.get(key)]
+        if clash:
+            raise ValueError(f"--{', --'.join(clash)} disagree with the get_story_artifact record")
+        slot, kind, episode_ref = record.get("slot"), record.get("kind"), record.get("episodeRef")
+    if not slot or not kind:
+        raise ValueError("slot and kind are unknown: add a get_story_artifact response or pass --slot and --kind")
+    if kind not in KINDS:
+        raise ValueError(f"kind {kind!r} not in {KINDS}")
+    if kind in ("episode_outline", "episode_draft") and not episode_ref:
+        raise ValueError(f"{kind} needs an episodeRef (--episode-ref)")
+    warnings = []
+    if chunks:
+        text, reason = _join(chunks)
+        if reason:
+            return _refuse(reason)
+        artifact, revision, server = chunks[0]["artifactId"], chunks[0]["revision"], chunks[0]["fingerprint"]
+        if record is not None and (record.get("id"), record.get("revision"), record.get("body")) != (artifact, revision, text):
+            return _refuse("the get_story_artifact record is not the same artifact revision and text as the read chunks")
+        operation = "read_story_artifact"
+    else:
+        text, artifact, revision, server = record["body"], record["id"], record["revision"], None
+        operation = "get_story_artifact"
+        warnings.append("get_story_artifact carries no full-text fingerprint: cached as verified=false; read the artifact with read_story_artifact to nextOffset null to verify")
+    content = text.encode("utf-8")
+    digest = "sha256:" + hashlib.sha256(content).hexdigest()
+    verified = server is not None and digest == server
+    name = f"{artifact}@r{revision}.md"
+    path, manifest_path = drama / "cache" / name, drama / "cache" / "manifest.json"
+    manifest = {"schemaVersion": MANIFEST, "entries": []}
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
+            raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
+    status = "written"
+    if path.exists():
+        if path.read_bytes() != content:
+            return _refuse(f"{path} already exists with different bytes")
+        status = "unchanged"
+    else:
+        atomic_write(path, content)
+    rel = f".drama/cache/{name}"
+    entry = {"path": rel, "artifactId": artifact, "slot": slot, "kind": kind, "episodeRef": episode_ref,
+             "revision": revision, "sha256": digest, "serverFingerprint": server, "verified": verified,
+             "operation": operation, "readAt": _now()}
+    existing = next((item for item in manifest["entries"] if isinstance(item, dict)
+                     and item.get("path") == rel and item.get("verified") == verified), None)
+    if existing is None:
+        manifest["entries"].append(entry)
+        atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": existing or entry,
+            "manifestAppended": existing is None, "verified": verified, "warnings": warnings,
+            "remote_verified": False, "adoption_verified": False}

@@ -294,5 +294,136 @@ class PendingShowTests(ProjectCase):
                 receipt.show(str(self.project), missing)
 
 
+CHUNKS = [f"08-read-chunk-{i}.response.json" for i in range(1, 5)]
+
+
+class CacheTests(ProjectCase):
+    def setUp(self):
+        super().setUp()
+        self.cache_dir = self.project / ".drama/cache"
+        self.manifest = self.cache_dir / "manifest.json"
+        self.body = fixture("03-get.response.json")["structuredContent"]["data"]["record"]["body"]
+        self.fingerprint = fixture(CHUNKS[0])["structuredContent"]["data"]["fingerprint"]
+        self.cached = self.cache_dir / f"{ART1}@r1.md"
+
+    def cache(self, *names, **meta):
+        paths = [str(name) if isinstance(name, Path) else str(FIXTURES / name) for name in names]
+        return receipt.cache(str(self.project), paths, **meta)
+
+    def variant(self, name, mutate, label):
+        value = fixture(name)
+        mutate(value)
+        path = Path(self.temp.name) / label
+        path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def assertNothingCached(self):
+        self.assertFalse(self.cached.exists())
+        self.assertFalse(self.manifest.exists())
+
+    def test_verified_read_sequence_matches_server_fingerprint(self):
+        result = self.cache(CHUNKS[2], CHUNKS[0], CHUNKS[3], CHUNKS[1], "03-get.response.json")
+        self.assertTrue(result["passed"])
+        self.assertEqual(self.cached.read_bytes(), self.body.encode("utf-8"))
+        self.assertFalse(self.cached.read_bytes().endswith(b"\n"))
+        digest = "sha256:" + sha_file(self.cached)
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["schemaVersion"], "drama-studio/cache-manifest/v0")
+        entry = manifest["entries"][0]
+        self.assertEqual(set(entry), {"path", "artifactId", "slot", "kind", "episodeRef", "revision", "sha256", "serverFingerprint", "verified", "operation", "readAt"})
+        self.assertEqual(digest, entry["sha256"])
+        self.assertEqual(digest, entry["serverFingerprint"])
+        self.assertEqual(digest, self.fingerprint)
+        self.assertEqual((entry["path"], entry["slot"], entry["kind"], entry["episodeRef"], entry["revision"]),
+                         (f".drama/cache/{ART1}@r1.md", "ep-03-outline", "episode_outline", "ep-03", 1))
+        self.assertEqual((entry["verified"], entry["operation"]), (True, "read_story_artifact"))
+        self.assertFalse(result["adoption_verified"])
+
+    def test_chunks_alone_need_explicit_slot_and_kind(self):
+        with self.assertRaises(ValueError):
+            self.cache(*CHUNKS)
+        with self.assertRaises(ValueError):  # episode kinds need an episodeRef
+            self.cache(*CHUNKS, slot="ep-03-outline", kind="episode_outline")
+        result = self.cache(*CHUNKS, slot="ep-03-outline", kind="episode_outline", episode_ref="ep-03")
+        self.assertTrue(result["entry"]["verified"])
+
+    def test_tampered_chunk_is_refused_and_nothing_written(self):
+        def same_length(value):
+            data = value["structuredContent"]["data"]
+            data["text"] = "假" + data["text"][1:]
+        def shorter(value):
+            value["data"]["text"] = value["data"]["text"][:-1]
+        for label, name, mutate in [("same.json", CHUNKS[0], same_length), ("short.json", CHUNKS[2], shorter)]:
+            with self.subTest(label=label):
+                chunks = [self.variant(name, mutate, label) if c == name else c for c in CHUNKS]
+                result = self.cache(*chunks, "03-get.response.json")
+                self.assertFalse(result["passed"])
+                self.assertNothingCached()
+
+    def test_gap_missing_final_chunk_and_conflicting_duplicate_are_refused(self):
+        def edit(value):
+            data = value["structuredContent"]["data"]
+            data["text"] = "假" + data["text"][1:]
+        tampered = self.variant(CHUNKS[0], edit, "dup.json")
+        for label, names in [("missing final", CHUNKS[:3]), ("gap", [CHUNKS[0], CHUNKS[1], CHUNKS[3]]),
+                             ("no start", CHUNKS[1:]), ("conflicting duplicate", [*CHUNKS, tampered])]:
+            with self.subTest(label=label):
+                result = self.cache(*names, "03-get.response.json")
+                self.assertFalse(result["passed"])
+                self.assertNothingCached()
+
+    def test_identical_duplicate_chunks_are_dropped(self):
+        self.assertTrue(self.cache(*CHUNKS, CHUNKS[1], "03-get.response.json")["passed"])
+
+    def test_get_must_describe_the_same_text(self):
+        result = self.cache(*CHUNKS, "07-reconcile-get.response.json")
+        self.assertFalse(result["passed"])
+        self.assertNothingCached()
+
+    def test_get_only_cache_is_unverified(self):
+        result = self.cache("03-get.response.json")
+        self.assertTrue(result["passed"])
+        entry = result["entry"]
+        self.assertEqual((entry["verified"], entry["serverFingerprint"], entry["operation"]), (False, None, "get_story_artifact"))
+        self.assertTrue(any("read_story_artifact" in warning for warning in result["warnings"]))
+        self.assertEqual(self.cached.read_bytes(), self.body.encode("utf-8"))
+
+    def test_recache_is_idempotent_and_manifest_is_append_only(self):
+        self.cache(*CHUNKS, "03-get.response.json")
+        before = self.manifest.read_bytes()
+        again = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertEqual((again["status"], again["manifestAppended"]), ("unchanged", False))
+        self.assertEqual(self.manifest.read_bytes(), before)
+        first = json.loads(before)["entries"][0]
+        self.cache("03-get.response.json")
+        entries = json.loads(self.manifest.read_text(encoding="utf-8"))["entries"]
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0], first)
+        self.assertEqual(entries[1]["verified"], False)
+
+    def test_existing_cache_with_different_bytes_is_refused(self):
+        self.cache_dir.mkdir()
+        self.cached.write_bytes("别人的内容".encode("utf-8"))
+        result = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertFalse(result["passed"])
+        self.assertEqual(self.cached.read_bytes(), "别人的内容".encode("utf-8"))
+        self.assertFalse(self.manifest.exists())
+
+    def test_input_errors(self):
+        def unsafe(value):
+            value["structuredContent"]["data"]["artifactId"] = "../escape"
+        def failed(value):
+            value["structuredContent"] = fixture("06-conflict.response.json")["structuredContent"]
+        for label, mutate in [("unsafe.json", unsafe), ("failed.json", failed)]:
+            with self.subTest(label=label):
+                with self.assertRaises(ValueError):
+                    self.cache(self.variant(CHUNKS[0], mutate, label), *CHUNKS[1:], "03-get.response.json")
+        with self.assertRaises(ValueError):
+            self.cache("09-unknown-shape.response.json")
+        with self.assertRaises(ValueError):
+            self.cache("03-get.response.json", "07-reconcile-get.response.json")
+        self.assertNothingCached()
+
+
 if __name__ == "__main__":
     unittest.main()
