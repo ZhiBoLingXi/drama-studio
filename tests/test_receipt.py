@@ -281,7 +281,9 @@ class RecordTests(ProjectCase):
                 result = self.record(response, operation, "reconciler-1", input_name, reconciles=target)
                 self.assertFalse(result["passed"], result)
                 self.assertFalse((self.receipts / "reconciler-1.json").exists())
-        self.assertIn("d1-save-3", [item["requestId"] for item in receipt.pending(str(self.project))["pending"]])
+        result = receipt.pending(str(self.project))
+        self.assertEqual([item["requestId"] for item in result["pending"]], ["d1-save-3"])
+        self.assertEqual([item["requestId"] for item in result["read_only_unknown"]], ["get-lost"])
 
     def test_reconciles_needs_an_existing_local_receipt_and_a_reconciling_operation(self):
         with self.assertRaises(ValueError):
@@ -369,8 +371,19 @@ class PendingShowTests(ProjectCase):
         nine = json.loads((self.receipts / "d1-save-3.json").read_text(encoding="utf-8"))
         nine["requestId"] = "d1-save-9"
         (self.receipts / "d1-save-9.json").write_text(json.dumps(nine), encoding="utf-8")
-        saves = [item["requestId"] for item in receipt.pending(str(self.project))["pending"] if item["operation"] == "save_story_artifact"]
-        self.assertEqual(saves, ["d1-save-9"])
+        result = receipt.pending(str(self.project))
+        self.assertEqual([item["requestId"] for item in result["pending"]], ["d1-save-9"])
+        self.assertEqual([item["requestId"] for item in result["read_only_unknown"]], ["d1-list-4"])
+
+    def test_read_only_unknowns_get_no_save_style_steps(self):
+        self.unknown_save()
+        self.record(Path(self.temp.name) / "missing.json", "read_story_artifact", "read-lost",
+                    self.input_as("07-reconcile-get.input.json", "read-lost"))
+        result = receipt.pending(str(self.project))
+        self.assertEqual([item["requestId"] for item in result["pending"]], ["d1-save-3"])
+        self.assertEqual(result["read_only_unknown"], [{"requestId": "read-lost", "operation": "read_story_artifact",
+                                                        "projectId": "2f70c1e9fad74f35ae27f", "retryAllowed": False,
+                                                        "note": "re-read; no write to reconcile"}])
 
     def test_invalid_receipts_are_listed_not_trusted(self):
         self.unknown_save()

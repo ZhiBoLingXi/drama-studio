@@ -35,6 +35,7 @@ EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("reco
             "list_story_artifacts": (("records",), ("items",)), "prepare_story_context": ()}
 TOOL_RESULT = "mali-tool-result/v1"
 RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact")
+WRITES = ("save_story_artifact", "prepare_story_context")  # unknowns of these need reconciliation
 
 
 class Unparseable(ValueError):
@@ -391,10 +392,14 @@ def pending(project: str) -> dict:
     for doc in valid:  # only confirmed reconcilers count; get/save matched record.requestId (S), list is host judgement (M)
         if doc.get("localRef", {}).get("kind") == "remote_receipt" and doc["outcome"] == "confirmed" and doc["operation"] in RECONCILERS:
             (host_judged if doc["operation"] == "list_story_artifacts" else verified).add(doc["localRef"]["id"])
-    items = []
+    items, read_only = [], []
     for doc in valid:
         request_id = doc["requestId"]
         if doc["outcome"] != "unknown" or request_id in verified or request_id in host_judged:
+            continue
+        if doc["operation"] not in WRITES:
+            read_only.append({"requestId": request_id, "operation": doc["operation"], "projectId": doc["remote"]["projectId"],
+                              "retryAllowed": False, "note": "re-read; no write to reconcile"})
             continue
         slot = _slot(doc)
         project_id, expected = doc["remote"]["projectId"], _notes(doc).get("expectedRevision")
@@ -408,7 +413,7 @@ def pending(project: str) -> dict:
                           {"command": f"drama_tools.py receipt record <project> <get-response.json> --operation get_story_artifact "
                                       f"--request-id <new-read-id> --input <get-input.json> --reconciles {request_id}"}]})
     unknown = {doc["requestId"] for doc in valid if doc["outcome"] == "unknown"}
-    return {"ok": True, "pending": items, "resolved_verified": sorted(verified & unknown),
+    return {"ok": True, "pending": items, "read_only_unknown": read_only, "resolved_verified": sorted(verified & unknown),
             "resolved_host_judged": sorted((host_judged - verified) & unknown), "invalid": invalid,
             "note": "Never retry an unknown call with a new requestId; reconcile first.",
             "remote_verified": False, "adoption_verified": False}
