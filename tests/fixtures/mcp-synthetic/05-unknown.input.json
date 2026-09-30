@@ -1,0 +1,12 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story c6aebcf3 source (save_story_artifact inputSchema); not a captured live response. Re-run the tests against tests/fixtures/mcp/ once #3 records real responses.",
+  "project_id": "2f70c1e9fad74f35ae27f",
+  "slot": "ep-03-outline",
+  "kind": "episode_outline",
+  "episode_ref": "ep-03",
+  "expected_revision": 1,
+  "body": "第3集 集纲\n处境：林晚在祠堂外等来𠮷字号当铺的伙计，雨一直没停。\n行动目标：拿回母亲押下的玉镯，不让继母先到。\n结尾钩子：伙计递来的当票上，写的是她自己的名字。\n出口：她把当票折好塞进袖口，转身去找当年的保人。",
+  "producer": "codex",
+  "input_snapshot_id": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+  "request_id": "d1-save-3"
+}

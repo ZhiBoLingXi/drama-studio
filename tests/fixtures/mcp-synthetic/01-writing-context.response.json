@@ -1,0 +1,32 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story c6aebcf3 source (api-mcp-server.ts get_writing_context + toolResult + normalizeMcpOutput; only projectId/snapshotId are consumed); not a captured live response. Re-run the tests against tests/fixtures/mcp/ once #3 records real responses.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Qm7xT2vN9pLk4sRw8yZa1\",\"data\":{\"projectId\":\"2f70c1e9fad74f35ae27f\",\"snapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"sourceRevision\":7,\"offset\":0,\"limit\":25,\"nextOffset\":null,\"blocks\":[],\"continuity\":{\"readiness\":\"unverified\"}},\"error\":null}}"
+    }
+  ],
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": true,
+    "transport": {
+      "status": 200
+    },
+    "data": {
+      "projectId": "2f70c1e9fad74f35ae27f",
+      "snapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+      "sourceRevision": 7,
+      "offset": 0,
+      "limit": 25,
+      "nextOffset": null,
+      "blocks": [],
+      "continuity": {
+        "readiness": "unverified"
+      }
+    },
+    "recovery": {
+      "action": "none",
+      "retrySafe": false
+    }
+  }
+}
