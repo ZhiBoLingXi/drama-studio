@@ -553,12 +553,17 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
                 raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
+        same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
+        for item in same:
+            clash = [f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)"
+                     for key in ("slot", "kind", "episodeRef") if item.get(key) != entry[key]]
+            if clash:
+                return _refuse(f"{rel} is already cached with different metadata: " + "; ".join(clash))
         status = "written"
         if path.exists() or not publish_new(path, content):
             if path.read_bytes() != content:
                 return _refuse(f"{path} already exists with different bytes")
             status = "unchanged"
-        same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
         existing = next((item for item in same if item.get("verified") == verified), None)
         if not verified:  # never shadow a verified read with a later unverified entry for the same bytes
             existing = next((item for item in same if item.get("verified") is True and item.get("sha256") == digest), existing)

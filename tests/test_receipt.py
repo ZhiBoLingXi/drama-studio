@@ -554,6 +554,18 @@ class CacheTests(ProjectCase):
         self.assertEqual((downgrade["status"], downgrade["manifestAppended"], downgrade["entry"]["verified"]), ("unchanged", False, True))
         self.assertEqual(self.manifest.read_bytes(), before)
 
+    def test_metadata_must_match_existing_entries(self):
+        self.cache(*CHUNKS, "03-get.response.json")
+        before = self.manifest.read_bytes()
+        meta = {"slot": "ep-03-outline", "kind": "episode_outline", "episode_ref": "ep-03"}
+        for key, value, field in [("slot", "other-slot", "slot"), ("kind", "episode_draft", "kind"), ("episode_ref", "ep-99", "episodeRef")]:
+            with self.subTest(field):
+                result = self.cache(*CHUNKS, **dict(meta, **{key: value}))
+                self.assertFalse(result["passed"])
+                self.assertIn(field, result["error"])
+                self.assertIn(value, result["error"])
+                self.assertEqual(self.manifest.read_bytes(), before)
+
     def test_verified_read_after_get_only_is_appended_last(self):
         self.cache("03-get.response.json")
         result = self.cache(*CHUNKS, "03-get.response.json")
