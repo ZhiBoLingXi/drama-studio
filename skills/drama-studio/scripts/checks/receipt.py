@@ -8,9 +8,21 @@ anything was adopted; a receipt or cache entry is never adoption evidence.
 """
 from __future__ import annotations
 
+from datetime import datetime
 import hashlib
 import json
+import os
+from pathlib import Path
+import re
+import tempfile
 
+try:
+    from .contract_check import check_contract
+except ImportError:  # loaded as a top-level module
+    from contract_check import check_contract
+
+SCHEMA = "drama-studio/remote-receipt/v0"
+SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 READ_KEYS = ("fingerprint", "coveredRange")
 EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("record",),),
             "read_story_artifact": (READ_KEYS,), "get_writing_context": (("snapshotId",),),
@@ -113,3 +125,154 @@ def canonical_json(value) -> bytes:
 def input_fingerprint(value) -> str:
     """Local conflict key only; differs from mali-story's server-side requestFingerprint."""
     return "sha256:" + hashlib.sha256(canonical_json(value)).hexdigest()
+
+
+def safe_id(value: str, label: str) -> str:
+    if not isinstance(value, str) or not SAFE_ID.fullmatch(value):
+        raise ValueError(f"{label} {value!r} is not a safe identifier ({SAFE_ID.pattern}); it becomes a file name")
+    return value
+
+
+def drama_dir(project: str) -> Path:
+    path = Path(project).expanduser().absolute() / ".drama"
+    if not path.is_dir():
+        raise ValueError(f"{path} does not exist; run init-project first")
+    return path
+
+
+def write_new(path: Path, content: bytes) -> None:
+    """Atomically create a file; callers check existence first and never overwrite."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, path)
+    except BaseException:
+        if os.path.exists(temp):
+            os.unlink(temp)
+        raise
+
+
+def _now() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _field(mapping, *keys):
+    return next((mapping[key] for key in keys if isinstance(mapping, dict) and mapping.get(key) is not None), None)
+
+
+def _load_response(path: str, operation: str) -> tuple[dict | None, str]:
+    """Return (parsed, evidence); parsed is None when the file is missing, empty or unreadable."""
+    file = Path(path)
+    if not file.is_file():
+        return None, f"response file missing: {file.name}"
+    raw = file.read_bytes()
+    if not raw.strip():
+        return None, f"response file empty: {file.name}"
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None, f"response file is not JSON: {file.name}"
+    try:
+        parsed = parse_response(value, operation)
+    except Unparseable as error:
+        return None, f"response unreadable: {error}"
+    status = f"; HTTP {parsed['httpStatus']}" if parsed["httpStatus"] is not None else ""
+    state = "ok" if parsed["ok"] else f"error {parsed['errorCode'] or 'without code'}"
+    return parsed, f"saved response {file.name}: {parsed['shape']}; {state}{status}"
+
+
+def _receipts(drama: Path) -> list[tuple[Path, object]]:
+    folder = drama / "receipts"
+    items = []
+    for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        try:
+            items.append((path, json.loads(path.read_text(encoding="utf-8"))))
+        except (UnicodeDecodeError, ValueError) as error:
+            items.append((path, error))
+    return items
+
+
+def _remote(operation: str, parsed: dict | None, request: dict) -> dict:
+    data = parsed["data"] if parsed and parsed["ok"] else None
+    record = data.get("record") if isinstance(data, dict) and isinstance(data.get("record"), dict) else None
+    source = record if record is not None else data if operation == "read_story_artifact" else None
+    project = _field(record or data or {}, "projectId") or _field(request, "projectId", "project_id")
+    if project is None:
+        raise ValueError("projectId is neither in the response nor in --input (projectId|project_id)")
+    if operation == "get_writing_context" and isinstance(data, dict):
+        snapshot = data.get("snapshotId")
+    else:
+        snapshot = _field(source or {}, "inputSnapshotId") or _field(request, "inputSnapshotId", "input_snapshot_id")
+    artifact = _field(source or {}, "id" if record is not None else "artifactId")
+    revision = source.get("revision") if isinstance(source, dict) and _is_int(source.get("revision")) else None
+    return {"projectId": project, "artifactId": artifact, "revision": revision, "inputSnapshotId": snapshot}
+
+
+def record_receipt(project: str, response_path: str, operation: str, request_id: str, input_path: str,
+                   reconciles: str | None = None) -> dict:
+    drama = drama_dir(project)
+    safe_id(request_id, "requestId")
+    if operation not in EXPECTED:
+        raise ValueError(f"Unknown operation {operation!r}")
+    request = json.loads(Path(input_path).read_text(encoding="utf-8"))
+    if not isinstance(request, dict):
+        raise ValueError("--input must be the JSON object sent to the MCP tool")
+    declared = _field(request, "request_id", "requestId")
+    if declared is not None and declared != request_id:
+        raise ValueError(f"--input declares request_id {declared!r}, not {request_id!r}")
+    parsed, evidence = _load_response(response_path, operation)
+    outcome, retry = outcome_of(parsed)
+    remote = _remote(operation, parsed, request)
+    if outcome != "confirmed":
+        remote.update(artifactId=None, revision=None)
+    notes: dict = {}
+    doc = {"schemaVersion": SCHEMA, "operation": operation, "requestId": request_id,
+           "inputFingerprint": input_fingerprint(request), "remote": remote, "outcome": outcome,
+           "retryAllowed": retry, "observedAt": _now(), "evidence": evidence}
+    base = {"ok": True, "enforcement": "S", "remote_verified": False, "adoption_verified": False, "warnings": []}
+    if operation == "save_story_artifact":
+        slot = _field(request, "slot")
+        if slot is not None:
+            doc["localRef"] = {"kind": "remote_artifact", "id": f"slot:{slot}", "revision": None}
+        notes.update(kind=_field(request, "kind"), episodeRef=_field(request, "episode_ref", "episodeRef"),
+                     expectedRevision=_field(request, "expected_revision", "expectedRevision"))
+    if reconciles is not None:
+        safe_id(reconciles, "--reconciles")
+        if operation not in ("get_story_artifact", "list_story_artifacts"):
+            raise ValueError("--reconciles is recorded from get_story_artifact or list_story_artifacts only")
+        if not (drama / "receipts" / f"{reconciles}.json").is_file():
+            raise ValueError(f"No local receipt {reconciles!r} to reconcile")
+        doc["localRef"] = {"kind": "remote_receipt", "id": reconciles, "revision": None}
+        if operation == "get_story_artifact":
+            found = _field(parsed["data"].get("record"), "requestId") if outcome == "confirmed" else None
+            if found != reconciles:
+                return {**base, "passed": False, "status": "reconcile_mismatch", "path": None,
+                        "error": f"get_story_artifact record.requestId is {found!r}, not {reconciles!r}; nothing written. Check the next revision in the slot."}
+            notes.update(reconciles=reconciles, check="record.requestId matched (S)")
+        else:
+            notes.update(reconciles=reconciles, check="host matched a listed revision; list rows carry no requestId (M)")
+    if notes:
+        doc["notes"] = json.dumps(notes, ensure_ascii=False)
+    errors = check_contract("remote-receipt", doc)
+    if errors:
+        raise ValueError("Generated receipt fails contract-check: " + "; ".join(errors))
+    if operation == "save_story_artifact" and remote["inputSnapshotId"] is not None:
+        contexts = {item["remote"].get("inputSnapshotId") for _, item in _receipts(drama) if isinstance(item, dict)
+                    and item.get("operation") == "get_writing_context" and item.get("outcome") == "confirmed" and isinstance(item.get("remote"), dict)}
+        if remote["inputSnapshotId"] not in contexts:
+            base["warnings"].append("inputSnapshotId matches no local confirmed get_writing_context receipt; record that read before trusting this save's provenance")
+    path = drama / "receipts" / f"{request_id}.json"
+    if path.exists():
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        old, new = str(existing.get("inputFingerprint")), doc["inputFingerprint"]
+        if old == new:
+            return {**base, "passed": True, "status": "replay", "path": str(path), "receipt": existing}
+        return {**base, "passed": False, "status": "conflict", "path": str(path),
+                "existingInputFingerprint": old[7:19], "newInputFingerprint": new[7:19],
+                "error": f"requestId {request_id} already recorded with inputFingerprint {old[7:19]}…; new input is {new[7:19]}…. Existing receipt kept; never reuse a requestId for different input."}
+    write_new(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    return {**base, "passed": True, "status": "written", "path": str(path), "receipt": doc}
