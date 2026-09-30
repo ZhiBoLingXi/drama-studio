@@ -13,7 +13,7 @@ D0 的本地交付已完成。线上能力发现：2026-09-29 本宿主未连接
 | 公共对象 JSON Schema＋正反测试 | 完成 | `skills/drama-studio/schemas/`（6 个）、`tests/test_contracts.py`、`skills/drama-studio/schemas/examples/` |
 | 六工位薄契约 | 完成（v0.1，实验性） | `skills/drama-studio/references/workstations/` |
 | S／R／M 层级标注 | 完成 | [工位契约 · 执行层级](../../skills/drama-studio/references/workstations/README.md) |
-| 首轮目标、样例划分、来源与权限清单 | 完成（待用户确认） | [first-round.md](first-round.md) |
+| 首轮目标、样例划分、来源与权限清单 | 完成（2026-09-30 已确认；保留题暂无） | [first-round.md](first-round.md) |
 | 旧任务表写回取消／收窄 | 完成 | R1、R2、R5、R6 任务表下方的 v1.1 注记 |
 
 ## D1 进入条件核对
