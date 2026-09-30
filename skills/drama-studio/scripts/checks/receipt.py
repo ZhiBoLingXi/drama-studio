@@ -166,6 +166,8 @@ def area(drama: Path, name: str) -> Path:
 def contained(path: Path, drama: Path) -> Path:
     if path.is_symlink() or path.exists():
         _inside(path, drama.parent, str(path.relative_to(drama.parent)))
+    if path.is_symlink() and not path.exists():
+        raise ValueError(f"{path} is a dangling symlink; remove or fix it by hand")
     return path
 
 

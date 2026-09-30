@@ -737,7 +737,7 @@ class ReceiptCliTests(ProjectCase):
 
     def cli_record(self, response, request_id="d1-save-2", input_name="02-save.input.json", operation="save_story_artifact", *extra):
         return self.cli("receipt", "record", self.project, FIXTURES / response, "--operation", operation,
-                        "--request-id", request_id, "--input", FIXTURES / input_name, *extra)
+                        "--request-id", request_id, "--input", FIXTURES / input_name if isinstance(input_name, str) else input_name, *extra)
 
     def test_help_lists_the_receipt_commands(self):
         run = subprocess.run([sys.executable, "-B", str(TOOL), "receipt", "--help"], capture_output=True, text=True)
@@ -787,6 +787,36 @@ class ReceiptCliTests(ProjectCase):
         code, result, _ = self.cli("receipt", "cache", self.project, *chunks, "--slot", "ep-03-outline", "--kind", "episode_outline", "--episode-ref", "ep-03")
         self.assertEqual((code, result["status"]), (0, "unchanged"))
         self.assertEqual(self.cli("receipt", "cache", self.project, *chunks)[0], 1)
+
+    def test_odd_existing_files_fail_cleanly(self):
+        self.receipts.mkdir()
+        (self.receipts / "dangling.json").symlink_to(self.receipts / "nowhere.json")
+        (self.receipts / "list.json").write_text("[]", encoding="utf-8")
+        (self.receipts / "broken.json").write_text("{", encoding="utf-8")
+        (self.receipts / "folder.json").mkdir()
+        (self.project / ".drama/cache").mkdir()
+        (self.project / ".drama/cache/manifest.json").write_text("[]", encoding="utf-8")
+        chunks = [FIXTURES / name for name in CHUNKS]
+        calls = [("record", "dangling", "02-save.response.json"), ("show", "dangling"), ("show", "list"), ("show", "broken"),
+                 ("show", "folder"), ("pending",), ("reconcile", "list"), ("reconcile", "broken"), ("cache",)]
+        for call in calls:
+            with self.subTest(call):
+                if call[0] == "record":
+                    code, result, run = self.cli_record(call[2], call[1], self.input_as("02-save.input.json", call[1]))
+                    self.assertIn("dangling symlink", result["error"])
+                elif call[0] == "show":
+                    code, _, run = self.cli("receipt", "show", self.project, call[1])
+                elif call[0] == "pending":
+                    code, result, run = self.cli("receipt", "pending", self.project)
+                    self.assertEqual(sorted(Path(item["path"]).name for item in result["invalid"]),
+                                     ["broken.json", "dangling.json", "folder.json", "list.json"])
+                elif call[0] == "reconcile":
+                    code, _, run = self.cli_record("07-reconcile-get.response.json", "rec-1", "07-reconcile-get.input.json",
+                                                   "get_story_artifact", "--reconciles", call[1])
+                else:
+                    code, _, run = self.cli("receipt", "cache", self.project, *chunks, FIXTURES / "03-get.response.json")
+                self.assertNotIn("Traceback", run.stderr)
+                self.assertIn(code, (0, 1, 2) if call[0] == "pending" else (1, 2))
 
     def test_doctor_still_offline(self):
         code, result, _ = self.cli("doctor")
