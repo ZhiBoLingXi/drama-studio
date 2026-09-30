@@ -225,6 +225,20 @@ class RecordTests(ProjectCase):
                 self.assertEqual((result["receipt"]["outcome"], result["receipt"]["retryAllowed"]), ("unknown", False))
                 self.assertEqual(check_contract("remote-receipt", result["receipt"]), [])
 
+    def test_utf8_bom_files_are_read(self):
+        response, request = Path(self.temp.name) / "bom.json", Path(self.temp.name) / "bom-input.json"
+        response.write_bytes(b"\xef\xbb\xbf" + (FIXTURES / "02-save.response.json").read_bytes())
+        request.write_bytes(b"\xef\xbb\xbf" + (FIXTURES / "02-save.input.json").read_bytes())
+        result = self.save(response, "d1-save-2", request)
+        self.assertEqual(result["receipt"]["outcome"], "confirmed")
+        self.assertEqual(result["receipt"]["inputFingerprint"], receipt.input_fingerprint(fixture("02-save.input.json")))
+        chunks = []
+        for name in CHUNKS:
+            chunk = Path(self.temp.name) / name
+            chunk.write_bytes(b"\xef\xbb\xbf" + (FIXTURES / name).read_bytes())
+            chunks.append(str(chunk))
+        self.assertTrue(receipt.cache(str(self.project), chunks + [str(FIXTURES / "03-get.response.json")])["passed"])
+
     def test_conflict_response_is_rejected_conflict(self):
         result = self.save("06-conflict.response.json", "d1-save-4", self.input_as("02-save.input.json", "d1-save-4"))
         self.assertEqual((result["receipt"]["outcome"], result["receipt"]["retryAllowed"]), ("rejected_conflict", False))

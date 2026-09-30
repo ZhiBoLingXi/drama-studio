@@ -242,7 +242,7 @@ def _load_response(path: str, operation: str) -> tuple[dict | None, str]:
     if not raw.strip():
         return None, f"response file empty: {file.name}"
     try:
-        value = json.loads(raw.decode("utf-8"))
+        value = json.loads(raw.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError):
         return None, f"response file is not JSON: {file.name}"
     try:
@@ -338,7 +338,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
     safe_id(request_id, "requestId")
     if operation not in EXPECTED:
         raise ValueError(f"Unknown operation {operation!r}")
-    request = json.loads(Path(input_path).read_text(encoding="utf-8"))
+    request = json.loads(Path(input_path).read_text(encoding="utf-8-sig"))
     if not isinstance(request, dict):
         raise ValueError("--input must be the JSON object sent to the MCP tool")
     base = {"ok": True, "enforcement": "S", "remote_verified": False, "adoption_verified": False, "warnings": []}
@@ -554,7 +554,7 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     drama = drama_dir(project)
     chunks, records = [], {}
     for name in response_paths:
-        parsed = _parse(json.loads(Path(name).read_text(encoding="utf-8")), (READ_KEYS, ("record",)), [])
+        parsed = _parse(json.loads(Path(name).read_text(encoding="utf-8-sig")), (READ_KEYS, ("record",)), [])
         if not parsed["ok"]:
             raise ValueError(f"{name}: the saved call failed ({parsed['errorCode']}); nothing to cache")
         if isinstance(parsed["data"].get("record"), dict):
