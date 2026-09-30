@@ -14,6 +14,7 @@ from checks.contract_check import run_contract_check, schema_names
 from checks.context_pack import run_context_pack
 from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
+from checks.knowledge_store import run_knowledge_search, run_knowledge_show, run_knowledge_validate
 from checks.reference_check import run_reference_check
 
 
@@ -68,6 +69,20 @@ def main() -> int:
     pack.add_argument("--budget", required=True, type=int, help="Character budget; exceeding it exits 2 without writing")
     pack.add_argument("--dry-run", action="store_true", help="Run every check and print the package; write nothing")
     pack.add_argument("--allow-unverified", action="store_true", help="Accept manifest entries marked verified: false and note them in unknowns")
+    knowledge = commands.add_parser("knowledge", help="Read-only project-private knowledge cards: validate, search, show")
+    knowledge_commands = knowledge.add_subparsers(dest="knowledge_command", required=True)
+    knowledge_commands.add_parser("validate", help="contract-check every card and its filename").add_argument("project")
+    search = knowledge_commands.add_parser("search", help="Latest valid revisions; same-source marked; retired excluded by default")
+    search.add_argument("project")
+    search.add_argument("--type", dest="knowledge_type", choices=[f"K{i}" for i in range(1, 10)])
+    search.add_argument("--workstation", choices=[f"C{i}" for i in range(1, 7)])
+    search.add_argument("--usage", choices=["creative_reference", "comparison_only", "evaluation_only"])
+    search.add_argument("--text", help="Case-insensitive substring over cardId, content and transfer")
+    search.add_argument("--include-retired", action="store_true")
+    show = knowledge_commands.add_parser("show", help="Print one card and check its local source files exist")
+    show.add_argument("project")
+    show.add_argument("card_id")
+    show.add_argument("--revision", type=int)
     args = parser.parse_args()
     try:
         if args.command == "doctor":
@@ -82,6 +97,13 @@ def main() -> int:
             result = run_episode_check(args.path, **overrides)
         elif args.command == "contract-check":
             result = run_contract_check(args.contract, args.path)
+        elif args.command == "knowledge" and args.knowledge_command == "validate":
+            result = run_knowledge_validate(args.project)
+        elif args.command == "knowledge" and args.knowledge_command == "search":
+            result = run_knowledge_search(args.project, args.knowledge_type, args.workstation, args.usage,
+                                          args.text, args.include_retired)
+        elif args.command == "knowledge":
+            result = run_knowledge_show(args.project, args.card_id, args.revision)
         elif args.command == "reference-check":
             result = run_reference_check(args.path, args.expected_episodes)
         elif args.command == "context-pack":

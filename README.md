@@ -87,6 +87,9 @@ python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sam
 python3 -B skills/drama-studio/scripts/drama_tools.py dup-check --new examples/sample-episode.md --source examples/sample-reference.md
 python3 -B skills/drama-studio/scripts/drama_tools.py reference-check /absolute/path/to/template-detail.json
 python3 -B skills/drama-studio/scripts/drama_tools.py contract-check context-snapshot skills/drama-studio/schemas/examples/context-snapshot.json
+python3 -B skills/drama-studio/scripts/drama_tools.py knowledge validate ../my-drama
+python3 -B skills/drama-studio/scripts/drama_tools.py knowledge search ../my-drama --workstation C5 --type K3
+python3 -B skills/drama-studio/scripts/drama_tools.py knowledge show ../my-drama kc-apology-cost --revision 1
 ```
 
 逐集检查默认只统计，返回 `constraint_status: not_configured`、`passed: null`；退出码 0 仅表示统计已完成。它不会因示例短而判剧本不合格，也不评价创作质量。
@@ -126,6 +129,8 @@ python3 -B skills/drama-studio/scripts/drama_tools.py context-pack ../my-drama -
 - 退出码 2（不写任何文件，错误指出选材序号与引用）：超预算（按分区报告字数与超出量，不截断）、缓存字节与 manifest 的 sha256 不符、manifest 标 `verified: false`、同一 slot 出现两个修订或同一知识卡两个修订、`evaluation_only`／`comparison_only` 进入不允许的角色、`reader_effect` 带 `current_plan`、最终快照未通过 `contract-check`。退出码 1：输入错误，如区间越界（指出引用与文本长度）、引用类型不是 `remote_artifact`／`knowledge_card`、修订为空、任务未指定工位。
 - `.drama/cache/`、`knowledge/cards/`、`.drama/snapshots/` 若是指向项目外的符号链接，退出码 1；知识卡的 `scope.projectId` 必须等于任务的 `project.localId`，否则退出码 2。写入先落临时文件再硬链接到位，中断不会留下半截快照。
 - `--dry-run` 执行全部检查（含已存在快照的冲突检查）并打印将装入的项、字数与遗漏，输出 `would_write` 而非 `snapshot_path`，不写文件。`--allow-unverified` 允许装入服务端指纹未核验的缓存，并在快照 `unknowns` 写明 `服务端指纹未核验：<artifactId>@r<修订>`。
+
+`knowledge {validate,search,show} <项目>` 只读管理项目私有知识卡：卡片放在 `knowledge/cards/<cardId>@r<revision>.json`，本地证据放在 `knowledge/sources/<sourceId>/`。validate 逐卡运行契约校验并核对文件名；search 只返回每卡最新有效修订，默认排除退役卡（`--include-retired` 可纳入），按类型、工位、用途、关键词过滤，并标注共享 sourceId 的同源卡（只说明来源重复，不说明可靠）；show 打印卡片与来源位置并核对本地证据文件存在。无效卡、来源缺失或越界时退出码 2；`knowledge/` 不存在时返回空结果与目录提示、退出码 0。详见[知识库目录与命令](skills/drama-studio/references/workstations/README.md#知识库目录与命令)。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 
