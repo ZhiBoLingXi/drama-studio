@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "drama-studio/remote-receipt/v0",
+  "operation": "save_story_artifact",
+  "requestId": "d1-save-stale-2",
+  "inputFingerprint": "sha256:dc43c4dc00c7a654ffc14ccf32bc746e4f341014208aad34b92a6e9539f22eba",
+  "remote": {
+    "projectId": "2f70c1e9fad74f35ae27f",
+    "artifactId": null,
+    "revision": null,
+    "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225"
+  },
+  "outcome": "rejected_conflict",
+  "observedAt": "2026-09-30T12:29:50+08:00",
+  "evidence": "HTTP 409",
+  "notes": "local deployment http://localhost:3011 (mali-story main c6aebcf3), not production"
+}

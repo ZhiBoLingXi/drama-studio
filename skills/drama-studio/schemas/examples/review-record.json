@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "drama-studio/review-record/v0",
+  "reviewId": "rev-ep21-1",
+  "target": {
+    "kind": "remote_artifact",
+    "id": "art-ep21-draft",
+    "revision": 1
+  },
+  "readingScope": [
+    {
+      "kind": "remote_artifact",
+      "id": "art-ep20-draft",
+      "revision": 3
+    },
+    {
+      "kind": "remote_artifact",
+      "id": "art-ep21-draft",
+      "revision": 1
+    }
+  ],
+  "context": "serial_self_review",
+  "firstReadWithoutAuthorNotes": true,
+  "findings": [
+    {
+      "id": "f1",
+      "category": "fact",
+      "layer": "C5",
+      "claim": "孩子说出了第20集她并不知道的机关名",
+      "evidence": [
+        {
+          "ref": {
+            "kind": "remote_artifact",
+            "id": "art-ep21-draft",
+            "revision": 1
+          },
+          "quote": "（示例引文）"
+        }
+      ],
+      "severity": "revise"
+    },
+    {
+      "id": "f2",
+      "category": "goal",
+      "layer": "C4",
+      "claim": "和解没有经历支撑，集纲只写了'被感动'",
+      "evidence": [],
+      "severity": "revise"
+    }
+  ],
+  "goalAssessments": [
+    {
+      "goal": "孩子视角的亲历感",
+      "status": "partially_met",
+      "evidence": [
+        "递手动作成立；解释机关一段出戏"
+      ]
+    }
+  ],
+  "preserved": [
+    "递手的动作"
+  ],
+  "losses": [
+    "篇幅增加约15%"
+  ]
+}

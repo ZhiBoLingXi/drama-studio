@@ -10,6 +10,7 @@ import sys
 import uuid
 
 sys.dont_write_bytecode = True
+from checks.contract_check import run_contract_check, schema_names
 from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
 from checks.reference_check import run_reference_check
@@ -34,11 +35,11 @@ def initialize(path: Path, title: str) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("doctor")
-    init = commands.add_parser("init-project")
+    commands.add_parser("doctor", help="Check the offline tools load; proves nothing about MCP")
+    init = commands.add_parser("init-project", help="Create a local project workspace only")
     init.add_argument("path", type=Path)
     init.add_argument("--title", required=True)
-    episode = commands.add_parser("episode-check")
+    episode = commands.add_parser("episode-check", help="Episode statistics; constraints only when explicitly configured")
     episode.add_argument("path")
     episode.add_argument("--config", dest="config_path", help="Explicit project constraints JSON; never auto-discovered")
     episode.add_argument("--preset", choices=sorted(PRESETS), help="Opt-in historical example, not a quality standard")
@@ -47,7 +48,7 @@ def main() -> int:
         episode.add_argument("--" + key, type=int)
     for key in ("min-delta-ratio", "min-paren-ratio"):
         episode.add_argument("--" + key, type=float)
-    duplicate = commands.add_parser("dup-check")
+    duplicate = commands.add_parser("dup-check", help="Literal n-gram overlap; not an originality certificate")
     duplicate.add_argument("--new", nargs="+", required=True)
     duplicate.add_argument("--source", nargs="+", required=True)
     duplicate.add_argument("--k", nargs="+", type=int, default=[5, 8, 13])
@@ -55,18 +56,23 @@ def main() -> int:
     reference = commands.add_parser("reference-check", help="Inspect saved template detail coverage, not source truth")
     reference.add_argument("path")
     reference.add_argument("--expected-episodes", type=int)
+    contract = commands.add_parser("contract-check", help="Validate a workstation handoff object; shape and script rules only (examples in schemas/examples/)")
+    contract.add_argument("contract", choices=schema_names())
+    contract.add_argument("path")
     args = parser.parse_args()
     try:
         if args.command == "doctor":
             result = {"ok": sys.version_info >= (3, 10), "python": platform.python_version(),
                       "checks_imported": True, "network_used": False, "models_called": False,
                       "mali_story": "not_checked", "host_skill_discovery": "not_checked",
-                      "review_status": "not_run"}
+                      "review_status": "not_run", "contracts": schema_names()}
         elif args.command == "init-project":
             result = initialize(args.path, args.title)
         elif args.command == "episode-check":
             overrides = {k: v for k, v in vars(args).items() if k not in ("command", "path") and v is not None}
             result = run_episode_check(args.path, **overrides)
+        elif args.command == "contract-check":
+            result = run_contract_check(args.contract, args.path)
         elif args.command == "reference-check":
             result = run_reference_check(args.path, args.expected_episodes)
         else:

@@ -86,9 +86,16 @@ python3 -B skills/drama-studio/scripts/drama_tools.py init-project ../my-drama -
 python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sample-episode.md
 python3 -B skills/drama-studio/scripts/drama_tools.py dup-check --new examples/sample-episode.md --source examples/sample-reference.md
 python3 -B skills/drama-studio/scripts/drama_tools.py reference-check /absolute/path/to/template-detail.json
+python3 -B skills/drama-studio/scripts/drama_tools.py contract-check context-snapshot skills/drama-studio/schemas/examples/context-snapshot.json
 ```
 
 逐集检查默认只统计，返回 `constraint_status: not_configured`、`passed: null`；退出码 0 仅表示统计已完成。它不会因示例短而判剧本不合格，也不评价创作质量。
+
+场标题支持传统 `场11-1 ...` 和 Markdown `### 11-1 ...`，新增逐集解析覆盖；跨集/重复场号报输入错误，未知标题或正文不用于证明地点上限。代码围栏中的示例不作为实际剧本解析，完整说明见 [剧集检查](skills/drama-studio/references/episode-check.md)。
+
+制作停滞时可用 [手工试点指南](skills/drama-studio/references/production-pilot.md) 和 [交接模板](skills/drama-studio/templates/production-pilot.md) 先验证具体场面；真实反馈缺失时只完成离线准备。当前没有 workflow-check、自动资源预约或制作放行引擎；这些记录由宿主协助维护，不因模板填完而通过。
+
+人物不贴人设、台词同质或情绪平时，使用 [人物与情绪改稿](skills/drama-studio/references/character-emotion.md)：从前文恢复人物写法，先改关键选择与心理过程，再写对白并比较完整样段。事实下限、明确修改目标和开放偏好分别裁决；无硬矛盾不能代替本轮意见已解决。这是写作与评审方法，不是自动创作评分器，也不保证每次质量达成。
 
 项目已有明确制作规格时，由 AI 按约定填写配置并显式使用；配置不会自动发现或自动启用。以下配置仅演示格式：
 
@@ -101,6 +108,8 @@ python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sam
 第二条只检查显式指定的字数约束，示例应返回退出码 2。第三条显式启用历史 AIGC 示例规格，不代表行业标准。规则格式、来源、优先级及结果解释见 [剧集检查说明](skills/drama-studio/references/episode-check.md)。
 
 `doctor` 只证明离线工具可加载，不能证明 MCP 已连接。项目初始化只建立本地工作目录，不创建远端项目。完整命令参数使用 `--help` 查看。
+
+`contract-check <对象> <文件>` 校验[创作工位契约](skills/drama-studio/references/workstations/README.md)的交接对象（task、knowledge-card、context-snapshot、review-record、run-handoff、remote-receipt），Schema 在 `skills/drama-studio/schemas/`，示例在 `skills/drama-studio/schemas/examples/`。它拒绝超预算快照、混入评估材料、必需材料缺失却标完整、非上游变更提案、本地自称已采用等情况，退出码 2 表示违反；通过不代表远端引用存在或创作达标。首版知识卡只接受项目私有范围。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 

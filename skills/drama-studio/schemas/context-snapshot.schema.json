@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/context-snapshot/v0",
+  "title": "一次任务实际获得的上下文及选材记录",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "createdFor",
+    "projectBase",
+    "budget",
+    "items",
+    "omitted",
+    "completeness"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/context-snapshot/v0"
+    },
+    "snapshotId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdFor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "workstation",
+        "role"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workstation": {
+          "type": "string",
+          "enum": [
+            "C1",
+            "C2",
+            "C3",
+            "C4",
+            "C5",
+            "C6"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "author",
+            "reader_effect",
+            "fact_check",
+            "similarity_review",
+            "evaluation"
+          ]
+        }
+      }
+    },
+    "projectBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "remoteProjectId",
+        "sourceSnapshotId"
+      ],
+      "properties": {
+        "remoteProjectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceSnapshotId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "limit"
+      ],
+      "properties": {
+        "unit": {
+          "const": "chars"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "partition",
+          "required",
+          "usage",
+          "chars",
+          "reason"
+        ],
+        "properties": {
+          "ref": {
+            "$ref": "#/$defs/ref"
+          },
+          "partition": {
+            "type": "string",
+            "enum": [
+              "task",
+              "project_facts",
+              "current_plan",
+              "knowledge",
+              "unknowns"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "usage": {
+            "type": "string",
+            "enum": [
+              "project_text",
+              "creative_reference",
+              "comparison_only",
+              "evaluation_only"
+            ]
+          },
+          "chars": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "omitted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "required",
+          "reason"
+        ],
+        "properties": {
+          "ref": {
+            "$ref": "#/$defs/ref"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "budget",
+              "permission",
+              "missing",
+              "stale",
+              "not_relevant",
+              "not_provided"
+            ]
+          }
+        }
+      }
+    },
+    "completeness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "incomplete"
+      ]
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "drama-studio/run-handoff/v0",
+  "runId": "run-ep21-c5-1",
+  "taskId": "task-ep21-draft",
+  "workstation": "C5",
+  "methodVersion": "c5@0.1",
+  "contextSnapshotId": "ctx-ep21-author-1",
+  "host": {
+    "name": "claude-code",
+    "model": null,
+    "usage": {
+      "source": "estimated",
+      "calls": 1,
+      "chars": 5000,
+      "tokens": null
+    }
+  },
+  "outputs": [
+    {
+      "kind": "remote_artifact",
+      "id": "art-ep21-draft",
+      "revision": 1
+    }
+  ],
+  "stateChangeProposals": [
+    {
+      "claim": "孩子知道父亲受伤",
+      "evidence": {
+        "kind": "remote_artifact",
+        "id": "art-ep21-draft",
+        "revision": 1
+      }
+    }
+  ],
+  "changeProposals": [
+    {
+      "targetLayer": "C4",
+      "problem": "和解缺少关键选择",
+      "evidence": {
+        "kind": "remote_artifact",
+        "id": "art-ep21-outline",
+        "revision": 2
+      },
+      "proposedChange": "集纲补一个父亲放弃便利的选择",
+      "unknownScope": "第22集开场可能受影响",
+      "needsDecision": true
+    }
+  ],
+  "status": {
+    "run": "finished",
+    "goal": "partially_met"
+  },
+  "unfinished": [
+    "C4 变更待用户决定"
+  ],
+  "nextAction": "请用户决定是否接受 C4 变更提案"
+}

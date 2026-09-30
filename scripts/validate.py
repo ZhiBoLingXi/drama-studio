@@ -42,8 +42,17 @@ def main():
         failures.append("Invalid SKILL.md frontmatter")
     for name in files:
         path = SOURCE / name
-        if path.suffix not in {".md", ".py"}:
+        if path.suffix not in {".md", ".py", ".json"}:
             failures.append(f"Unexpected bundled file: {name}")
+        if path.suffix == ".json":
+            try:
+                schema = json.loads(path.read_text(encoding="utf-8"))
+                if name.startswith("schemas/examples/"):
+                    continue
+                if not name.startswith("schemas/") or schema.get("$id") != schema.get("properties", {}).get("schemaVersion", {}).get("const"):
+                    failures.append(f"Bundled JSON must be a schema with matching $id: {name}")
+            except json.JSONDecodeError as error:
+                failures.append(f"Invalid JSON {name}: {error}")
         if "/Users/" in path.read_text(encoding="utf-8"):
             failures.append(f"Personal absolute path in bundle: {name}")
     result = {"ok": not failures, "checked_files": checked, "bundle_files": len(files), "errors": failures}

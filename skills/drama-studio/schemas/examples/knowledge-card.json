@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "drama-studio/knowledge-card/v0",
+  "cardId": "kc-apology-cost",
+  "revision": 1,
+  "knowledgeType": "K3",
+  "scope": {
+    "level": "project",
+    "projectId": "local-demo"
+  },
+  "processing": "pending",
+  "evidence": {
+    "nature": "synthetic_example",
+    "sources": []
+  },
+  "content": {
+    "problem": "人物道歉了，观众却不相信他承担了责任",
+    "situation": "伤害与某项控制或利益相关，对方仍保有拒绝权",
+    "mechanismOrFact": "让人物实际放弃一项使对方继续受损的便利，使道歉产生可见后果",
+    "examples": [],
+    "counterExamples": [
+      "赠礼掩盖责任"
+    ],
+    "failureConditions": [
+      "失去的东西无关痛痒",
+      "受伤者被迫立即原谅",
+      "每次修复关系都用同一招"
+    ]
+  },
+  "transfer": {
+    "transferable": "责任通过有代价的选择体现",
+    "notTransferable": "具体证物、公开仪式、台词与事件顺序",
+    "workstations": [
+      "C2",
+      "C4",
+      "C5"
+    ]
+  },
+  "limits": {
+    "unverified": [
+      "未对照真实作品案例"
+    ],
+    "judgedBy": "设计示例，非实证"
+  },
+  "usage": "creative_reference"
+}

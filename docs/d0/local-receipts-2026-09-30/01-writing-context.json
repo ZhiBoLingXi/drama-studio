@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "drama-studio/remote-receipt/v0",
+  "operation": "get_writing_context",
+  "requestId": "d1-ctx-1",
+  "inputFingerprint": "sha256:bbd5907004df7001e3e39b404a81624a0a7866674b42cfc4146684ea978b0a2e",
+  "remote": {
+    "projectId": "2f70c1e9fad74f35ae27f",
+    "artifactId": null,
+    "revision": null,
+    "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225"
+  },
+  "outcome": "confirmed",
+  "observedAt": "2026-09-30T12:29:50+08:00",
+  "evidence": "HTTP 200",
+  "notes": "local deployment http://localhost:3011 (mali-story main c6aebcf3), not production"
+}

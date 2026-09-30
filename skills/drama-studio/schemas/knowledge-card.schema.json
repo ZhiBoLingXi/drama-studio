@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/knowledge-card/v0",
+  "title": "项目私有知识卡",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "cardId",
+    "revision",
+    "knowledgeType",
+    "scope",
+    "processing",
+    "evidence",
+    "content",
+    "transfer",
+    "limits",
+    "usage"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/knowledge-card/v0"
+    },
+    "cardId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "knowledgeType": {
+      "type": "string",
+      "enum": [
+        "K1",
+        "K2",
+        "K3",
+        "K4",
+        "K5",
+        "K6",
+        "K7",
+        "K8",
+        "K9"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "projectId"
+      ],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "project",
+            "studio",
+            "public"
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "processing": {
+      "type": "string",
+      "enum": [
+        "raw",
+        "pending",
+        "curated",
+        "revised",
+        "retired"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nature",
+        "sources"
+      ],
+      "properties": {
+        "nature": {
+          "type": "string",
+          "enum": [
+            "observation",
+            "source_statement",
+            "interpretation",
+            "creative_hypothesis",
+            "synthetic_example"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceId",
+              "location",
+              "versionOrDate"
+            ],
+            "properties": {
+              "sourceId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "location": {
+                "type": "string",
+                "minLength": 1
+              },
+              "versionOrDate": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lineage": {
+                "type": "string"
+              },
+              "rights": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "problem",
+        "situation",
+        "mechanismOrFact",
+        "failureConditions"
+      ],
+      "properties": {
+        "problem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "situation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mechanismOrFact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "counterExamples": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "failureConditions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "transfer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transferable",
+        "notTransferable",
+        "workstations"
+      ],
+      "properties": {
+        "transferable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notTransferable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workstations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "C1",
+              "C2",
+              "C3",
+              "C4",
+              "C5",
+              "C6"
+            ]
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unverified",
+        "judgedBy"
+      ],
+      "properties": {
+        "unverified": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "judgedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "usage": {
+      "type": "string",
+      "enum": [
+        "creative_reference",
+        "comparison_only",
+        "evaluation_only"
+      ]
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

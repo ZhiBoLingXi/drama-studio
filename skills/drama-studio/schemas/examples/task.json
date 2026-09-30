@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "drama-studio/task/v0",
+  "taskId": "task-ep21-draft",
+  "kind": "draft",
+  "workstation": "C5",
+  "project": {
+    "localId": "local-demo",
+    "remoteProjectId": "proj-demo-0001"
+  },
+  "goal": "按第21集集纲写完整正文，保持孩子视角的亲历感",
+  "nonGoals": [
+    "不改第20集",
+    "不扩写到第22集"
+  ],
+  "readScope": [
+    {
+      "kind": "remote_artifact",
+      "id": "art-ep20-draft",
+      "revision": 3
+    },
+    {
+      "kind": "remote_artifact",
+      "id": "art-ep21-outline",
+      "revision": 2
+    }
+  ],
+  "writeScope": [
+    {
+      "kind": "remote_artifact",
+      "id": "slot:episode-21",
+      "revision": 0
+    }
+  ],
+  "authorization": {
+    "source": "user_message",
+    "scope": "第21集正文候选",
+    "evidence": "用户消息：先写第21集给我看"
+  },
+  "revisionBudget": 1,
+  "status": {
+    "run": "planned",
+    "goal": "not_assessed",
+    "adoption": "none"
+  }
+}

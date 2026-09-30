@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "drama-studio/remote-receipt/v0",
+  "operation": "save_story_artifact",
+  "requestId": "req-ep21-c5-1",
+  "inputFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "localRef": {
+    "kind": "local_file",
+    "id": "drafts/ep21.md",
+    "revision": null
+  },
+  "remote": {
+    "projectId": "proj-demo-0001",
+    "artifactId": null,
+    "revision": null,
+    "inputSnapshotId": "wsnap-77"
+  },
+  "outcome": "unknown",
+  "retryAllowed": false,
+  "observedAt": "2026-09-29T10:00:00+08:00",
+  "evidence": "响应超时；需按 requestId 调用 list_story_artifacts 对账"
+}
