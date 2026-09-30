@@ -491,5 +491,30 @@ class ReceiptCliTests(ProjectCase):
         self.assertFalse(result["models_called"])
 
 
+class DocsTests(unittest.TestCase):
+    ANCHOR = "../mali-story.md#候选保存与对账"
+
+    def test_method_section_covers_the_contract(self):
+        text = (ROOT / "skills/drama-studio/references/mali-story.md").read_text(encoding="utf-8")
+        self.assertIn("\n## 候选保存与对账\n", text)
+        section = text.split("## 候选保存与对账", 1)[1].split("\n## ", 1)[0]
+        for needle in ("producer", "`codex`", "`human`", "slot", "episodeRef", "episode_draft", "series_outline",
+                       "requestFingerprint", "inputFingerprint", "--reconciles", "receipt pending", "receipt cache",
+                       "nextOffset", "保存不等于采用", "不换新 requestId"):
+            self.assertIn(needle, section, needle)
+
+    def test_workstation_steps_link_the_method(self):
+        lines = (ROOT / "skills/drama-studio/references/workstations/README.md").read_text(encoding="utf-8").splitlines()
+        steps = {line[:2]: line for line in lines if line[:2] in ("3.", "5.")}
+        for step in ("3.", "5."):
+            self.assertIn(self.ANCHOR, steps[step])
+            self.assertIn("receipt", steps[step])
+
+    def test_readme_shows_receipt_examples(self):
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        for command in ("receipt record", "receipt pending", "receipt cache", "receipt show"):
+            self.assertIn(command, text)
+
+
 if __name__ == "__main__":
     unittest.main()

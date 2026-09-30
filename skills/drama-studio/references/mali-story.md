@@ -47,3 +47,32 @@
 如部署提供专业候选、采用与连续性工具，遵循其快照与版本契约。Brief 使用专用 get/save/approve，save 带读取到的 expected_revision；通过当前会话可用工具确认具体名称。不能用通用块写入绕过正式采用规则。
 
 没有候选保存能力时继续保留本地草稿，明确“未同步到 mali-story”，不宣布服务端接续成功。检查工具不存在时也不虚构已调用。
+
+## 候选保存与对账
+
+工位产出保存为 mali-story 候选时按本节执行。MCP 由宿主调用，响应原样存成 JSON 文件；`scripts/drama_tools.py receipt` 只读这些文件，不联网、不调用 MCP，不能证明响应真实。保存不等于采用：回执 `confirmed` 只说明服务端收下了候选。本地缓存和 save／get／list／read 回执都不是采用证据，采用只认 mali-story 的正式采用结果。
+
+**producer**：当前 `save_story_artifact` 的 `producer` 只接受 `codex` 与 `human`（#3／#15 决定）。Codex 宿主写 `codex`，用户本人提交的文字写 `human`。其他宿主不得借用这两个值，也不保存，直到 mali-story 增加代表 AI 宿主的取值（用户 2026-09-30 决定；跟踪 issue 尚未建立）；此前保留本地稿，注明“未同步到 mali-story”。
+
+**工位产出 → 候选字段**：
+
+| 工位 | kind | slot 示例 | episodeRef |
+| --- | --- | --- | --- |
+| C1 | `research`、`adaptation_options` | `positioning` | null |
+| C2 | `characters` | `characters` | null |
+| C3 | `series_outline` | `series-outline` | null |
+| C4 | `episode_outline` | `ep-03-outline` | 必填，如 `ep-03` |
+| C5 | `episode_draft` | `ep-03-draft` | 必填 |
+| C6 | `review` | `ep-03-review` | 针对单集时填写 |
+
+slot 是跨修订的稳定身份：同一产出的每次修订用同一 slot，`revision` 按 slot 递增。artifactId 每次保存都新生成，只用作缓存文件名；本地判断新旧修订一律按 slot。`episode_outline`／`episode_draft` 缺 episodeRef 会被服务端拒绝。
+
+**步骤**：
+
+1. 读上下文：`get_writing_context` 读到 `nextOffset` 为 null，保存响应，`receipt record <项目> <响应> --operation get_writing_context --request-id <读取ID> --input <输入>`。保存时的 `input_snapshot_id` 取其 `snapshotId`；与本地已确认的上下文回执不符时 record 会给出警告。
+2. 保存：先把完整输入（含固定的 `request_id`）写成文件，再调用 `save_story_artifact`；`expected_revision` 取该 slot 当前最高修订，新 slot 为 0。响应原样保存，丢失就不存。
+3. 记录：`receipt record <项目> <响应> --operation save_story_artifact --request-id <ID> --input <输入>`，写入 `.drama/receipts/<requestId>.json`。成功得到 artifactId、revision；HTTP 409／`VERSION_CONFLICT` 记 `rejected_conflict`，重新读取后按新修订号用新 requestId 保存；响应缺失、无法解析、`MCP_OUTCOME_UNKNOWN` 或 5xx 记 `unknown`，`retryAllowed` 恒为 false。同一 requestId 再次记录相同输入视为重放；输入不同则退出码 2，原回执不变。
+4. 缓存：`read_story_artifact` 从 offset 0 连续读到 `nextOffset` 为 null，保存每块响应，执行 `receipt cache <项目> <全部分块> [get 响应]`。全文写入 `.drama/cache/<artifactId>@r<revision>.md`（原样 UTF-8，不加换行），manifest 只追加。全文 sha256 必须等于服务端 `fingerprint`；缺块、断档、末块缺失或内容被改都拒绝（退出码 2）。没有 get 响应时须给 `--slot`、`--kind`（分集还要 `--episode-ref`）。只有 `get_story_artifact` 响应时记 `verified: false`，装包默认不用未验证缓存。
+5. 对账 unknown：`receipt pending <项目>` 列出待对账项 → `list_story_artifacts(project_id, slot)` → 对高于 expectedRevision 的修订逐个 `get_story_artifact`，比对 `record.requestId` → 找到后 `receipt record <项目> <get 响应> --operation get_story_artifact --request-id <新读取ID> --input <get 输入> --reconciles <原 requestId>`，工具核对 requestId（S）。只凭列表判断时用 list 响应记录，标为宿主判断（M）。对账前不换新 requestId 重试，以免重复候选或重复计费；对账后仍未找到时保持 unknown 并告知用户，重发只能用原 requestId 与完全相同的输入（服务端精确重放幂等，R）。
+
+`inputFingerprint` 是 `--input` 规范 JSON（键排序、UTF-8、紧凑分隔；忽略以 `_` 开头的顶层注释键）的 sha256，只用于本地冲突判断，与服务端 `requestFingerprint` 算法不同，不能相互比较。

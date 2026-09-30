@@ -10,9 +10,9 @@
 
 1. **任务**（`task`）：目标、非目标、读取范围、写入范围、授权来源、返修上限。读取范围可以大于写入范围；授权为 `none` 时不写任何东西。
 2. **上下文**（`context-snapshot`）：本次实际给了哪些版本、原文区间和知识卡，各自理由，以及遗漏项。必需材料缺失时 `completeness` 只能是 `incomplete`；超出预算就缩小工作单元，不静默截断。宿主（模型）先写选材清单（`selection`，格式见 `../../schemas/selection.schema.json`），再用 `scripts/drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role <角色> --budget <字数>` 从 `.drama/cache/` 与 `knowledge/cards/` 组装快照：工具按实际截取文本计算 `chars` 与 sha256，核对缓存指纹，按角色过滤用途，超预算退出码 2 且不写文件。选什么由模型判断，工具不做相关性排序。
-3. **产出**：完整可读的作品材料。联网时作为 mali-story 候选保存，保存不等于采用。源码中的保存工具为 `save_story_artifact`，实际名称以当前会话可用工具为准（见 [资料与拉片](../mali-story.md)）。保存的是产出，不是上下文快照。
+3. **产出**：完整可读的作品材料。联网时作为 mali-story 候选保存，保存不等于采用。源码中的保存工具为 `save_story_artifact`，实际名称以当前会话可用工具为准（见 [资料与拉片](../mali-story.md)）。保存的是产出，不是上下文快照。kind／slot／episodeRef、保存与缓存步骤见 [候选保存与对账](../mali-story.md#候选保存与对账)；读到的全文用 `drama_tools.py receipt cache` 落到本地缓存。
 4. **交接**（`run-handoff`）：输出引用、状态变化提案、上游变更提案、未完成项和下一动作。只写本层候选；涉及上游决定时提出 `changeProposals`，不静默改写。
-5. **远端回执**（`remote-receipt`）：每次保存记录 `requestId` 与输入指纹。结果未知时先按 `requestId` 对账，不盲目重试；没有连接或未获授权时记 `outcome: not_sent`，`artifactId` 与 `revision` 必须为 null。
+5. **远端回执**（`remote-receipt`）：每次保存记录 `requestId` 与输入指纹。结果未知时先按 `requestId` 对账，不盲目重试；没有连接或未获授权时记 `outcome: not_sent`，`artifactId` 与 `revision` 必须为 null。保存的响应用 `drama_tools.py receipt record` 生成回执，`receipt pending` 列出待对账项，方法见 [候选保存与对账](../mali-story.md#候选保存与对账)。
 
 ## 执行层级
 
