@@ -16,6 +16,7 @@ from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
 from checks.knowledge_store import run_knowledge_search, run_knowledge_show, run_knowledge_validate
 from checks.reference_check import run_reference_check
+from checks.receipt import EXPECTED as RECEIPT_OPERATIONS, KINDS as ARTIFACT_KINDS, run_receipt
 
 
 def initialize(path: Path, title: str) -> dict:
@@ -83,6 +84,26 @@ def main() -> int:
     show.add_argument("project")
     show.add_argument("card_id")
     show.add_argument("--revision", type=int)
+    receipt = commands.add_parser("receipt", help="Turn saved mali-story MCP responses into receipts and cached text; never calls MCP or proves adoption")
+    receipt_commands = receipt.add_subparsers(dest="receipt_command", required=True)
+    record = receipt_commands.add_parser("record", help="Write .drama/receipts/<requestId>.json from a saved response (append-only)")
+    record.add_argument("project")
+    record.add_argument("response", help="Saved MCP response JSON; missing or unreadable means outcome unknown")
+    record.add_argument("--operation", required=True, choices=sorted(RECEIPT_OPERATIONS))
+    record.add_argument("--request-id", required=True)
+    record.add_argument("--input", required=True, dest="input_path", help="The exact JSON input sent to the MCP tool")
+    record.add_argument("--reconciles", help="requestId of the unknown receipt this get/list call resolves")
+    pending = receipt_commands.add_parser("pending", help="List unknown receipts and the reconciliation calls to make")
+    pending.add_argument("project")
+    cache = receipt_commands.add_parser("cache", help="Cache full read_story_artifact text into .drama/cache and append the manifest")
+    cache.add_argument("project")
+    cache.add_argument("responses", nargs="+", help="All read chunks (and optionally one get_story_artifact response)")
+    cache.add_argument("--slot")
+    cache.add_argument("--kind", choices=ARTIFACT_KINDS)
+    cache.add_argument("--episode-ref")
+    show = receipt_commands.add_parser("show", help="Print one receipt and its contract-check result")
+    show.add_argument("project")
+    show.add_argument("request_id")
     args = parser.parse_args()
     try:
         if args.command == "doctor":
@@ -109,6 +130,8 @@ def main() -> int:
         elif args.command == "context-pack":
             result = run_context_pack(args.project, args.task, args.selection, args.role, args.budget,
                                       dry_run=args.dry_run, allow_unverified=args.allow_unverified)
+        elif args.command == "receipt":
+            result = run_receipt(args)
         else:
             result = run_dup_check(args.new, args.source, ks=args.k, threshold=args.threshold)
         print(json.dumps(result, ensure_ascii=False, indent=2))

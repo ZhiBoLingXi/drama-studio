@@ -459,3 +459,14 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": existing or entry,
             "manifestAppended": existing is None, "verified": verified, "warnings": warnings,
             "remote_verified": False, "adoption_verified": False}
+
+
+def run_receipt(args) -> dict:
+    """Dispatch `drama_tools.py receipt <subcommand>`; refusals return passed=False, input errors raise."""
+    if args.receipt_command == "record":
+        return record_receipt(args.project, args.response, args.operation, args.request_id, args.input_path, args.reconciles)
+    if args.receipt_command == "pending":
+        return pending(args.project)
+    if args.receipt_command == "cache":
+        return cache(args.project, args.responses, args.slot, args.kind, args.episode_ref)
+    return show(args.project, args.request_id)

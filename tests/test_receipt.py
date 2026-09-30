@@ -425,5 +425,71 @@ class CacheTests(ProjectCase):
         self.assertNothingCached()
 
 
+class ReceiptCliTests(ProjectCase):
+    def cli(self, *args):
+        run = subprocess.run([sys.executable, "-B", str(TOOL), *map(str, args)], capture_output=True, text=True)
+        output = run.stdout if run.stdout.strip().startswith("{") else run.stderr
+        return run.returncode, (json.loads(output) if output.strip().startswith("{") else output), run
+
+    def cli_record(self, response, request_id="d1-save-2", input_name="02-save.input.json", operation="save_story_artifact", *extra):
+        return self.cli("receipt", "record", self.project, FIXTURES / response, "--operation", operation,
+                        "--request-id", request_id, "--input", FIXTURES / input_name, *extra)
+
+    def test_help_lists_the_receipt_commands(self):
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "receipt", "--help"], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0)
+        for command in ("record", "pending", "cache", "show"):
+            self.assertIn(command, run.stdout)
+        self.assertIn("receipt", subprocess.run([sys.executable, "-B", str(TOOL), "--help"], capture_output=True, text=True).stdout)
+
+    def test_record_replay_and_conflict_exit_codes(self):
+        code, result, _ = self.cli_record("02-save.response.json")
+        self.assertEqual((code, result["status"]), (0, "written"))
+        before = sha_file(self.receipts / "d1-save-2.json")
+        code, result, _ = self.cli_record("02-save.response.json")
+        self.assertEqual((code, result["status"]), (0, "replay"))
+        code, result, run = self.cli_record("02-save.response.json", "d1-save-2", "02-save.changed-input.json")
+        self.assertEqual(code, 2)
+        self.assertIn(receipt.input_fingerprint(fixture("02-save.input.json"))[7:19], run.stdout)
+        self.assertIn(receipt.input_fingerprint(fixture("02-save.changed-input.json"))[7:19], run.stdout)
+        self.assertEqual(sha_file(self.receipts / "d1-save-2.json"), before)
+
+    def test_unknown_shape_exits_1_and_missing_response_is_unknown(self):
+        code, result, _ = self.cli_record("09-unknown-shape.response.json")
+        self.assertEqual((code, result["ok"]), (1, False))
+        self.assertFalse(self.receipts.exists() and any(self.receipts.iterdir()))
+        code, result, _ = self.cli_record("does-not-exist.json", "d1-save-3", "05-unknown.input.json")
+        self.assertEqual((code, result["receipt"]["outcome"], result["receipt"]["retryAllowed"]), (0, "unknown", False))
+
+    def test_pending_reconcile_and_show(self):
+        self.cli_record("05-unknown.response.json", "d1-save-3", "05-unknown.input.json")
+        code, result, _ = self.cli("receipt", "pending", self.project)
+        self.assertEqual(code, 0)
+        self.assertEqual((result["pending"][0]["requestId"], result["pending"][0]["slot"]), ("d1-save-3", "ep-03-outline"))
+        code, _, _ = self.cli_record("03-get.response.json", "d1-reconcile-x", "03-get.input.json", "get_story_artifact", "--reconciles", "d1-save-3")
+        self.assertEqual(code, 2)
+        code, _, _ = self.cli_record("07-reconcile-get.response.json", "d1-reconcile-3", "07-reconcile-get.input.json", "get_story_artifact", "--reconciles", "d1-save-3")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.cli("receipt", "pending", self.project)[1]["pending"], [])
+        code, result, _ = self.cli("receipt", "show", self.project, "d1-reconcile-3")
+        self.assertEqual((code, result["passed"]), (0, True))
+        self.assertEqual(self.cli("receipt", "show", self.project, "absent")[0], 1)
+
+    def test_cache_exit_codes(self):
+        chunks = [FIXTURES / name for name in CHUNKS]
+        self.assertEqual(self.cli("receipt", "cache", self.project, *chunks[:3], FIXTURES / "03-get.response.json")[0], 2)
+        code, result, _ = self.cli("receipt", "cache", self.project, *chunks, FIXTURES / "03-get.response.json")
+        self.assertEqual((code, result["entry"]["verified"]), (0, True))
+        code, result, _ = self.cli("receipt", "cache", self.project, *chunks, "--slot", "ep-03-outline", "--kind", "episode_outline", "--episode-ref", "ep-03")
+        self.assertEqual((code, result["status"]), (0, "unchanged"))
+        self.assertEqual(self.cli("receipt", "cache", self.project, *chunks)[0], 1)
+
+    def test_doctor_still_offline(self):
+        code, result, _ = self.cli("doctor")
+        self.assertEqual(code, 0)
+        self.assertFalse(result["network_used"])
+        self.assertFalse(result["models_called"])
+
+
 if __name__ == "__main__":
     unittest.main()
