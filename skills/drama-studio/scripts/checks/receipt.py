@@ -220,9 +220,23 @@ def _refused(base: dict, reason: str) -> dict:
     return {**base, "warnings": [], "passed": False, "status": "reconcile_refused", "path": None, "error": reason + "; nothing written"}
 
 
-def _reconcile_check(operation: str, reconciles: str, target: dict, doc: dict, parsed: dict | None) -> tuple[str | None, str]:
+def _slot(doc: dict) -> str | None:
+    ref = doc.get("localRef") or {}
+    return ref["id"][5:] if ref.get("kind") == "remote_artifact" and str(ref.get("id", "")).startswith("slot:") else None
+
+
+def _reconcile_check(operation: str, reconciles: str, target, doc: dict, parsed: dict | None,
+                     request: dict) -> tuple[str | None, str]:
     """Return (refusal reason, enforcement note) for a receipt that claims to resolve `reconciles`."""
-    found = _field(parsed["data"].get("record"), "requestId") if doc["outcome"] == "confirmed" else None
+    if not isinstance(target, dict) or check_contract("remote-receipt", target):
+        return f"local receipt {reconciles!r} fails contract-check; it cannot be reconciled", ""
+    if target["operation"] != "save_story_artifact" or target["outcome"] != "unknown":
+        return f"{reconciles!r} is a {target['operation']} with outcome {target['outcome']!r}; only an unknown save is reconciled", ""
+    if doc["outcome"] != "confirmed":
+        return f"this {operation} outcome is {doc['outcome']!r}; only a confirmed response can resolve an unknown", ""
+    if doc["remote"]["projectId"] != target["remote"]["projectId"]:
+        return f"projectId {doc['remote']['projectId']!r} is not the unknown save's {target['remote']['projectId']!r}", ""
+    found = _field(parsed["data"].get("record"), "requestId")
     if operation == "save_story_artifact":
         if doc["inputFingerprint"] != target.get("inputFingerprint"):
             return "the re-send input differs from the unknown save (inputFingerprint); only an identical re-send may reconcile it", ""
@@ -233,7 +247,10 @@ def _reconcile_check(operation: str, reconciles: str, target: dict, doc: dict, p
         if found != reconciles:
             return f"get_story_artifact record.requestId is {found!r}, not {reconciles!r}. Check the next revision in the slot", ""
         return None, "record.requestId matched (S)"
-    return None, "host matched a listed revision; list rows carry no requestId (M)"
+    slot = _field(request, "slot")
+    if slot is None or slot != _slot(target):
+        return f"list_story_artifacts must be filtered by the unknown save's slot {_slot(target)!r}; --input has {slot!r}", ""
+    return None, "host matched a listed revision in the same project and slot; list rows carry no requestId (M)"
 
 
 def record_receipt(project: str, response_path: str, operation: str, request_id: str, input_path: str,
@@ -278,7 +295,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
                      expectedRevision=_field(request, "expected_revision", "expectedRevision"))
     if reconciles is not None:
         doc["localRef"] = {"kind": "remote_receipt", "id": reconciles, "revision": None}
-        reason, check = _reconcile_check(operation, reconciles, target, doc, parsed)
+        reason, check = _reconcile_check(operation, reconciles, target, doc, parsed, request)
         if reason:
             return _refused(base, reason)
         notes.update(reconciles=reconciles, check=check)
@@ -327,17 +344,16 @@ def pending(project: str) -> dict:
         if not errors and path.stem != doc["requestId"]:
             errors = [f"file name does not match requestId {doc['requestId']!r}"]
         (invalid.append({"path": str(path), "errors": errors}) if errors else valid.append(doc))
-    reconciled = {doc["localRef"]["id"] for doc in valid if doc.get("localRef", {}).get("kind") == "remote_receipt"}
-    items, resolved = [], []
+    verified, host_judged = set(), set()
+    for doc in valid:  # only confirmed reconcilers count; get/save matched record.requestId (S), list is host judgement (M)
+        if doc.get("localRef", {}).get("kind") == "remote_receipt" and doc["outcome"] == "confirmed" and doc["operation"] in RECONCILERS:
+            (host_judged if doc["operation"] == "list_story_artifacts" else verified).add(doc["localRef"]["id"])
+    items = []
     for doc in valid:
-        if doc["outcome"] != "unknown":
-            continue
         request_id = doc["requestId"]
-        if request_id in reconciled:
-            resolved.append(request_id)
+        if doc["outcome"] != "unknown" or request_id in verified or request_id in host_judged:
             continue
-        ref = doc.get("localRef") or {}
-        slot = ref["id"][5:] if ref.get("kind") == "remote_artifact" and ref.get("id", "").startswith("slot:") else None
+        slot = _slot(doc)
         project_id, expected = doc["remote"]["projectId"], _notes(doc).get("expectedRevision")
         newer = f"revision > {expected}" if _is_int(expected) else "each listed revision, newest first"
         list_args = {"project_id": project_id, **({"slot": slot} if slot else {})}
@@ -348,7 +364,9 @@ def pending(project: str) -> dict:
                            "check": f"record.requestId == {request_id!r}"},
                           {"command": f"drama_tools.py receipt record <project> <get-response.json> --operation get_story_artifact "
                                       f"--request-id <new-read-id> --input <get-input.json> --reconciles {request_id}"}]})
-    return {"ok": True, "pending": items, "resolved": sorted(resolved), "invalid": invalid,
+    unknown = {doc["requestId"] for doc in valid if doc["outcome"] == "unknown"}
+    return {"ok": True, "pending": items, "resolved_verified": sorted(verified & unknown),
+            "resolved_host_judged": sorted((host_judged - verified) & unknown), "invalid": invalid,
             "note": "Never retry an unknown call with a new requestId; reconcile first.",
             "remote_verified": False, "adoption_verified": False}
 

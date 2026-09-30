@@ -232,6 +232,37 @@ class RecordTests(ProjectCase):
         self.assertTrue(result["passed"])
         self.assertIn("(M)", result["receipt"]["notes"])
 
+    def list_input(self, **changes):
+        data = fixture("04-list.input.json")
+        data.update(changes)
+        data = {k: v for k, v in data.items() if v is not None}
+        path = Path(self.temp.name) / f"list-{len(changes)}-{abs(hash(json.dumps(changes)))}.json"
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def test_reconcilers_need_evidence(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        self.save()  # confirmed d1-save-2
+        self.record(Path(self.temp.name) / "missing.json", "get_story_artifact", "get-lost", self.input_as("03-get.input.json", "get-lost"))
+        broken = json.loads((self.receipts / "d1-save-3.json").read_text(encoding="utf-8"))
+        broken.update(requestId="d1-save-8", retryAllowed=True)
+        (self.receipts / "d1-save-8.json").write_text(json.dumps(broken), encoding="utf-8")
+        missing = Path(self.temp.name) / "missing.json"
+        cases = {"unknown list response": (missing, "list_story_artifacts", "d1-save-3", "04-list.input.json"),
+                 "unknown get response": (missing, "get_story_artifact", "d1-save-3", "07-reconcile-get.input.json"),
+                 "target is not unknown": ("04-list.response.json", "list_story_artifacts", "d1-save-2", "04-list.input.json"),
+                 "target fails contract-check": ("04-list.response.json", "list_story_artifacts", "d1-save-8", "04-list.input.json"),
+                 "target is not a save": ("04-list.response.json", "list_story_artifacts", "get-lost", "04-list.input.json"),
+                 "list project differs": ("04-list.response.json", "list_story_artifacts", "d1-save-3", self.list_input(project_id="other-project")),
+                 "list slot differs": ("04-list.response.json", "list_story_artifacts", "d1-save-3", self.list_input(slot="ep-04-outline")),
+                 "list without slot": ("04-list.response.json", "list_story_artifacts", "d1-save-3", self.list_input(slot=None))}
+        for label, (response, operation, target, input_name) in cases.items():
+            with self.subTest(label):
+                result = self.record(response, operation, "reconciler-1", input_name, reconciles=target)
+                self.assertFalse(result["passed"], result)
+                self.assertFalse((self.receipts / "reconciler-1.json").exists())
+        self.assertIn("d1-save-3", [item["requestId"] for item in receipt.pending(str(self.project))["pending"]])
+
     def test_reconciles_needs_an_existing_local_receipt_and_a_reconciling_operation(self):
         with self.assertRaises(ValueError):
             self.record("07-reconcile-get.response.json", "get_story_artifact", "d1-reconcile-3", "07-reconcile-get.input.json", reconciles="d1-save-3")
@@ -303,7 +334,23 @@ class PendingShowTests(ProjectCase):
         self.record("07-reconcile-get.response.json", "get_story_artifact", "d1-reconcile-3", "07-reconcile-get.input.json", reconciles="d1-save-3")
         result = receipt.pending(str(self.project))
         self.assertEqual(result["pending"], [])
-        self.assertEqual(result["resolved"], ["d1-save-3"])
+        self.assertEqual((result["resolved_verified"], result["resolved_host_judged"]), (["d1-save-3"], []))
+
+    def test_resolutions_are_split_by_strength_and_need_a_confirmed_reconciler(self):
+        self.unknown_save()
+        self.record("04-list.response.json", "list_story_artifacts", "d1-list-3", "04-list.input.json", reconciles="d1-save-3")
+        result = receipt.pending(str(self.project))
+        self.assertEqual((result["resolved_verified"], result["resolved_host_judged"], result["pending"]), ([], ["d1-save-3"], []))
+        # a hand-written unconfirmed reconciler resolves nothing
+        forged = json.loads((self.receipts / "d1-list-3.json").read_text(encoding="utf-8"))
+        forged.update(requestId="d1-list-4", outcome="unknown", retryAllowed=False)
+        forged["localRef"]["id"] = "d1-save-9"
+        (self.receipts / "d1-list-4.json").write_text(json.dumps(forged), encoding="utf-8")
+        nine = json.loads((self.receipts / "d1-save-3.json").read_text(encoding="utf-8"))
+        nine["requestId"] = "d1-save-9"
+        (self.receipts / "d1-save-9.json").write_text(json.dumps(nine), encoding="utf-8")
+        saves = [item["requestId"] for item in receipt.pending(str(self.project))["pending"] if item["operation"] == "save_story_artifact"]
+        self.assertEqual(saves, ["d1-save-9"])
 
     def test_invalid_receipts_are_listed_not_trusted(self):
         self.unknown_save()

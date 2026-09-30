@@ -92,7 +92,7 @@ def main() -> int:
     record.add_argument("--operation", required=True, choices=sorted(RECEIPT_OPERATIONS))
     record.add_argument("--request-id", required=True)
     record.add_argument("--input", required=True, dest="input_path", help="The exact JSON input sent to the MCP tool")
-    record.add_argument("--reconciles", help="requestId of the unknown receipt this get/list call resolves")
+    record.add_argument("--reconciles", help="requestId of the unknown save this confirmed get, list or identical re-send resolves")
     pending = receipt_commands.add_parser("pending", help="List unknown receipts and the reconciliation calls to make")
     pending.add_argument("project")
     cache = receipt_commands.add_parser("cache", help="Cache full read_story_artifact text into .drama/cache and append the manifest")
