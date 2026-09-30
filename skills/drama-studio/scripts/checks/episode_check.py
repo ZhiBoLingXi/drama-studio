@@ -8,8 +8,13 @@ from pathlib import Path
 import re
 
 EP_RE = re.compile(r"^#{1,2}\s*第([0-9一二三四五六七八九十百零〇]+)集")
-SCENE_RE = re.compile(r"^场\s*\d+[-–]\d+\s+(.+?)\s+(日|夜|晨|黄昏|清晨|深夜)\s+(内|外)\s*$")
-SCENE_LOOSE_RE = re.compile(r"^场\s*\d+[-–]\d+\s+(.+)$")
+SCENE_START_RE = re.compile(r"^(?:场|###\s+(?:场|\d))")
+SCENE_ID_RE = re.compile(r"^(?:场\s*|###\s+(?:场\s*)?)(\d+)[-–](\d+)(?:\s+(.*))?$")
+# Unknown time tokens must not silently become part of a guessed location.
+SCENE_DETAIL_RE = re.compile(
+    r"^(.+?)\s+(日|夜|晨|暮|黄昏|清晨|深夜|黎明|后半夜|前半夜|凌晨|傍晚|白天|"
+    r"午后|下午|上午|正午|拂晓|晚上|早晨|入夜)\s+(内|外)\s*$")
+SEPARATOR_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 DIALOG_RE = re.compile(r"^([^△#场\s【（(：:]{1,12})(（[^）]*）|\([^)]*\))?\s*[：:]\s*(.+)$")
 
 # Available only through explicit selection; not universal writing standards.
@@ -89,6 +94,7 @@ class EpisodeStats:
     slots: int = 0
     warnings: list = field(default_factory=list)
     checks: list = field(default_factory=list)
+    parse_coverage: dict = field(default_factory=dict)
 
 
 def _episode_number(value: str) -> int:
@@ -108,6 +114,8 @@ def _episode_number(value: str) -> int:
 
 
 def split_episodes(text: str) -> list[tuple[str, list[str]]]:
+    if any(re.match(r"^(?:`{3,}|~{3,})", line.strip()) for line in text.splitlines()):
+        raise ValueError("正文含代码围栏；请提供不混入代码示例的剧本副本，不将示例标题当作实际集场")
     episodes, current, lines = [], None, []
     for line in text.splitlines():
         match = EP_RE.match(line.strip())
@@ -124,23 +132,37 @@ def split_episodes(text: str) -> list[tuple[str, list[str]]]:
 
 def analyze_episode(name: str, lines: list[str], constraints: dict, sources: dict) -> EpisodeStats:
     stats = EpisodeStats(episode=name)
-    content = [line.strip() for line in lines if line.strip() and not line.strip().startswith("【")]
+    content = [line.strip() for line in lines if line.strip() and
+               not line.strip().startswith("【") and not SEPARATOR_RE.fullmatch(line.strip())]
     body = [line for line in content if not line.startswith(("场", "人物", "#"))]
     if not body or not any(re.search(r"\w", line) for line in body):
         raise ValueError(f"{name} 正文为空（场标题与人物清单不算正文）")
     stats.chars = sum(len(re.sub(r"[^一-鿿]", "", line)) for line in body)
     stats.slots = sum(line.count("【SLOT-") for line in content)
     locations, previous_speaker, with_parenthetical = [], None, 0
+    seen_scenes = set()
+    invalid_headers, incomplete_locations, unknown_body = False, False, False
+    episode_number = int(re.fullmatch(r"第(\d+)集", name).group(1))
     for line in content:
-        if line.startswith("场"):
+        if SCENE_START_RE.match(line):
             previous_speaker = None
-            match = SCENE_RE.match(line)
-            if match:
-                stats.scenes += 1
-                locations.append(match.group(1).strip())
+            header = SCENE_ID_RE.fullmatch(line)
+            if not header:
+                invalid_headers, incomplete_locations = True, True
+                stats.warnings.append(f"场标题未完整识别，地点数量可能不完整：{line}")
+                continue
+            scene_episode, scene_number = int(header.group(1)), int(header.group(2))
+            if scene_episode != episode_number or scene_number < 1:
+                raise ValueError(f"{name} 场号不属于本集或场序非正数：{line}")
+            if scene_number in seen_scenes:
+                raise ValueError(f"{name} 存在重复场号：{line}")
+            seen_scenes.add(scene_number)
+            stats.scenes += 1
+            detail = SCENE_DETAIL_RE.fullmatch(header.group(3) or "")
+            if detail:
+                locations.append(detail.group(1).strip())
             else:
-                if SCENE_LOOSE_RE.match(line):
-                    stats.scenes += 1
+                incomplete_locations = True
                 stats.warnings.append(f"场标题未完整识别，地点数量可能不完整：{line}")
             continue
         if line.startswith(("人物", "#")):
@@ -157,6 +179,7 @@ def analyze_episode(name: str, lines: list[str], constraints: dict, sources: dic
                 stats.speaker_changes += 1
             previous_speaker = speaker
         else:
+            unknown_body = True
             stats.warnings.append(f"未识别为动作或台词，相关计数可能不完整：{line}")
     stats.location_list = sorted(set(locations))
     stats.locations = len(stats.location_list)
@@ -165,6 +188,11 @@ def analyze_episode(name: str, lines: list[str], constraints: dict, sources: dic
         stats.paren_ratio = with_parenthetical / stats.dialog_lines
     if not stats.scenes:
         stats.warnings.append("未识别到场标题；场数与地点数不能作为完整制作统计。")
+    stats.parse_coverage = {
+        "scene_headers": "unknown" if not stats.scenes else "partial" if invalid_headers else "complete",
+        "location_labels": "unknown" if not stats.scenes else "partial" if incomplete_locations else "complete",
+        "body_lines": "partial" if unknown_body else "complete",
+    }
     for key, expected in constraints.items():
         metric, operator, label = RULES[key]
         actual = getattr(stats, metric)
