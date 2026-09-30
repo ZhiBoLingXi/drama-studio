@@ -414,6 +414,24 @@ class PendingShowTests(ProjectCase):
         self.assertEqual([item["requestId"] for item in result["pending"]], ["d1-save-9"])
         self.assertEqual([item["requestId"] for item in result["read_only_unknown"]], ["d1-list-4"])
 
+    def test_pending_re_verifies_stored_reconciliation_evidence(self):
+        self.unknown_save()
+        self.record("07-reconcile-get.response.json", "get_story_artifact", "d1-reconcile-3", "07-reconcile-get.input.json", reconciles="d1-save-3")
+        good = json.loads((self.receipts / "d1-reconcile-3.json").read_text(encoding="utf-8"))
+        self.assertEqual(json.loads(good["notes"])["observedRequestId"], "d1-save-3")
+        (self.receipts / "d1-reconcile-3.json").unlink()
+        forged_notes = dict(json.loads(good["notes"]), observedRequestId="someone-else")
+        cases = {"forged-id": dict(good, notes=json.dumps(forged_notes)),
+                 "other-project": dict(good, remote=dict(good["remote"], projectId="other-project"))}
+        for name, doc in cases.items():
+            (self.receipts / f"{name}.json").write_text(json.dumps(dict(doc, requestId=name)), encoding="utf-8")
+        result = receipt.pending(str(self.project))
+        self.assertEqual(result["resolved_verified"], [])
+        self.assertEqual([item["requestId"] for item in result["pending"]], ["d1-save-3"])
+        reasons = {Path(item["path"]).stem: " ".join(item["errors"]) for item in result["invalid"]}
+        self.assertIn("observedRequestId", reasons["forged-id"])
+        self.assertIn("projectId", reasons["other-project"])
+
     def test_read_only_unknowns_get_no_save_style_steps(self):
         self.unknown_save()
         self.record(Path(self.temp.name) / "missing.json", "read_story_artifact", "read-lost",
