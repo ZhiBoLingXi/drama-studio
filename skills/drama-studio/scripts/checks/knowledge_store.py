@@ -43,8 +43,13 @@ def _load_entry(path: Path) -> dict:
     if parsed is None:
         entry["errors"].append("filename: must be <cardId>@r<revision>.json with a positive integer revision")
     try:
-        entry["doc"] = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError as error:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, ValueError) as error:
+        entry["errors"].append(f"read: {error}")
+        return entry
+    try:
+        entry["doc"] = json.loads(text)
+    except (ValueError, RecursionError) as error:
         entry["errors"].append(f"json: {error}")
         return entry
     entry["errors"].extend(check_contract("knowledge-card", entry["doc"]))
@@ -79,7 +84,8 @@ def _public(store: dict) -> dict:
 
 
 def _invalid(entries: list[dict]) -> list[dict]:
-    return [{"path": entry["path"], "errors": entry["errors"]} for entry in entries if entry["errors"]]
+    return [{"path": entry["path"], "cardId": entry["cardId"], "revision": entry["revision"], "errors": entry["errors"]}
+            for entry in entries if entry["errors"]]
 
 
 def run_knowledge_validate(project: str) -> dict:
@@ -102,18 +108,26 @@ def _texts(value) -> list[str]:
     return []
 
 
-def _line(doc: dict, same: list[dict]) -> str:
+def _line(doc: dict, same: list[dict], newer_invalid: list[int]) -> str:
     marks = "  ".join(f"同源:{item['sourceId']}({','.join(item['cards'])})" for item in same) or "无同源"
     line = f"{doc['cardId']}@r{doc['revision']}  {doc['knowledgeType']}  {','.join(doc['transfer']['workstations'])}  {doc['usage']}  {marks}"
-    return line + ("  [retired]" if doc["processing"] == "retired" else "")
+    if doc["processing"] == "retired":
+        line += "  [retired]"
+    if newer_invalid:
+        line += f"  [newer-invalid:{','.join('r' + str(r) for r in newer_invalid)}]"
+    return line
 
 
 def run_knowledge_search(project: str, knowledge_type: str | None = None, workstation: str | None = None,
                          usage: str | None = None, text: str | None = None, include_retired: bool = False) -> dict:
     store = _load_store(_project(project))
     latest: dict[str, dict] = {}
+    invalid_revisions: dict[str, list[int]] = {}
     for entry in store["entries"]:
-        if not entry["errors"] and entry["revision"] > latest.get(entry["cardId"], {}).get("revision", 0):
+        if entry["errors"]:
+            if entry["cardId"] is not None:
+                invalid_revisions.setdefault(entry["cardId"], []).append(entry["revision"])
+        elif entry["revision"] > latest.get(entry["cardId"], {}).get("revision", 0):
             latest[entry["cardId"]] = entry
     pool = [entry for _, entry in sorted(latest.items())
             if include_retired or entry["doc"]["processing"] != "retired"]
@@ -132,15 +146,18 @@ def run_knowledge_search(project: str, knowledge_type: str | None = None, workst
             continue
         if usage and doc["usage"] != usage:
             continue
-        if needle and needle not in "\n".join([doc["cardId"], *_texts(doc["content"]), *_texts(doc["transfer"])]).casefold():
+        transfer_text = [doc["transfer"].get("transferable", ""), doc["transfer"].get("notTransferable", "")]
+        if needle and needle not in "\n".join([doc["cardId"], *_texts(doc["content"]), *transfer_text]).casefold():
             continue
         source_ids = dict.fromkeys(source["sourceId"] for source in doc["evidence"]["sources"])
         same = [{"sourceId": sid, "cards": sorted(holders[sid] - {doc["cardId"]})}
                 for sid in source_ids if len(holders[sid]) > 1]
+        newer_invalid = sorted(r for r in invalid_revisions.get(doc["cardId"], []) if r > doc["revision"])
         results.append({"cardId": doc["cardId"], "revision": doc["revision"], "path": entry["path"],
                         "knowledgeType": doc["knowledgeType"], "workstations": doc["transfer"]["workstations"],
                         "usage": doc["usage"], "processing": doc["processing"], "sameSource": same,
-                        "line": _line(doc, same)})
+                        "newerInvalidRevisions": newer_invalid,
+                        "line": _line(doc, same, newer_invalid)})
     invalid = _invalid(store["entries"])
     return {"ok": True, "command": "knowledge search", **_public(store),
             "filters": {"type": knowledge_type, "workstation": workstation, "usage": usage, "text": text,
@@ -156,13 +173,18 @@ def _check_source(root: Path, source: dict) -> dict:
     if not location.startswith(SOURCES + "/"):
         return {**result, "kind": "external", "status": "external_not_checked"}
     relative, _, position = location.partition("#")
-    sources = (root / SOURCES).resolve()
-    allowed = (root / SOURCES / source["sourceId"]).resolve()
-    target = (root / relative).resolve()
-    result.update(kind="local", path=str(target), position=position or None)
-    if allowed.parent != sources or not target.is_relative_to(allowed) or target == allowed:
-        return {**result, "status": "outside_source_dir"}
-    return {**result, "status": "present" if target.is_file() else "missing"}
+    result.update(kind="local", position=position or None)
+    try:
+        sources = (root / SOURCES).resolve()
+        allowed = (root / SOURCES / source["sourceId"]).resolve()
+        target = (root / relative).resolve()
+        result["path"] = str(target)
+        if allowed.parent != sources or not target.is_relative_to(allowed):
+            return {**result, "status": "outside_source_dir"}
+        status = "present" if target.is_file() else "missing"
+    except (OSError, RuntimeError, ValueError) as error:
+        return {**result, "status": "unresolvable", "error": str(error)}
+    return {**result, "status": status}
 
 
 def run_knowledge_show(project: str, card_id: str, revision: int | None = None) -> dict:
@@ -178,8 +200,10 @@ def run_knowledge_show(project: str, card_id: str, revision: int | None = None) 
     sources = []
     if not entry["errors"]:
         sources = [_check_source(root, source) for source in entry["doc"]["evidence"]["sources"]]
-    missing = [item["location"] for item in sources if item["status"] in ("missing", "outside_source_dir")]
+    missing = [item["location"] for item in sources if item["status"] in ("missing", "outside_source_dir", "unresolvable")]
+    local_sources_checked = sum(1 for item in sources if item["kind"] == "local")
     return {"ok": True, "command": "knowledge show", **_public(store), "path": entry["path"],
             "cardId": card_id, "revision": entry["revision"], "available_revisions": sorted(matches),
             "card": entry["doc"], "errors": entry["errors"], "sources": sources, "missing": missing,
-            "sources_checked": not entry["errors"], "passed": not (entry["errors"] or missing)}
+            "sources_checked": not entry["errors"], "local_sources_checked": local_sources_checked,
+            "passed": not (entry["errors"] or missing)}

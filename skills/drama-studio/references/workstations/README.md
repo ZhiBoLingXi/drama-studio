@@ -58,13 +58,13 @@ python3 -B scripts/drama_tools.py knowledge search <项目> [--type K1..K9] [--w
 python3 -B scripts/drama_tools.py knowledge show <项目> <cardId> [--revision N]
 ```
 
-- `validate`：对全部卡片运行 knowledge-card 契约校验（含 studio／public 范围拒绝），并核对文件名。JSON 损坏的卡片计为无效卡。
-- `search`：每个 cardId 只看最新的有效修订，默认排除 `processing: retired`；`--text` 对 cardId、`content` 与 `transfer` 文本做不区分大小写的子串匹配。每条结果带 `line`（如 `kc-a@r2  K3  C2,C4,C5  creative_reference  同源:src-x(kc-b)`，无共享来源时写 `无同源`）与 `sameSource`。遇到无效卡时仍输出结果，无效卡列入 `invalid` 且不参与检索。
-- `show`：默认最新修订，`--revision N` 取指定修订；打印完整卡片与每个来源的位置。本地来源须解析在 `knowledge/sources/<sourceId>/` 内且文件存在，否则报 `missing` 或 `outside_source_dir`（含 `../` 越界）。
+- `validate`：对全部卡片运行 knowledge-card 契约校验（含 studio／public 范围拒绝），并核对文件名。JSON 损坏、读取失败或非法编码的卡片计为无效卡，不中断其余卡片的处理；每条 `invalid` 记录带 `path`、`cardId`、`revision`（文件名解析不出时为 `null`）与 `errors`。
+- `search`：每个 cardId 只看最新的**有效**修订，默认排除 `processing: retired`；`--text` 对 cardId、`content` 与 `transfer.transferable`／`transfer.notTransferable` 文本做不区分大小写的子串匹配（不匹配工位代码列表）。每条结果带 `line`（如 `kc-a@r2  K3  C2,C4,C5  creative_reference  同源:src-x(kc-b)`，无共享来源时写 `无同源`）、`sameSource` 与 `newerInvalidRevisions`（该 cardId 比当前结果更新但无效的修订号；非空时 `line` 末尾追加 `[newer-invalid:r2]`，多个逗号分隔）。遇到无效卡时仍输出结果，无效卡列入 `invalid` 且不参与检索。
+- `show`：默认最新修订（即使该修订无效也会打开，不隐藏坏的新修订），`--revision N` 取指定修订；打印完整卡片与每个来源的位置。本地来源须解析在 `knowledge/sources/<sourceId>/` 内且文件存在，否则报 `missing`（含来源目录本身或任意目录）、`outside_source_dir`（含 `../` 越界与逃逸符号链接）或 `unresolvable`（如符号链接循环、路径含空字节，随 `error` 字段说明）。结果带 `local_sources_checked`：本次检查的本地来源数量。
 
 **同源**：在参与检索的卡集合（每卡最新有效修订；默认不含退役卡）中，两张以上的卡共享同一 `sourceId` 即同源，先算同源、再应用类型／工位／用途／关键词过滤。同源只说明来源重复，用来发现“同一来源拆成多张卡冒充多源支持”；它不说明内容重复，也不说明来源可靠。
 
-退出码：`0` 完成（`knowledge/` 不存在时返回空结果、`store_status: "no_store"` 与目录约定提示）；`1` 输入或执行错误（项目路径不存在、卡片或指定修订不存在）；`2` validate／search 发现无效卡，或 show 的卡无效、本地来源缺失或越界。所有命令只读，输出带 `network_used: false`、`models_called: false`、`read_only: true`；不做向量检索、候选版本库或跨项目知识。
+退出码：`0` 完成（`knowledge/` 不存在时返回空结果、`store_status: "no_store"` 与目录约定提示）；`1` 输入或执行错误（项目路径不存在、卡片或指定修订不存在）；`2` validate／search 发现无效卡，或 show 的卡无效、本地来源缺失、越界或无法解析（`unresolvable`）。所有命令只读，输出带 `network_used: false`、`models_called: false`、`read_only: true`；不做向量检索、候选版本库或跨项目知识。
 
 ## 三种“kind”不要混用
 

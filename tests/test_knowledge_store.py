@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -218,6 +219,152 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertFalse(result["passed"])
         self.assertTrue(result["errors"])
+
+    def test_show_symlink_loop_source_is_unresolvable(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("symlink not supported")
+        loop_dir = self.project / "knowledge/sources/src-loop"
+        loop_dir.mkdir()
+        link = loop_dir / "loop.md"
+        try:
+            os.symlink(link, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink not supported")
+        self.write(card("kc-loop", sources=[("src-loop", "knowledge/sources/src-loop/loop.md")]))
+        code, result = run_cli("knowledge", "show", self.project, "kc-loop")
+        self.assertEqual(code, 2, result)
+        self.assertEqual(result["sources"][0]["status"], "unresolvable")
+        self.assertIn("error", result["sources"][0])
+        self.assertIn(result["sources"][0]["location"], result["missing"])
+
+    def test_show_symlink_escaping_source_dir_exits_2(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("symlink not supported")
+        outside = self.project / "outside.md"
+        outside.write_text("secret", encoding="utf-8")
+        source_dir = self.project / "knowledge/sources/src-link"
+        source_dir.mkdir()
+        link = source_dir / "escape.md"
+        try:
+            os.symlink(outside, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink not supported")
+        self.write(card("kc-escape", sources=[("src-link", "knowledge/sources/src-link/escape.md")]))
+        code, result = run_cli("knowledge", "show", self.project, "kc-escape")
+        self.assertEqual(code, 2, result)
+        self.assertEqual(result["sources"][0]["status"], "outside_source_dir")
+
+    def test_show_source_id_with_dotdot_exits_2(self):
+        self.write(card("kc-traverse", sources=[("../secret", "knowledge/sources/../secret/notes.md")]))
+        code, result = run_cli("knowledge", "show", self.project, "kc-traverse")
+        self.assertEqual(code, 2, result)
+        self.assertEqual(result["sources"][0]["status"], "outside_source_dir")
+
+    def test_show_nul_in_location_is_unresolvable_exit_2_not_1(self):
+        self.write(card("kc-nul", sources=[("src-shared", "knowledge/sources/src-shared/notes\x00.md")]))
+        code, result = run_cli("knowledge", "show", self.project, "kc-nul")
+        self.assertEqual(code, 2, result)
+        self.assertEqual(result["sources"][0]["status"], "unresolvable")
+
+    def test_source_dir_itself_is_missing_not_outside(self):
+        self.write(card("kc-dir", sources=[("src-shared", "knowledge/sources/src-shared")]))
+        code, result = run_cli("knowledge", "show", self.project, "kc-dir")
+        self.assertEqual(code, 2, result)
+        self.assertEqual(result["sources"][0]["status"], "missing")
+
+    def test_deeply_nested_json_card_is_invalid_not_a_crash(self):
+        (self.cards / "kc-deep@r1.json").write_text("[" * 200000 + "]" * 200000, encoding="utf-8")
+        code, result = run_cli("knowledge", "validate", self.project)
+        self.assertEqual(code, 2, result)
+        self.assertTrue(any(item["path"].endswith("kc-deep@r1.json") for item in result["invalid"]))
+        self.assertTrue(any(item["path"].endswith("kc-a@r2.json") for item in result["valid"]))
+
+    def test_non_dict_json_card_is_invalid(self):
+        (self.cards / "kc-list@r1.json").write_text("[1, 2, 3]", encoding="utf-8")
+        code, result = run_cli("knowledge", "validate", self.project)
+        self.assertEqual(code, 2, result)
+        self.assertTrue(any(item["path"].endswith("kc-list@r1.json") for item in result["invalid"]))
+
+    def test_non_utf8_card_is_invalid(self):
+        (self.cards / "kc-bytes@r1.json").write_bytes(b"\xff\xfe\x00\x01")
+        code, result = run_cli("knowledge", "validate", self.project)
+        self.assertEqual(code, 2, result)
+        self.assertTrue(any(item["path"].endswith("kc-bytes@r1.json") for item in result["invalid"]))
+
+    @unittest.skipUnless(hasattr(os, "geteuid") and os.geteuid() != 0, "cannot deny read access as root")
+    def test_unreadable_card_is_invalid_others_still_processed(self):
+        path = self.write(card("kc-locked"))
+        path.chmod(0o000)
+        try:
+            code, result = run_cli("knowledge", "validate", self.project)
+            self.assertEqual(code, 2, result)
+            self.assertTrue(any(item["path"].endswith("kc-locked@r1.json") for item in result["invalid"]))
+            self.assertTrue(any(item["path"].endswith("kc-a@r2.json") for item in result["valid"]))
+        finally:
+            path.chmod(0o644)
+
+    def test_directory_named_like_a_card_is_ignored(self):
+        (self.cards / "x@r1.json").mkdir()
+        code, result = run_cli("knowledge", "validate", self.project)
+        self.assertEqual(code, 0, result)
+        self.assertTrue(any(path.endswith("x@r1.json") for path in result["ignored"]))
+
+    def test_no_cards_status_is_ok_with_hint(self):
+        no_cards = Path(self.temp.name) / "no-cards"
+        (no_cards / "knowledge").mkdir(parents=True)
+        code, result = run_cli("knowledge", "validate", no_cards)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["store_status"], "no_cards")
+        self.assertIn("knowledge/cards/<cardId>@r<revision>.json", result["hint"])
+
+    def test_empty_cards_dir_validate_passed_null_exit_0(self):
+        empty_cards = Path(self.temp.name) / "empty-cards"
+        (empty_cards / "knowledge/cards").mkdir(parents=True)
+        code, result = run_cli("knowledge", "validate", empty_cards)
+        self.assertEqual(code, 0, result)
+        self.assertIsNone(result["passed"])
+        self.assertEqual(result["checked"], 0)
+
+    def test_newest_invalid_revision_falls_back_to_older_valid(self):
+        bad = card("kc-a", 3)
+        del bad["usage"]
+        self.write(bad)
+        code, result = self.search()
+        self.assertEqual(code, 2, result)
+        by_id = {item["cardId"]: item for item in result["results"]}
+        self.assertEqual(by_id["kc-a"]["revision"], 2)
+        self.assertEqual(by_id["kc-a"]["newerInvalidRevisions"], [3])
+        self.assertIn("[newer-invalid:r3]", by_id["kc-a"]["line"])
+        code, result = run_cli("knowledge", "show", self.project, "kc-a")
+        self.assertEqual(code, 2, result)
+        self.assertEqual(result["revision"], 3)
+        self.assertTrue(result["errors"])
+
+    def test_invalid_entries_carry_card_id_and_revision(self):
+        bad = card("kc-bad")
+        del bad["usage"]
+        self.write(bad)
+        code, result = run_cli("knowledge", "validate", self.project)
+        self.assertEqual(code, 2, result)
+        self.assertEqual(result["invalid"][0]["cardId"], "kc-bad")
+        self.assertEqual(result["invalid"][0]["revision"], 1)
+        self.write(card("kc-x", 1), name="kc-bad-name.json")
+        code, result = run_cli("knowledge", "validate", self.project)
+        stray = next(item for item in result["invalid"] if item["path"].endswith("kc-bad-name.json"))
+        self.assertIsNone(stray["cardId"])
+        self.assertIsNone(stray["revision"])
+
+    def test_show_reports_local_sources_checked_count(self):
+        self.write(card("kc-multi", sources=[
+            ("src-shared", "knowledge/sources/src-shared/notes.md"),
+            ("src-solo", "mali-story://templates/tpl-2")]))
+        code, result = run_cli("knowledge", "show", self.project, "kc-multi")
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["local_sources_checked"], 1)
+
+    def test_text_filter_does_not_match_workstation_code(self):
+        code, result = self.search("--text", "C2")
+        self.assertEqual(self.ids(result), [])
 
     def test_unknown_card_revision_or_project_exits_1(self):
         self.assertEqual(run_cli("knowledge", "show", self.project, "kc-none")[0], 1)
