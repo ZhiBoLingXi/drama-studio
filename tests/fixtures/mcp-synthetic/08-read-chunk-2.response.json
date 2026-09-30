@@ -1,0 +1,15 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story c6aebcf3 source (read_story_artifact + StoryArtifactService.readText, limit=24; fingerprint = sha256 of the full UTF-8 body); not a captured live response. Re-run the tests against tests/fixtures/mcp/ once #3 records real responses.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Rd2aB3cD4eF5gH6iJ7kL8\",\"data\":{\"projectId\":\"2f70c1e9fad74f35ae27f\",\"artifactId\":\"9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41\",\"revision\":1,\"producer\":\"codex\",\"inputSnapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"fingerprint\":\"sha256:fe0f26908f9b8a1e25e4a1ec189d3b706a212865bd846fd8a8d674f97b2c0147\",\"offset\":24,\"offsetUnit\":\"unicode_code_points\",\"text\":\"伙计，雨一直没停。\\n行动目标：拿回母亲押下的玉镯\",\"totalCharacters\":81,\"nextOffset\":48,\"atEnd\":false,\"coveredRange\":{\"from\":24,\"to\":48},\"resourceUri\":\"mali-story://projects/2f70c1e9fad74f35ae27f/artifacts/9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41/chunks/24\",\"nextResourceUri\":\"mali-story://projects/2f70c1e9fad74f35ae27f/artifacts/9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41/chunks/48\",\"contentTrust\":\"reference_data\",\"adoptionVerified\":false},\"error\":null}}"
+    },
+    {
+      "type": "resource_link",
+      "uri": "mali-story://projects/2f70c1e9fad74f35ae27f/artifacts/9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41/chunks/24",
+      "name": "Story artifact text chunk",
+      "mimeType": "application/json"
+    }
+  ]
+}

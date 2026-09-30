@@ -1,0 +1,25 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story c6aebcf3 source (story-artifacts route fail() 409 + toolResult + normalizeMcpOutput); not a captured live response. Re-run the tests against tests/fixtures/mcp/ once #3 records real responses.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":409,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"data\":null,\"error\":{\"code\":\"VERSION_CONFLICT\",\"message\":\"Candidate revision changed.\",\"retryable\":false}}}"
+    }
+  ],
+  "isError": true,
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": false,
+    "transport": {
+      "status": 409
+    },
+    "error": {
+      "code": "VERSION_CONFLICT",
+      "message": "Candidate revision changed."
+    },
+    "recovery": {
+      "action": "refresh_state",
+      "retrySafe": false
+    }
+  }
+}

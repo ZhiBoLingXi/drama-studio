@@ -1,0 +1,22 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story c6aebcf3 source (unexpectedMcpFailure + normalizeMcpOutput (write tool: readOnly=false)); not a captured live response. Re-run the tests against tests/fixtures/mcp/ once #3 records real responses.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"error\":true,\"code\":\"MCP_OUTCOME_UNKNOWN\",\"message\":\"The response was not confirmed. Inspect the existing task or request receipt before retrying a write.\"}"
+    }
+  ],
+  "isError": true,
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": false,
+    "error": {
+      "code": "MCP_OUTCOME_UNKNOWN",
+      "message": "The response was not confirmed. Inspect the existing task or request receipt before retrying a write."
+    },
+    "recovery": {
+      "action": "inspect_task",
+      "retrySafe": false
+    }
+  }
+}

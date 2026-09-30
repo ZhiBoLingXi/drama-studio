@@ -1,0 +1,34 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story c6aebcf3 source (read_story_artifact + StoryArtifactService.readText, limit=24; fingerprint = sha256 of the full UTF-8 body); not a captured live response. Re-run the tests against tests/fixtures/mcp/ once #3 records real responses.",
+  "schemaVersion": "mali-tool-result/v1",
+  "ok": true,
+  "transport": {
+    "status": 200
+  },
+  "data": {
+    "projectId": "2f70c1e9fad74f35ae27f",
+    "artifactId": "9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41",
+    "revision": 1,
+    "producer": "codex",
+    "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+    "fingerprint": "sha256:fe0f26908f9b8a1e25e4a1ec189d3b706a212865bd846fd8a8d674f97b2c0147",
+    "offset": 48,
+    "offsetUnit": "unicode_code_points",
+    "text": "，不让继母先到。\n结尾钩子：伙计递来的当票上，写",
+    "totalCharacters": 81,
+    "nextOffset": 72,
+    "atEnd": false,
+    "coveredRange": {
+      "from": 48,
+      "to": 72
+    },
+    "resourceUri": "mali-story://projects/2f70c1e9fad74f35ae27f/artifacts/9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41/chunks/48",
+    "nextResourceUri": "mali-story://projects/2f70c1e9fad74f35ae27f/artifacts/9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41/chunks/72",
+    "contentTrust": "reference_data",
+    "adoptionVerified": false
+  },
+  "recovery": {
+    "action": "none",
+    "retrySafe": false
+  }
+}

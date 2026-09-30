@@ -1,0 +1,47 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story c6aebcf3 source (get_story_artifact + StoryArtifactService.getCandidate); not a captured live response. Re-run the tests against tests/fixtures/mcp/ once #3 records real responses.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Hk2pQ9wE4rT7yU1iO3aSd\",\"data\":{\"record\":{\"id\":\"9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41\",\"projectId\":\"2f70c1e9fad74f35ae27f\",\"slot\":\"ep-03-outline\",\"kind\":\"episode_outline\",\"episodeRef\":\"ep-03\",\"revision\":1,\"body\":\"第3集 集纲\\n处境：林晚在祠堂外等来𠮷字号当铺的伙计，雨一直没停。\\n行动目标：拿回母亲押下的玉镯，不让继母先到。\\n结尾钩子：伙计递来的当票上，写的是她自己的名字。\",\"producer\":\"codex\",\"submittedByUserId\":\"usr_synthetic01\",\"inputSnapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"requestId\":\"d1-save-2\",\"requestFingerprint\":\"sha256:227b8aaeb7ef64e0c2d8275656c4478877e5bd27b740770c212b61bf49798534\",\"createdAt\":\"2026-09-30T04:29:50.000Z\"},\"status\":\"candidate\",\"sourceValidation\":\"pending\",\"sourceState\":{\"inputSnapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"inputRevision\":7,\"currentRevision\":7,\"freshness\":\"current_at_read\",\"nextAction\":\"review_candidate\",\"adoptionVerified\":false}},\"error\":null}}"
+    }
+  ],
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": true,
+    "transport": {
+      "status": 200
+    },
+    "data": {
+      "record": {
+        "id": "9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41",
+        "projectId": "2f70c1e9fad74f35ae27f",
+        "slot": "ep-03-outline",
+        "kind": "episode_outline",
+        "episodeRef": "ep-03",
+        "revision": 1,
+        "body": "第3集 集纲\n处境：林晚在祠堂外等来𠮷字号当铺的伙计，雨一直没停。\n行动目标：拿回母亲押下的玉镯，不让继母先到。\n结尾钩子：伙计递来的当票上，写的是她自己的名字。",
+        "producer": "codex",
+        "submittedByUserId": "usr_synthetic01",
+        "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+        "requestId": "d1-save-2",
+        "requestFingerprint": "sha256:227b8aaeb7ef64e0c2d8275656c4478877e5bd27b740770c212b61bf49798534",
+        "createdAt": "2026-09-30T04:29:50.000Z"
+      },
+      "status": "candidate",
+      "sourceValidation": "pending",
+      "sourceState": {
+        "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+        "inputRevision": 7,
+        "currentRevision": 7,
+        "freshness": "current_at_read",
+        "nextAction": "review_candidate",
+        "adoptionVerified": false
+      }
+    },
+    "recovery": {
+      "action": "none",
+      "retrySafe": false
+    }
+  }
+}

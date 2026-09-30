@@ -132,6 +132,17 @@ python3 -B skills/drama-studio/scripts/drama_tools.py context-pack ../my-drama -
 
 `knowledge {validate,search,show} <项目>` 只读管理项目私有知识卡：卡片放在 `knowledge/cards/<cardId>@r<revision>.json`，本地证据放在 `knowledge/sources/<sourceId>/`。validate 逐卡运行契约校验并核对文件名；search 只返回每卡最新有效修订，默认排除退役卡（`--include-retired` 可纳入），按类型、工位、用途、关键词过滤，并标注共享 sourceId 的同源卡（只说明来源重复，不说明可靠）；show 打印卡片与来源位置并核对本地证据文件存在。无效卡、来源缺失或越界时退出码 2；`knowledge/` 不存在时返回空结果与目录提示、退出码 0。详见[知识库目录与命令](skills/drama-studio/references/workstations/README.md#知识库目录与命令)。
 
+`receipt` 把宿主保存的 mali-story MCP 响应记成回执（`.drama/receipts/`），把完整读到的候选正文写入本地缓存（`.drama/cache/`），工具本身不联网、不调用 MCP。以下用合成夹具演示：
+
+```sh
+python3 -B skills/drama-studio/scripts/drama_tools.py receipt record ../my-drama tests/fixtures/mcp-synthetic/02-save.response.json --operation save_story_artifact --request-id d1-save-2 --input tests/fixtures/mcp-synthetic/02-save.input.json
+python3 -B skills/drama-studio/scripts/drama_tools.py receipt pending ../my-drama
+python3 -B skills/drama-studio/scripts/drama_tools.py receipt cache ../my-drama tests/fixtures/mcp-synthetic/08-read-chunk-*.response.json tests/fixtures/mcp-synthetic/03-get.response.json
+python3 -B skills/drama-studio/scripts/drama_tools.py receipt show ../my-drama d1-save-2
+```
+
+同一 requestId 输入不同、缓存分块不完整或全文哈希与服务端 `fingerprint` 不符时退出码 2，已有文件不变；响应缺失记 `unknown` 且不允许重试。回执和缓存都不是采用证据。方法见 [候选保存与对账](skills/drama-studio/references/mali-story.md#候选保存与对账)。
+
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 
 ## 成果与状态
