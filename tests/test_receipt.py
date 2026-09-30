@@ -875,7 +875,8 @@ class DocsTests(unittest.TestCase):
         for needle in ("producer", "`codex`", "`human`", "slot", "episodeRef", "episode_draft", "series_outline",
                        "requestFingerprint", "inputFingerprint", "--reconciles", "receipt pending", "receipt cache",
                        "nextOffset", "保存不等于采用", "不换新 requestId", "expected_revision 已过期",
-                       "同一 requestId 配了不同输入", ".resend-1", "resolved_verified", "resolved_host_judged", "read_only_unknown"):
+                       "同一 requestId 配了不同输入", ".resend-1", "resolved_verified", "resolved_host_judged", "read_only_unknown",
+                       "unreconcilable_unknown", "prepare_story_context", "列表为空", "非 confirmed 的重发", "修订号大于"):
             self.assertIn(needle, section, needle)
 
     def test_workstation_steps_link_the_method(self):
