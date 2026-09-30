@@ -550,12 +550,16 @@ class CacheTests(ProjectCase):
         again = self.cache(*CHUNKS, "03-get.response.json")
         self.assertEqual((again["status"], again["manifestAppended"]), ("unchanged", False))
         self.assertEqual(self.manifest.read_bytes(), before)
-        first = json.loads(before)["entries"][0]
+        downgrade = self.cache("03-get.response.json")  # a later get must not shadow the verified read
+        self.assertEqual((downgrade["status"], downgrade["manifestAppended"], downgrade["entry"]["verified"]), ("unchanged", False, True))
+        self.assertEqual(self.manifest.read_bytes(), before)
+
+    def test_verified_read_after_get_only_is_appended_last(self):
         self.cache("03-get.response.json")
+        result = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertEqual((result["status"], result["manifestAppended"]), ("unchanged", True))
         entries = json.loads(self.manifest.read_text(encoding="utf-8"))["entries"]
-        self.assertEqual(len(entries), 2)
-        self.assertEqual(entries[0], first)
-        self.assertEqual(entries[1]["verified"], False)
+        self.assertEqual([entry["verified"] for entry in entries], [False, True])
 
     def test_existing_cache_with_different_bytes_is_refused(self):
         self.cache_dir.mkdir()

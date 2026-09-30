@@ -558,8 +558,10 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             if path.read_bytes() != content:
                 return _refuse(f"{path} already exists with different bytes")
             status = "unchanged"
-        existing = next((item for item in manifest["entries"] if isinstance(item, dict)
-                         and item.get("path") == rel and item.get("verified") == verified), None)
+        same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
+        existing = next((item for item in same if item.get("verified") == verified), None)
+        if not verified:  # never shadow a verified read with a later unverified entry for the same bytes
+            existing = next((item for item in same if item.get("verified") is True and item.get("sha256") == digest), existing)
         if existing is None:
             manifest["entries"].append(entry)
             atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
