@@ -294,7 +294,18 @@ def _reconcile_check(operation: str, reconciles: str, target, doc: dict, parsed:
     slot = _field(request, "slot")
     if slot is None or slot != _slot(target):
         return f"list_story_artifacts must be filtered by the unknown save's slot {_slot(target)!r}; --input has {slot!r}", ""
-    return None, "host matched a listed revision in the same project and slot; list rows carry no requestId (M)"
+    expected = _notes(target).get("expectedRevision")
+    data = parsed["data"]
+    rows = data.get("records") if isinstance(data.get("records"), list) else data.get("items")
+    match = next((row for row in rows or [] if isinstance(row, dict) and row.get("slot") == slot
+                  and _is_int(row.get("revision")) and _is_int(expected) and row["revision"] > expected
+                  and row.get("inputSnapshotId") == target["remote"]["inputSnapshotId"]), None)
+    if match is None:
+        return (f"no listed row in slot {slot!r} has revision > {expected!r} and inputSnapshotId "
+                f"{target['remote']['inputSnapshotId']!r}: the save probably did not land. Re-send the identical save "
+                f"with the same request_id {reconciles!r} (server replay is idempotent) and record it with --reconciles {reconciles}"), ""
+    return None, {"check": "host matched a newer listed revision in the same project, slot and snapshot; list rows carry no requestId (M)",
+                  "matchedArtifactId": match.get("id"), "matchedRevision": match["revision"]}
 
 
 def record_receipt(project: str, response_path: str, operation: str, request_id: str, input_path: str,
@@ -342,7 +353,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         reason, check = _reconcile_check(operation, reconciles, target, doc, parsed, request)
         if reason:
             return _refused(base, reason)
-        notes.update(reconciles=reconciles, check=check)
+        notes.update(reconciles=reconciles, **(check if isinstance(check, dict) else {"check": check}))
     if notes:
         doc["notes"] = json.dumps(notes, ensure_ascii=False)
     errors = check_contract("remote-receipt", doc)

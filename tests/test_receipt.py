@@ -260,6 +260,32 @@ class RecordTests(ProjectCase):
         path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         return path
 
+    def list_response(self, mutate_rows, label):
+        value = fixture("04-list.response.json")
+        data = value["structuredContent"]["data"]
+        data["records"] = mutate_rows(data["records"])
+        path = Path(self.temp.name) / label
+        path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def test_list_needs_a_newer_row_in_the_slot_from_the_same_snapshot(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        cases = {"empty list": lambda rows: [],
+                 "only older revisions": lambda rows: [rows[0]],
+                 "other slot": lambda rows: [dict(row, slot="ep-04-outline") for row in rows],
+                 "other snapshot": lambda rows: [dict(row, inputSnapshotId="sha256:" + "0" * 64) for row in rows]}
+        for label, mutate_rows in cases.items():
+            with self.subTest(label):
+                response = self.list_response(mutate_rows, f"{label}.json")
+                result = self.record(response, "list_story_artifacts", "d1-list-3", "04-list.input.json", reconciles="d1-save-3")
+                self.assertEqual((result["passed"], result["status"]), (False, "reconcile_refused"))
+                self.assertIn("re-send the identical save", result["error"].lower())
+                self.assertFalse((self.receipts / "d1-list-3.json").exists())
+        result = self.record("04-list.response.json", "list_story_artifacts", "d1-list-3", "04-list.input.json", reconciles="d1-save-3")
+        notes = json.loads(result["receipt"]["notes"])
+        self.assertEqual((notes["matchedArtifactId"], notes["matchedRevision"]), ("c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d", 2))
+        self.assertIn("(M)", notes["check"])
+
     def test_reconcilers_need_evidence(self):
         self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
         self.save()  # confirmed d1-save-2
