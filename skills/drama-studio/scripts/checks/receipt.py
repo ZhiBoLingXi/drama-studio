@@ -148,6 +148,27 @@ def drama_dir(project: str) -> Path:
     return path
 
 
+def _inside(path: Path, root: Path, what: str) -> Path:
+    """Mirrors context_pack._inside: refuse anything that resolves outside the project."""
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root.resolve()):
+        raise ValueError(f"{what} resolves outside the project ({resolved}); symlinked folders and files are refused")
+    return resolved
+
+
+def area(drama: Path, name: str) -> Path:
+    """`.drama/receipts` or `.drama/cache`, refused when a symlink points it outside the project."""
+    folder = drama / name
+    _inside(folder, drama.parent, f".drama/{name}")
+    return folder
+
+
+def contained(path: Path, drama: Path) -> Path:
+    if path.is_symlink() or path.exists():
+        _inside(path, drama.parent, str(path.relative_to(drama.parent)))
+    return path
+
+
 def atomic_write(path: Path, content: bytes) -> None:
     """Temp file in the same folder + os.replace; used only for the manifest, under manifest_lock."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,12 +255,13 @@ def _load_response(path: str, operation: str) -> tuple[dict | None, str]:
 
 
 def _receipts(drama: Path) -> list[tuple[Path, object]]:
-    folder = drama / "receipts"
+    folder = area(drama, "receipts")
     items = []
     for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
         try:
+            contained(path, drama)
             items.append((path, json.loads(path.read_text(encoding="utf-8"))))
-        except (UnicodeDecodeError, ValueError) as error:
+        except (UnicodeDecodeError, ValueError, OSError) as error:
             items.append((path, error))
     return items
 
@@ -325,7 +347,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         safe_id(reconciles, "--reconciles")
         if operation not in RECONCILERS:
             raise ValueError(f"--reconciles is recorded from {', '.join(RECONCILERS)} only")
-        target_path = drama / "receipts" / f"{reconciles}.json"
+        target_path = contained(area(drama, "receipts") / f"{reconciles}.json", drama)
         if not target_path.is_file():
             raise ValueError(f"No local receipt {reconciles!r} to reconcile")
         target = json.loads(target_path.read_text(encoding="utf-8"))
@@ -366,8 +388,8 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
                     and item.get("operation") == "get_writing_context" and item.get("outcome") == "confirmed" and isinstance(item.get("remote"), dict)}
         if remote["inputSnapshotId"] not in contexts:
             base["warnings"].append("inputSnapshotId matches no local confirmed get_writing_context receipt; record that read before trusting this save's provenance")
-    path = drama / "receipts" / f"{request_id}.json"
-    content = (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    path = contained(area(drama, "receipts") / f"{request_id}.json", drama)
+    content =(json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if not path.exists() and publish_new(path, content):
         return {**base, "passed": True, "status": "written", "path": str(path), "receipt": doc}
     try:  # present before us, or a concurrent writer won the race; never trust it unchecked
@@ -463,7 +485,8 @@ def pending(project: str) -> dict:
 
 
 def show(project: str, request_id: str) -> dict:
-    path = drama_dir(project) / "receipts" / f"{safe_id(request_id, 'requestId')}.json"
+    drama = drama_dir(project)
+    path = contained(area(drama, "receipts") / f"{safe_id(request_id, 'requestId')}.json", drama)
     if not path.is_file():
         raise ValueError(f"No receipt {request_id!r} in {path.parent}")
     doc = json.loads(path.read_text(encoding="utf-8"))
@@ -574,8 +597,10 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     digest = "sha256:" + hashlib.sha256(content).hexdigest()
     verified = server is not None and digest == server
     name = f"{artifact}@r{revision}.md"
-    folder = drama / "cache"
+    folder = area(drama, "cache")
     path, manifest_path, rel = folder / name, folder / "manifest.json", f".drama/cache/{name}"
+    for file in (path, manifest_path):
+        contained(file, drama)
     entry = {"path": rel, "artifactId": artifact, "slot": slot, "kind": kind, "episodeRef": episode_ref,
              "revision": revision, "sha256": digest, "serverFingerprint": server, "verified": verified,
              "operation": operation, "readAt": _now()}

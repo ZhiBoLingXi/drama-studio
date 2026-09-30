@@ -388,6 +388,36 @@ class RecordTests(ProjectCase):
                 self.assertFalse((self.receipts / "d1-save-3.resend-1.json").exists())
 
 
+class ContainmentTests(ProjectCase):
+    def outside(self, name):
+        path = Path(self.temp.name) / "outside" / name
+        path.mkdir(parents=True)
+        return path
+
+    def test_symlinked_folders_outside_the_project_are_refused(self):
+        (self.project / ".drama/receipts").symlink_to(self.outside("receipts"), target_is_directory=True)
+        (self.project / ".drama/cache").symlink_to(self.outside("cache"), target_is_directory=True)
+        calls = {"record": lambda: self.save(), "pending": lambda: receipt.pending(str(self.project)),
+                 "show": lambda: receipt.show(str(self.project), "d1-save-2"),
+                 "cache": lambda: receipt.cache(str(self.project), [str(FIXTURES / name) for name in CHUNKS] + [str(FIXTURES / "03-get.response.json")])}
+        for label, call in calls.items():
+            with self.subTest(label):
+                with self.assertRaisesRegex(ValueError, "outside the project"):
+                    call()
+        self.assertEqual(list((Path(self.temp.name) / "outside").rglob("*.*")), [])
+
+    def test_symlinked_receipt_file_outside_the_project_is_refused(self):
+        self.receipts.mkdir()
+        elsewhere = self.outside("files") / "d1-save-2.json"
+        elsewhere.write_text("{}", encoding="utf-8")
+        (self.receipts / "d1-save-2.json").symlink_to(elsewhere)
+        with self.assertRaisesRegex(ValueError, "outside the project"):
+            self.save()
+        with self.assertRaisesRegex(ValueError, "outside the project"):
+            receipt.show(str(self.project), "d1-save-2")
+        self.assertEqual(elsewhere.read_text(encoding="utf-8"), "{}")
+
+
 class PendingShowTests(ProjectCase):
     def unknown_save(self):
         return self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
