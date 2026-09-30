@@ -49,7 +49,7 @@ S 通过只说明格式与脚本规则满足，不说明引用在远端存在、
 
 目录约定（由知识编辑或宿主创建，工具不会创建）：
 
-- `<项目>/knowledge/cards/<cardId>@r<revision>.json`：一个修订一个文件，新修订写新文件；不递归子目录，非 `.json` 文件列入 `ignored`。文件名按最后一个 `@r` 切分，revision 必须是正整数，且须与卡片内容中的 `cardId`、`revision` 一致。
+- `<项目>/knowledge/cards/<cardId>@r<revision>.json`：一个修订一个文件，新修订写新文件；不递归子目录，非 `.json` 文件列入 `ignored`；以 `.json` 结尾却不是普通文件（目录、断开的符号链接）计为无效卡。文件名按最后一个 `@r` 切分，revision 必须是正整数，且须与卡片内容中的 `cardId`、`revision` 一致。
 - `<项目>/knowledge/sources/<sourceId>/…`：本地原始证据。卡片 `evidence.sources[].location` 以 `knowledge/sources/<sourceId>/` 开头时视为本地文件，可带 `#<位置>` 后缀（如 `knowledge/sources/src-a/notes.md#L12-L20`）；其他位置标记为 `external_not_checked`，不声称已核验。
 
 ```sh
@@ -60,11 +60,11 @@ python3 -B scripts/drama_tools.py knowledge show <项目> <cardId> [--revision N
 
 - `validate`：对全部卡片运行 knowledge-card 契约校验（含 studio／public 范围拒绝），并核对文件名。JSON 损坏、读取失败或非法编码的卡片计为无效卡，不中断其余卡片的处理；每条 `invalid` 记录带 `path`、`cardId`、`revision`（文件名解析不出时为 `null`）与 `errors`。
 - `search`：每个 cardId 只看最新的**有效**修订，默认排除 `processing: retired`；`--text` 对 cardId、`content` 与 `transfer.transferable`／`transfer.notTransferable` 文本做不区分大小写的子串匹配（不匹配工位代码列表）。每条结果带 `line`（如 `kc-a@r2  K3  C2,C4,C5  creative_reference  同源:src-x(kc-b)`，无共享来源时写 `无同源`）、`sameSource` 与 `newerInvalidRevisions`（该 cardId 比当前结果更新但无效的修订号；非空时 `line` 末尾追加 `[newer-invalid:r2]`，多个逗号分隔）。遇到无效卡时仍输出结果，无效卡列入 `invalid` 且不参与检索。
-- `show`：默认最新修订（即使该修订无效也会打开，不隐藏坏的新修订），`--revision N` 取指定修订；打印完整卡片与每个来源的位置。本地来源须解析在 `knowledge/sources/<sourceId>/` 内且文件存在，否则报 `missing`（含来源目录本身或任意目录）、`outside_source_dir`（含 `../` 越界与逃逸符号链接）或 `unresolvable`（如符号链接循环、路径含空字节，随 `error` 字段说明）。结果带 `local_sources_checked`：本次检查的本地来源数量。
+- `show`：默认最新修订（即使该修订无效也会打开，不隐藏坏的新修订），`--revision N` 取指定修订；打印完整卡片与每个来源的位置。本地来源须解析在 `knowledge/sources/<sourceId>/` 内（文件夹名须与 sourceId 在磁盘上逐字一致，大小写或末尾 `/` 不同都不算）且文件存在，否则报 `missing`（含来源目录本身或任意目录）、`outside_source_dir`（含 `../` 越界与逃逸符号链接）或 `unresolvable`（如符号链接循环、路径含空字节，随 `error` 字段说明）。结果带 `local_sources_checked`：本次检查的本地来源数量；为 0（全部是外部来源或没有来源）时 `passed: null`，不声称证据已核验。`#<位置>` 只原样回显，不核对位置是否在文件范围内（`position_checked: false`）。
 
 **同源**：在参与检索的卡集合（每卡最新有效修订；默认不含退役卡）中，两张以上的卡共享同一 `sourceId` 即同源，先算同源、再应用类型／工位／用途／关键词过滤。同源只说明来源重复，用来发现“同一来源拆成多张卡冒充多源支持”；它不说明内容重复，也不说明来源可靠。
 
-退出码：`0` 完成（`knowledge/` 不存在时返回空结果、`store_status: "no_store"` 与目录约定提示）；`1` 输入或执行错误（项目路径不存在、卡片或指定修订不存在）；`2` validate／search 发现无效卡，或 show 的卡无效、本地来源缺失、越界或无法解析（`unresolvable`）。所有命令只读，输出带 `network_used: false`、`models_called: false`、`read_only: true`；不做向量检索、候选版本库或跨项目知识。
+退出码：`0` 完成（`knowledge/` 不存在时返回空结果、`store_status: "no_store"` 与目录约定提示；有 `knowledge/` 但无 `cards/` 时为 `no_cards`）；`1` 输入或执行错误（项目路径不存在、卡片或指定修订不存在）；`2` validate／search 发现无效卡，或 show 的卡无效、本地来源缺失、越界或无法解析（`unresolvable`）。所有命令只读，输出带 `network_used: false`、`models_called: false`、`read_only: true`；不做向量检索、候选版本库或跨项目知识。
 
 ## 三种“kind”不要混用
 

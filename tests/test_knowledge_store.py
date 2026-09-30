@@ -303,11 +303,48 @@ class KnowledgeStoreTests(unittest.TestCase):
         finally:
             path.chmod(0o644)
 
-    def test_directory_named_like_a_card_is_ignored(self):
-        (self.cards / "x@r1.json").mkdir()
+    def test_non_file_named_like_a_card_is_invalid_not_ignored(self):
+        (self.cards / "kc-a@r3.json").mkdir()
+        if hasattr(os, "symlink"):
+            try:
+                os.symlink(Path(self.temp.name) / "nowhere.json", self.cards / "kc-a@r4.json")
+            except (OSError, NotImplementedError):
+                pass
         code, result = run_cli("knowledge", "validate", self.project)
+        self.assertEqual(code, 2, result)
+        self.assertIn(3, [item["revision"] for item in result["invalid"] if item["cardId"] == "kc-a"])
+        self.assertTrue(all("not a regular file" in item["errors"][0] for item in result["invalid"]))
+        code, result = run_cli("knowledge", "search", self.project)
+        self.assertEqual(code, 2, result)
+        hit = next(item for item in result["results"] if item["cardId"] == "kc-a")
+        self.assertEqual(hit["revision"], 2)
+        self.assertIn(3, hit["newerInvalidRevisions"])
+        self.assertIn("[newer-invalid:r3", hit["line"])
+
+    def test_unexpandable_home_is_a_json_error_not_a_traceback(self):
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "knowledge", "validate", "~no_such_user_zz9/proj"],
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 1)
+        self.assertNotIn("Traceback", run.stderr)
+        self.assertFalse(json.loads(run.stderr)["ok"])
+
+    def test_source_id_spelling_variants_do_not_alias_a_folder(self):
+        cases = [("src-shared/", "knowledge/sources/src-shared/notes.md", "outside_source_dir"),
+                 ("SRC-SHARED", "knowledge/sources/SRC-SHARED/notes.md", "missing")]
+        for index, (source_id, location, status) in enumerate(cases, start=1):
+            self.write(card(f"kc-alias{index}", sources=[(source_id, location)]))
+            code, result = run_cli("knowledge", "show", self.project, f"kc-alias{index}")
+            self.assertEqual(code, 2, result)
+            self.assertEqual(result["sources"][0]["status"], status)
+
+    def test_show_without_local_sources_does_not_claim_a_pass(self):
+        code, result = run_cli("knowledge", "show", self.project, "kc-b")
         self.assertEqual(code, 0, result)
-        self.assertTrue(any(path.endswith("x@r1.json") for path in result["ignored"]))
+        self.assertEqual(result["local_sources_checked"], 0)
+        self.assertIsNone(result["passed"])
+        code, result = run_cli("knowledge", "show", self.project, "kc-a")
+        self.assertTrue(result["passed"])
+        self.assertFalse(result["sources"][0]["position_checked"])
 
     def test_no_cards_status_is_ok_with_hint(self):
         no_cards = Path(self.temp.name) / "no-cards"

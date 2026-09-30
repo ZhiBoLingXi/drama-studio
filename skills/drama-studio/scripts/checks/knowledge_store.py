@@ -7,6 +7,7 @@ mark only says cards share a sourceId; it says nothing about content overlap or 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 
@@ -22,7 +23,10 @@ REVISION = re.compile(r"[1-9][0-9]*")
 
 
 def _project(project: str) -> Path:
-    root = Path(project).expanduser().absolute()
+    try:
+        root = Path(project).expanduser().absolute()
+    except RuntimeError as error:  # "~unknownuser" cannot be expanded
+        raise ValueError(f"Project directory not found: {project} ({error})") from error
     if not root.is_dir():
         raise ValueError(f"Project directory not found: {root}")
     return root
@@ -42,6 +46,9 @@ def _load_entry(path: Path) -> dict:
              "revision": parsed[1] if parsed else None, "doc": None, "errors": []}
     if parsed is None:
         entry["errors"].append("filename: must be <cardId>@r<revision>.json with a positive integer revision")
+    if not path.is_file():  # dangling symlink, directory or FIFO named like a card: never read it
+        entry["errors"].append("read: not a regular file")
+        return entry
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, ValueError) as error:
@@ -72,7 +79,7 @@ def _load_store(root: Path) -> dict:
         return {**base, "store_status": "no_cards", "hint": HINT, "entries": [], "ignored": []}
     entries, ignored = [], []
     for path in sorted(cards.iterdir()):
-        if path.is_file() and path.suffix == ".json":
+        if path.suffix == ".json":
             entries.append(_load_entry(path))
         else:
             ignored.append(str(path))
@@ -173,15 +180,17 @@ def _check_source(root: Path, source: dict) -> dict:
     if not location.startswith(SOURCES + "/"):
         return {**result, "kind": "external", "status": "external_not_checked"}
     relative, _, position = location.partition("#")
-    result.update(kind="local", position=position or None)
+    result.update(kind="local", position=position or None, position_checked=False)
     try:
         sources = (root / SOURCES).resolve()
         allowed = (root / SOURCES / source["sourceId"]).resolve()
         target = (root / relative).resolve()
         result["path"] = str(target)
-        if allowed.parent != sources or not target.is_relative_to(allowed):
+        if allowed.parent != sources or allowed.name != source["sourceId"] or not target.is_relative_to(allowed):
             return {**result, "status": "outside_source_dir"}
-        status = "present" if target.is_file() else "missing"
+        # Exact on-disk spelling, so "SRC-A" cannot alias "src-a" on a case-insensitive filesystem.
+        spelled = sources.is_dir() and source["sourceId"] in os.listdir(sources)
+        status = "present" if spelled and target.is_file() else "missing"
     except (OSError, RuntimeError, ValueError) as error:
         return {**result, "status": "unresolvable", "error": str(error)}
     return {**result, "status": status}
@@ -206,4 +215,4 @@ def run_knowledge_show(project: str, card_id: str, revision: int | None = None) 
             "cardId": card_id, "revision": entry["revision"], "available_revisions": sorted(matches),
             "card": entry["doc"], "errors": entry["errors"], "sources": sources, "missing": missing,
             "sources_checked": not entry["errors"], "local_sources_checked": local_sources_checked,
-            "passed": not (entry["errors"] or missing)}
+            "passed": False if entry["errors"] or missing else (True if local_sources_checked else None)}
