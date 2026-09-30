@@ -232,12 +232,50 @@ class RecordTests(ProjectCase):
         self.assertTrue(result["passed"])
         self.assertIn("(M)", result["receipt"]["notes"])
 
-    def test_reconciles_needs_an_existing_local_receipt_and_a_read_operation(self):
+    def test_reconciles_needs_an_existing_local_receipt_and_a_reconciling_operation(self):
         with self.assertRaises(ValueError):
             self.record("07-reconcile-get.response.json", "get_story_artifact", "d1-reconcile-3", "07-reconcile-get.input.json", reconciles="d1-save-3")
         self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
         with self.assertRaises(ValueError):
-            self.record("02-save.response.json", "save_story_artifact", "d1-save-2", "02-save.input.json", reconciles="d1-save-3")
+            self.record("01-writing-context.response.json", "get_writing_context", "d1-ctx-1", "01-writing-context.input.json", reconciles="d1-save-3")
+
+    def test_confirmed_resend_is_not_swallowed_as_replay(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        before = sha_file(self.receipts / "d1-save-3.json")
+        result = self.record("10-resend-save.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        self.assertEqual((result["passed"], result["status"]), (False, "outcome_differs"))
+        self.assertEqual((result["existingOutcome"], result["newOutcome"]), ("unknown", "confirmed"))
+        self.assertIn("--reconciles", result["error"])
+        self.assertEqual(sha_file(self.receipts / "d1-save-3.json"), before)
+
+    def resend(self, response="10-resend-save.response.json", input_path="05-unknown.input.json"):
+        return self.record(response, "save_story_artifact", "d1-save-3.resend-1", input_path, reconciles="d1-save-3")
+
+    def test_identical_resend_reconciles_the_unknown_save(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        result = self.resend()
+        self.assertTrue(result["passed"], result)
+        doc = result["receipt"]
+        self.assertEqual((doc["outcome"], doc["remote"]["revision"]), ("confirmed", 2))
+        self.assertEqual(doc["localRef"], {"kind": "remote_receipt", "id": "d1-save-3", "revision": None})
+        self.assertIn("(S)", doc["notes"])
+        self.assertEqual(doc["inputFingerprint"], receipt.input_fingerprint(fixture("05-unknown.input.json")))
+        self.assertEqual(check_contract("remote-receipt", doc), [])
+
+    def test_resend_script_checks(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        changed = fixture("05-unknown.input.json")
+        changed["body"] += "！"
+        changed_path = Path(self.temp.name) / "changed.json"
+        changed_path.write_text(json.dumps(changed, ensure_ascii=False), encoding="utf-8")
+        cases = {"input request_id is not the original": ("10-resend-save.response.json", self.input_as("05-unknown.input.json", "d1-save-3.resend-1")),
+                 "input differs from the unknown save": ("10-resend-save.response.json", changed_path),
+                 "record.requestId is not the original": ("02-save.response.json", FIXTURES / "05-unknown.input.json")}
+        for label, (response, input_path) in cases.items():
+            with self.subTest(label):
+                result = self.resend(response, input_path)
+                self.assertFalse(result["passed"])
+                self.assertFalse((self.receipts / "d1-save-3.resend-1.json").exists())
 
 
 class PendingShowTests(ProjectCase):

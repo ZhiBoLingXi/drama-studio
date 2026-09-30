@@ -31,6 +31,7 @@ EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("reco
             "read_story_artifact": (READ_KEYS,), "get_writing_context": (("snapshotId",),),
             "list_story_artifacts": (("records",), ("items",)), "prepare_story_context": ()}
 TOOL_RESULT = "mali-tool-result/v1"
+RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact")
 
 
 class Unparseable(ValueError):
@@ -215,6 +216,26 @@ def _remote(operation: str, parsed: dict | None, request: dict) -> dict:
     return {"projectId": project, "artifactId": artifact, "revision": revision, "inputSnapshotId": snapshot}
 
 
+def _refused(base: dict, reason: str) -> dict:
+    return {**base, "warnings": [], "passed": False, "status": "reconcile_refused", "path": None, "error": reason + "; nothing written"}
+
+
+def _reconcile_check(operation: str, reconciles: str, target: dict, doc: dict, parsed: dict | None) -> tuple[str | None, str]:
+    """Return (refusal reason, enforcement note) for a receipt that claims to resolve `reconciles`."""
+    found = _field(parsed["data"].get("record"), "requestId") if doc["outcome"] == "confirmed" else None
+    if operation == "save_story_artifact":
+        if doc["inputFingerprint"] != target.get("inputFingerprint"):
+            return "the re-send input differs from the unknown save (inputFingerprint); only an identical re-send may reconcile it", ""
+        if found != reconciles:
+            return f"the re-send response record.requestId is {found!r}, not {reconciles!r}", ""
+        return None, "identical re-send; inputFingerprint and record.requestId matched (S)"
+    if operation == "get_story_artifact":
+        if found != reconciles:
+            return f"get_story_artifact record.requestId is {found!r}, not {reconciles!r}. Check the next revision in the slot", ""
+        return None, "record.requestId matched (S)"
+    return None, "host matched a listed revision; list rows carry no requestId (M)"
+
+
 def record_receipt(project: str, response_path: str, operation: str, request_id: str, input_path: str,
                    reconciles: str | None = None) -> dict:
     drama = drama_dir(project)
@@ -224,8 +245,21 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
     request = json.loads(Path(input_path).read_text(encoding="utf-8"))
     if not isinstance(request, dict):
         raise ValueError("--input must be the JSON object sent to the MCP tool")
+    base = {"ok": True, "enforcement": "S", "remote_verified": False, "adoption_verified": False, "warnings": []}
+    target = None
+    if reconciles is not None:
+        safe_id(reconciles, "--reconciles")
+        if operation not in RECONCILERS:
+            raise ValueError(f"--reconciles is recorded from {', '.join(RECONCILERS)} only")
+        target_path = drama / "receipts" / f"{reconciles}.json"
+        if not target_path.is_file():
+            raise ValueError(f"No local receipt {reconciles!r} to reconcile")
+        target = json.loads(target_path.read_text(encoding="utf-8"))
     declared = _field(request, "request_id", "requestId")
-    if declared is not None and declared != request_id:
+    if operation == "save_story_artifact" and reconciles is not None:
+        if declared != reconciles:  # an identical re-send keeps the original request_id (S)
+            return _refused(base, f"a re-send must carry the original request_id {reconciles!r}; --input has {declared!r}")
+    elif declared is not None and declared != request_id:
         raise ValueError(f"--input declares request_id {declared!r}, not {request_id!r}")
     parsed, evidence = _load_response(response_path, operation)
     outcome, retry = outcome_of(parsed)
@@ -236,7 +270,6 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
     doc = {"schemaVersion": SCHEMA, "operation": operation, "requestId": request_id,
            "inputFingerprint": input_fingerprint(request), "remote": remote, "outcome": outcome,
            "retryAllowed": retry, "observedAt": _now(), "evidence": evidence}
-    base = {"ok": True, "enforcement": "S", "remote_verified": False, "adoption_verified": False, "warnings": []}
     if operation == "save_story_artifact":
         slot = _field(request, "slot")
         if slot is not None:
@@ -244,20 +277,11 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         notes.update(kind=_field(request, "kind"), episodeRef=_field(request, "episode_ref", "episodeRef"),
                      expectedRevision=_field(request, "expected_revision", "expectedRevision"))
     if reconciles is not None:
-        safe_id(reconciles, "--reconciles")
-        if operation not in ("get_story_artifact", "list_story_artifacts"):
-            raise ValueError("--reconciles is recorded from get_story_artifact or list_story_artifacts only")
-        if not (drama / "receipts" / f"{reconciles}.json").is_file():
-            raise ValueError(f"No local receipt {reconciles!r} to reconcile")
         doc["localRef"] = {"kind": "remote_receipt", "id": reconciles, "revision": None}
-        if operation == "get_story_artifact":
-            found = _field(parsed["data"].get("record"), "requestId") if outcome == "confirmed" else None
-            if found != reconciles:
-                return {**base, "passed": False, "status": "reconcile_mismatch", "path": None,
-                        "error": f"get_story_artifact record.requestId is {found!r}, not {reconciles!r}; nothing written. Check the next revision in the slot."}
-            notes.update(reconciles=reconciles, check="record.requestId matched (S)")
-        else:
-            notes.update(reconciles=reconciles, check="host matched a listed revision; list rows carry no requestId (M)")
+        reason, check = _reconcile_check(operation, reconciles, target, doc, parsed)
+        if reason:
+            return _refused(base, reason)
+        notes.update(reconciles=reconciles, check=check)
     if notes:
         doc["notes"] = json.dumps(notes, ensure_ascii=False)
     errors = check_contract("remote-receipt", doc)
@@ -272,6 +296,11 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
     if path.exists():
         existing = json.loads(path.read_text(encoding="utf-8"))
         old, new = str(existing.get("inputFingerprint")), doc["inputFingerprint"]
+        if old == new and existing.get("outcome") != outcome:
+            return {**base, "warnings": [], "passed": False, "status": "outcome_differs", "path": str(path),
+                    "existingOutcome": existing.get("outcome"), "newOutcome": outcome,
+                    "error": f"requestId {request_id} is recorded as {existing.get('outcome')!r}; this response says {outcome!r}. "
+                             f"Receipts are append-only: record it under a new --request-id with --reconciles {request_id}."}
         if old == new:
             return {**base, "passed": True, "status": "replay", "path": str(path), "receipt": existing}
         return {**base, "warnings": [], "passed": False, "status": "conflict", "path": str(path),
