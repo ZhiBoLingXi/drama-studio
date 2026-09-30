@@ -71,8 +71,13 @@ slot 是跨修订的稳定身份：同一产出的每次修订用同一 slot，`
 
 1. 读上下文：`get_writing_context` 读到 `nextOffset` 为 null，保存响应，`receipt record <项目> <响应> --operation get_writing_context --request-id <读取ID> --input <输入>`。保存时的 `input_snapshot_id` 取其 `snapshotId`；与本地已确认的上下文回执不符时 record 会给出警告。
 2. 保存：先把完整输入（含固定的 `request_id`）写成文件，再调用 `save_story_artifact`；`expected_revision` 取该 slot 当前最高修订，新 slot 为 0。响应原样保存，丢失就不存。
-3. 记录：`receipt record <项目> <响应> --operation save_story_artifact --request-id <ID> --input <输入>`，写入 `.drama/receipts/<requestId>.json`。成功得到 artifactId、revision；HTTP 409／`VERSION_CONFLICT` 记 `rejected_conflict`，重新读取后按新修订号用新 requestId 保存；响应缺失、无法解析、`MCP_OUTCOME_UNKNOWN` 或 5xx 记 `unknown`，`retryAllowed` 恒为 false。同一 requestId 再次记录相同输入视为重放；输入不同则退出码 2，原回执不变。
+3. 记录：`receipt record <项目> <响应> --operation save_story_artifact --request-id <ID> --input <输入>`，写入 `.drama/receipts/<requestId>.json`。成功得到 artifactId、revision；HTTP 409／`VERSION_CONFLICT` 记 `rejected_conflict`，有两种原因：`expected_revision 已过期`，或服务端发现同一 requestId 配了不同输入。前者重新读取后按新修订号用新 requestId 保存；后者说明 requestId 被误复用，先查清原请求再决定，不要改输入重发。响应缺失、无法解析、`MCP_OUTCOME_UNKNOWN` 或 5xx 记 `unknown`，`retryAllowed` 恒为 false。同一 requestId 再次记录相同输入视为重放；输入不同则退出码 2，原回执不变。
 4. 缓存：`read_story_artifact` 从 offset 0 连续读到 `nextOffset` 为 null，保存每块响应，执行 `receipt cache <项目> <全部分块> [get 响应]`。全文写入 `.drama/cache/<artifactId>@r<revision>.md`（原样 UTF-8，不加换行），manifest 只追加。全文 sha256 必须等于服务端 `fingerprint`；缺块、断档、末块缺失或内容被改都拒绝（退出码 2）。没有 get 响应时须给 `--slot`、`--kind`（分集还要 `--episode-ref`）。只有 `get_story_artifact` 响应时记 `verified: false`，装包默认不用未验证缓存。
-5. 对账 unknown：`receipt pending <项目>` 列出待对账项 → `list_story_artifacts(project_id, slot)` → 对高于 expectedRevision 的修订逐个 `get_story_artifact`，比对 `record.requestId` → 找到后 `receipt record <项目> <get 响应> --operation get_story_artifact --request-id <新读取ID> --input <get 输入> --reconciles <原 requestId>`，工具核对 requestId（S）。只凭列表判断时用 list 响应记录，标为宿主判断（M）。对账前不换新 requestId 重试，以免重复候选或重复计费；对账后仍未找到时保持 unknown 并告知用户，重发只能用原 requestId 与完全相同的输入（服务端精确重放幂等，R）。
+5. 对账 unknown：`receipt pending <项目>` 在 `pending` 列出未决的保存，读操作的 unknown 单列在 `read_only_unknown`（重读即可，没有写入需要对账）。回执只追加，对账结果另记一份回执，用 `--reconciles <原 requestId>` 指向原回执；只有 confirmed 的响应能了结 unknown。三种方式：
+   - get（S）：`list_story_artifacts(project_id, slot)` → 对高于 expectedRevision 的修订逐个 `get_story_artifact`，比对 `record.requestId` → 找到后 `receipt record <项目> <get 响应> --operation get_story_artifact --request-id <新读取ID> --input <get 输入> --reconciles <原 requestId>`，工具核对 `record.requestId`。
+   - list（M）：只凭列表判断时用 list 响应记录；输入须按原保存的 slot 过滤，项目也须一致。列表行不带 requestId，这是宿主判断，`pending` 记为 `resolved_host_judged`，不是 `resolved_verified`。
+   - 重发（S）：对账后仍未找到时先告知用户；重发只能用原 `request_id` 与完全相同的输入（服务端精确重放幂等，R），响应记为 `receipt record <项目> <响应> --operation save_story_artifact --request-id <原 requestId>.resend-1 --input <原输入> --reconciles <原 requestId>`。工具核对输入指纹与原回执相同、`record.requestId` 等于原 requestId。
+
+   get 与重发记为 `resolved_verified`。直接用原 requestId 记录重发响应会被拒绝（`outcome_differs`，退出码 2），因为原回执不会被改写。对账前不换新 requestId 重试，以免重复候选或重复计费。
 
 `inputFingerprint` 是 `--input` 规范 JSON（键排序、UTF-8、紧凑分隔；忽略以 `_` 开头的顶层注释键）的 sha256，只用于本地冲突判断，与服务端 `requestFingerprint` 算法不同，不能相互比较。

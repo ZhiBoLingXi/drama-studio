@@ -659,7 +659,8 @@ class DocsTests(unittest.TestCase):
         section = text.split("## 候选保存与对账", 1)[1].split("\n## ", 1)[0]
         for needle in ("producer", "`codex`", "`human`", "slot", "episodeRef", "episode_draft", "series_outline",
                        "requestFingerprint", "inputFingerprint", "--reconciles", "receipt pending", "receipt cache",
-                       "nextOffset", "保存不等于采用", "不换新 requestId"):
+                       "nextOffset", "保存不等于采用", "不换新 requestId", "expected_revision 已过期",
+                       "同一 requestId 配了不同输入", ".resend-1", "resolved_verified", "resolved_host_judged", "read_only_unknown"):
             self.assertIn(needle, section, needle)
 
     def test_workstation_steps_link_the_method(self):
