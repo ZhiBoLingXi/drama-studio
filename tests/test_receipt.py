@@ -219,6 +219,18 @@ class RecordTests(ProjectCase):
                 self.assertEqual([p.name for p in self.receipts.iterdir()], ["d1-save-2.json"])
                 (self.receipts / "d1-save-2.json").unlink()
 
+    def test_publish_falls_back_when_hard_links_are_unsupported(self):
+        with mock.patch("os.link", side_effect=PermissionError("links not supported")):
+            result = self.save()
+            self.assertEqual(result["status"], "written")
+            self.assertEqual(json.loads((self.receipts / "d1-save-2.json").read_text(encoding="utf-8")), result["receipt"])
+            self.assertEqual(self.save()["status"], "replay")
+            taken = self.receipts / "taken.json"
+            taken.write_text("mine", encoding="utf-8")
+            self.assertFalse(receipt.publish_new(taken, b"theirs"))
+        self.assertEqual(taken.read_text(encoding="utf-8"), "mine")
+        self.assertEqual(sorted(p.name for p in self.receipts.iterdir()), ["d1-save-2.json", "taken.json"])
+
     def test_unknown_outcomes_never_allow_retry(self):
         result = self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
         self.assertEqual(result["receipt"]["outcome"], "unknown")

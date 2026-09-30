@@ -209,9 +209,27 @@ def publish_new(path: Path, content: bytes) -> bool:
             os.link(temp, path)
         except FileExistsError:
             return False
+        except OSError:  # no hard links here (EPERM, ENOTSUP, EXDEV…): exclusive create instead
+            return _create_exclusive(path, content)
         return True
     finally:
         os.unlink(temp)
+
+
+def _create_exclusive(path: Path, content: bytes) -> bool:
+    try:
+        handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        os.unlink(path)  # never leave a partial file behind
+        raise
+    return True
 
 
 @contextmanager
