@@ -274,7 +274,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         old, new = str(existing.get("inputFingerprint")), doc["inputFingerprint"]
         if old == new:
             return {**base, "passed": True, "status": "replay", "path": str(path), "receipt": existing}
-        return {**base, "passed": False, "status": "conflict", "path": str(path),
+        return {**base, "warnings": [], "passed": False, "status": "conflict", "path": str(path),
                 "existingInputFingerprint": old[7:19], "newInputFingerprint": new[7:19],
                 "error": f"requestId {request_id} already recorded with inputFingerprint {old[7:19]}…; new input is {new[7:19]}…. Existing receipt kept; never reuse a requestId for different input."}
     atomic_write(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))

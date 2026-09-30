@@ -173,6 +173,7 @@ class RecordTests(ProjectCase):
         self.assertNotEqual(old, new)
         self.assertIn(old, result["error"])
         self.assertIn(new, result["error"])
+        self.assertEqual(result["warnings"], [])  # a refused call carries only the refusal
         self.assertEqual(sha_file(self.receipts / "d1-save-2.json"), before)
 
     def test_unknown_outcomes_never_allow_retry(self):
