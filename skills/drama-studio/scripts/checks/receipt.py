@@ -368,7 +368,14 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
     content = (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if not path.exists() and publish_new(path, content):
         return {**base, "passed": True, "status": "written", "path": str(path), "receipt": doc}
-    existing = json.loads(path.read_text(encoding="utf-8"))  # present before us, or a concurrent writer won the race
+    try:  # present before us, or a concurrent writer won the race; never trust it unchecked
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        problems = check_contract("remote-receipt", existing) if isinstance(existing, dict) else ["not a JSON object"]
+    except (UnicodeDecodeError, ValueError) as error:
+        existing, problems = None, [f"not JSON: {error}"]
+    if problems:
+        return {**base, "warnings": [], "passed": False, "status": "invalid_existing", "path": str(path),
+                "error": f"existing receipt {path.name} is invalid ({'; '.join(problems)}); inspect with receipt show. Nothing written"}
     old, new = str(existing.get("inputFingerprint")), doc["inputFingerprint"]
     if old == new and existing.get("outcome") != outcome:
         return {**base, "warnings": [], "passed": False, "status": "outcome_differs", "path": str(path),

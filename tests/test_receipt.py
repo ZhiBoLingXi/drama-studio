@@ -178,6 +178,19 @@ class RecordTests(ProjectCase):
         self.assertEqual(result["warnings"], [])  # a refused call carries only the refusal
         self.assertEqual(sha_file(self.receipts / "d1-save-2.json"), before)
 
+    def test_invalid_existing_receipt_is_never_a_replay(self):
+        self.save()
+        path = self.receipts / "d1-save-2.json"
+        tampered = json.loads(path.read_text(encoding="utf-8"))
+        tampered["extra"] = True
+        for label, content in [("fails contract-check", json.dumps(tampered)), ("not an object", "[]"), ("not JSON", "{")]:
+            with self.subTest(label):
+                path.write_text(content, encoding="utf-8")
+                result = self.save()
+                self.assertEqual((result["passed"], result["status"]), (False, "invalid_existing"))
+                self.assertIn("receipt show", result["error"])
+                self.assertEqual(path.read_text(encoding="utf-8"), content)
+
     def test_publish_race_is_re_evaluated_as_replay_or_conflict(self):
         self.save()
         mine = (self.receipts / "d1-save-2.json").read_bytes()
