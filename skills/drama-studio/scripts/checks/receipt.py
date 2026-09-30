@@ -35,7 +35,7 @@ EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("reco
             "list_story_artifacts": (("records",), ("items",)), "prepare_story_context": ()}
 TOOL_RESULT = "mali-tool-result/v1"
 RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact")
-WRITES = ("save_story_artifact", "prepare_story_context")  # unknowns of these need reconciliation
+WRITES = ("save_story_artifact",)  # unknowns reconcilable by requestId; prepare_story_context has no lookup
 
 
 class Unparseable(ValueError):
@@ -425,14 +425,17 @@ def pending(project: str) -> dict:
             invalid.append({"path": str(drama / "receipts" / f"{doc['requestId']}.json"), "errors": [f"reconciliation not counted: {reason}"]})
             continue
         (host_judged if doc["operation"] == "list_story_artifacts" else verified).add(target_id)
-    items, read_only = [], []
+    items, read_only, unreconcilable = [], [], []
     for doc in valid:
         request_id = doc["requestId"]
         if doc["outcome"] != "unknown" or request_id in verified or request_id in host_judged:
             continue
         if doc["operation"] not in WRITES:
-            read_only.append({"requestId": request_id, "operation": doc["operation"], "projectId": doc["remote"]["projectId"],
-                              "retryAllowed": False, "note": "re-read; no write to reconcile"})
+            dead_end = doc["operation"] == "prepare_story_context"
+            (unreconcilable if dead_end else read_only).append({
+                "requestId": request_id, "operation": doc["operation"], "projectId": doc["remote"]["projectId"], "retryAllowed": False,
+                "note": "prepare_story_context has no requestId lookup; re-read the context state (get_writing_context) before any retry"
+                        if dead_end else "re-read; no write to reconcile"})
             continue
         slot = _slot(doc)
         project_id, expected = doc["remote"]["projectId"], _notes(doc).get("expectedRevision")
@@ -446,7 +449,7 @@ def pending(project: str) -> dict:
                           {"command": f"drama_tools.py receipt record <project> <get-response.json> --operation get_story_artifact "
                                       f"--request-id <new-read-id> --input <get-input.json> --reconciles {request_id}"}]})
     unknown = {doc["requestId"] for doc in valid if doc["outcome"] == "unknown"}
-    return {"ok": True, "pending": items, "read_only_unknown": read_only, "resolved_verified": sorted(verified & unknown),
+    return {"ok": True, "pending": items, "read_only_unknown": read_only, "unreconcilable_unknown": unreconcilable, "resolved_verified": sorted(verified & unknown),
             "resolved_host_judged": sorted((host_judged - verified) & unknown), "invalid": invalid,
             "note": "Never retry an unknown call with a new requestId; reconcile first.",
             "remote_verified": False, "adoption_verified": False}

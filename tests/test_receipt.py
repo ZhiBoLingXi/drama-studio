@@ -432,6 +432,16 @@ class PendingShowTests(ProjectCase):
         self.assertIn("observedRequestId", reasons["forged-id"])
         self.assertIn("projectId", reasons["other-project"])
 
+    def test_prepare_story_context_unknown_is_unreconcilable(self):
+        prepare = Path(self.temp.name) / "prepare.json"
+        prepare.write_text(json.dumps({"project_id": "2f70c1e9fad74f35ae27f"}), encoding="utf-8")
+        self.record(Path(self.temp.name) / "missing.json", "prepare_story_context", "prep-1", prepare)
+        result = receipt.pending(str(self.project))
+        self.assertEqual((result["pending"], result["read_only_unknown"]), ([], []))
+        self.assertEqual(result["unreconcilable_unknown"], [{
+            "requestId": "prep-1", "operation": "prepare_story_context", "projectId": "2f70c1e9fad74f35ae27f", "retryAllowed": False,
+            "note": "prepare_story_context has no requestId lookup; re-read the context state (get_writing_context) before any retry"}])
+
     def test_read_only_unknowns_get_no_save_style_steps(self):
         self.unknown_save()
         self.record(Path(self.temp.name) / "missing.json", "read_story_artifact", "read-lost",
