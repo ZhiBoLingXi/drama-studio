@@ -239,5 +239,60 @@ class RecordTests(ProjectCase):
             self.record("02-save.response.json", "save_story_artifact", "d1-save-2", "02-save.input.json", reconciles="d1-save-3")
 
 
+class PendingShowTests(ProjectCase):
+    def unknown_save(self):
+        return self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+
+    def test_pending_suggests_reconciliation_by_request_id_and_slot(self):
+        self.save()
+        self.unknown_save()
+        result = receipt.pending(str(self.project))
+        self.assertEqual(len(result["pending"]), 1)
+        item = result["pending"][0]
+        self.assertEqual((item["requestId"], item["slot"], item["operation"]), ("d1-save-3", "ep-03-outline", "save_story_artifact"))
+        self.assertEqual(item["projectId"], "2f70c1e9fad74f35ae27f")
+        self.assertFalse(item["retryAllowed"])
+        tools = [step.get("tool") or step.get("command") for step in item["steps"]]
+        self.assertEqual(tools[:2], ["list_story_artifacts", "get_story_artifact"])
+        self.assertIn("--reconciles d1-save-3", tools[2])
+        self.assertEqual(item["steps"][0]["args"], {"project_id": "2f70c1e9fad74f35ae27f", "slot": "ep-03-outline"})
+        self.assertIn("d1-save-3", item["steps"][1]["check"])
+        self.assertEqual(item["expectedRevision"], 1)
+
+    def test_reconciled_unknown_is_no_longer_pending(self):
+        self.unknown_save()
+        self.record("07-reconcile-get.response.json", "get_story_artifact", "d1-reconcile-3", "07-reconcile-get.input.json", reconciles="d1-save-3")
+        result = receipt.pending(str(self.project))
+        self.assertEqual(result["pending"], [])
+        self.assertEqual(result["resolved"], ["d1-save-3"])
+
+    def test_invalid_receipts_are_listed_not_trusted(self):
+        self.unknown_save()
+        (self.receipts / "broken.json").write_text("{", encoding="utf-8")
+        bad = json.loads((self.receipts / "d1-save-3.json").read_text(encoding="utf-8"))
+        bad["requestId"], bad["retryAllowed"] = "d1-save-5", True
+        (self.receipts / "d1-save-5.json").write_text(json.dumps(bad), encoding="utf-8")
+        result = receipt.pending(str(self.project))
+        self.assertEqual([item["requestId"] for item in result["pending"]], ["d1-save-3"])
+        self.assertEqual(sorted(Path(item["path"]).name for item in result["invalid"]), ["broken.json", "d1-save-5.json"])
+        self.assertNotIn("passed", result)
+
+    def test_show_returns_receipt_and_contract_result(self):
+        self.save()
+        shown = receipt.show(str(self.project), "d1-save-2")
+        self.assertTrue(shown["passed"])
+        self.assertEqual(shown["receipt"]["requestId"], "d1-save-2")
+        self.assertFalse(shown["adoption_verified"])
+        doc = shown["receipt"]
+        doc["outcome"], doc["retryAllowed"] = "unknown", True
+        (self.receipts / "tampered.json").write_text(json.dumps(doc), encoding="utf-8")
+        tampered = receipt.show(str(self.project), "tampered")
+        self.assertFalse(tampered["passed"])
+        self.assertTrue(tampered["errors"])
+        for missing in ("absent", "../d1-save-2"):
+            with self.assertRaises(ValueError):
+                receipt.show(str(self.project), missing)
+
+
 if __name__ == "__main__":
     unittest.main()

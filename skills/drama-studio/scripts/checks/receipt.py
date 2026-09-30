@@ -276,3 +276,56 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
                 "error": f"requestId {request_id} already recorded with inputFingerprint {old[7:19]}…; new input is {new[7:19]}…. Existing receipt kept; never reuse a requestId for different input."}
     write_new(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return {**base, "passed": True, "status": "written", "path": str(path), "receipt": doc}
+
+
+def _notes(doc: dict) -> dict:
+    try:
+        notes = json.loads(doc.get("notes") or "{}")
+    except ValueError:
+        return {}
+    return notes if isinstance(notes, dict) else {}
+
+
+def pending(project: str) -> dict:
+    """List unknown receipts that no reconciliation receipt resolves yet, with the calls to make."""
+    drama = drama_dir(project)
+    valid, invalid = [], []
+    for path, doc in _receipts(drama):
+        errors = [f"not JSON: {doc}"] if isinstance(doc, Exception) else check_contract("remote-receipt", doc)
+        if not errors and path.stem != doc["requestId"]:
+            errors = [f"file name does not match requestId {doc['requestId']!r}"]
+        (invalid.append({"path": str(path), "errors": errors}) if errors else valid.append(doc))
+    reconciled = {doc["localRef"]["id"] for doc in valid if doc.get("localRef", {}).get("kind") == "remote_receipt"}
+    items, resolved = [], []
+    for doc in valid:
+        if doc["outcome"] != "unknown":
+            continue
+        request_id = doc["requestId"]
+        if request_id in reconciled:
+            resolved.append(request_id)
+            continue
+        ref = doc.get("localRef") or {}
+        slot = ref["id"][5:] if ref.get("kind") == "remote_artifact" and ref.get("id", "").startswith("slot:") else None
+        project_id, expected = doc["remote"]["projectId"], _notes(doc).get("expectedRevision")
+        newer = f"revision > {expected}" if _is_int(expected) else "each listed revision, newest first"
+        list_args = {"project_id": project_id, **({"slot": slot} if slot else {})}
+        items.append({"requestId": request_id, "operation": doc["operation"], "projectId": project_id, "slot": slot,
+                      "expectedRevision": expected, "retryAllowed": False, "steps": [
+                          {"tool": "list_story_artifacts", "args": list_args, "why": "find revisions saved after the lost call"},
+                          {"tool": "get_story_artifact", "args": {"project_id": project_id, "artifact_id": f"<id of {newer}>"},
+                           "check": f"record.requestId == {request_id!r}"},
+                          {"command": f"drama_tools.py receipt record <project> <get-response.json> --operation get_story_artifact "
+                                      f"--request-id <new-read-id> --input <get-input.json> --reconciles {request_id}"}]})
+    return {"ok": True, "pending": items, "resolved": sorted(resolved), "invalid": invalid,
+            "note": "Never retry an unknown call with a new requestId; reconcile first.",
+            "remote_verified": False, "adoption_verified": False}
+
+
+def show(project: str, request_id: str) -> dict:
+    path = drama_dir(project) / "receipts" / f"{safe_id(request_id, 'requestId')}.json"
+    if not path.is_file():
+        raise ValueError(f"No receipt {request_id!r} in {path.parent}")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    errors = check_contract("remote-receipt", doc)
+    return {"ok": True, "path": str(path), "passed": not errors, "errors": errors, "receipt": doc,
+            "enforcement": "S", "remote_verified": False, "adoption_verified": False}
