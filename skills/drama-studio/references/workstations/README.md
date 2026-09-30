@@ -9,7 +9,7 @@
 ## 每次运行的固定协议
 
 1. **任务**（`task`）：目标、非目标、读取范围、写入范围、授权来源、返修上限。读取范围可以大于写入范围；授权为 `none` 时不写任何东西。
-2. **上下文**（`context-snapshot`）：本次实际给了哪些版本、原文区间和知识卡，各自理由，以及遗漏项。必需材料缺失时 `completeness` 只能是 `incomplete`；超出预算就缩小工作单元，不静默截断。
+2. **上下文**（`context-snapshot`）：本次实际给了哪些版本、原文区间和知识卡，各自理由，以及遗漏项。必需材料缺失时 `completeness` 只能是 `incomplete`；超出预算就缩小工作单元，不静默截断。宿主（模型）先写选材清单（`selection`，格式见 `../../schemas/selection.schema.json`），再用 `scripts/drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role <角色> --budget <字数>` 从 `.drama/cache/` 与 `knowledge/cards/` 组装快照：工具按实际截取文本计算 `chars` 与 sha256，核对缓存指纹，按角色过滤用途，超预算退出码 2 且不写文件。选什么由模型判断，工具不做相关性排序。
 3. **产出**：完整可读的作品材料。联网时作为 mali-story 候选保存，保存不等于采用。源码中的保存工具为 `save_story_artifact`，实际名称以当前会话可用工具为准（见 [资料与拉片](../mali-story.md)）。保存的是产出，不是上下文快照。
 4. **交接**（`run-handoff`）：输出引用、状态变化提案、上游变更提案、未完成项和下一动作。只写本层候选；涉及上游决定时提出 `changeProposals`，不静默改写。
 5. **远端回执**（`remote-receipt`）：每次保存记录 `requestId` 与输入指纹。结果未知时先按 `requestId` 对账，不盲目重试；没有连接或未获授权时记 `outcome: not_sent`，`artifactId` 与 `revision` 必须为 null。
@@ -18,14 +18,14 @@
 
 | 约束 | 层级 | 说明 |
 | --- | --- | --- |
-| 快照不超声明的预算、同一来源不混用多个修订、不带入评估材料、列入 `omitted` 的必需材料使包不完整、区间合法 | S | `contract-check context-snapshot` 拒绝；`chars` 由装包者填写，工具不核对实际字数；没列入 `omitted` 的缺失工具无法发现（M） |
+| 快照不超声明的预算、同一来源不混用多个修订、不带入评估材料、列入 `omitted` 的必需材料使包不完整、区间合法 | S | `contract-check context-snapshot` 拒绝；用 `context-pack` 装包时 `chars` 与 sha256 由工具从本地缓存／知识卡实际截取计算，缺失的引用自动列入 `omitted`；单独运行 `contract-check` 仍只看字段，不核对实际字数，手写快照里没列入 `omitted` 的缺失无法发现（M） |
 | 观众效果（`reader_effect`）包不含作者计划分区 | S | 同上 |
 | 知识卡首版只允许项目私有 | S | `contract-check knowledge-card` 拒绝 studio／public |
 | 变更提案只能指向上游工位 | S | `contract-check run-handoff` 拒绝 |
 | 本地字段不能宣称已采用 | S | `contract-check task` 要求 `adoptionEvidence` 为 `remote_receipt` 引用；回执内容真假由服务端核对（R） |
 | 其他脚本规则：回执未发送／未知／已确认的字段要求、事实问题需引文、串行自评不得称独立、估算用量不得写 token、非合成知识需来源 | S | 完整列表见 `scripts/checks/contract_check.py` 与 `schemas/` |
 | 候选版本冲突、幂等重放、正式采用 | R | mali-story 服务端 |
-| 首读不看作者解释（放在其他分区的作者说明）、状态变化如实上报、不越权改稿、远端 ID 不编造 | M | 本文件约定；只能靠审读抽查发现违反 |
+| 首读不看作者解释（`context-pack` 只按分区拦 `current_plan`；放进其他分区的作者说明工具不识别）、状态变化如实上报、不越权改稿、远端 ID 不编造 | M | 本文件约定；只能靠审读抽查发现违反 |
 
 S 通过只说明格式与脚本规则满足，不说明引用在远端存在、引文支持结论或创作质量达标。
 

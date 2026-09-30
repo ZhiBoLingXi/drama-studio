@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "drama-studio/selection/v0",
+  "sourceSnapshotId": null,
+  "items": [
+    {
+      "ref": {
+        "kind": "remote_artifact",
+        "id": "art-ep20-draft",
+        "revision": 3,
+        "range": {
+          "start": 2400,
+          "end": 5200
+        }
+      },
+      "partition": "project_facts",
+      "required": true,
+      "usage": "project_text",
+      "reason": "前集结尾孩子失手的原场面"
+    },
+    {
+      "ref": {
+        "kind": "remote_artifact",
+        "id": "art-ep21-outline",
+        "revision": 2
+      },
+      "partition": "current_plan",
+      "required": true,
+      "reason": "本集要实现的选择与出口"
+    },
+    {
+      "ref": {
+        "kind": "knowledge_card",
+        "id": "kc-apology-cost",
+        "revision": 1
+      },
+      "partition": "knowledge",
+      "required": false,
+      "chars": 400,
+      "reason": "父亲道歉那场缺少可见代价"
+    }
+  ],
+  "unknowns": []
+}
