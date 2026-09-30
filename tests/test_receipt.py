@@ -1,11 +1,13 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
@@ -175,6 +177,24 @@ class RecordTests(ProjectCase):
         self.assertIn(new, result["error"])
         self.assertEqual(result["warnings"], [])  # a refused call carries only the refusal
         self.assertEqual(sha_file(self.receipts / "d1-save-2.json"), before)
+
+    def test_publish_race_is_re_evaluated_as_replay_or_conflict(self):
+        self.save()
+        mine = (self.receipts / "d1-save-2.json").read_bytes()
+        (self.receipts / "d1-save-2.json").unlink()
+        real = os.link
+        for label, input_name, status in [("same input", "02-save.input.json", "replay"),
+                                          ("different input", "02-save.changed-input.json", "conflict")]:
+            with self.subTest(label):
+                def link(src, dst):
+                    Path(dst).write_bytes(mine)  # another writer publishes first
+                    return real(src, dst)
+                with mock.patch("os.link", link):
+                    result = self.save(input_name=input_name)
+                self.assertEqual(result["status"], status)
+                self.assertEqual((self.receipts / "d1-save-2.json").read_bytes(), mine)
+                self.assertEqual([p.name for p in self.receipts.iterdir()], ["d1-save-2.json"])
+                (self.receipts / "d1-save-2.json").unlink()
 
     def test_unknown_outcomes_never_allow_retry(self):
         result = self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
@@ -494,6 +514,35 @@ class CacheTests(ProjectCase):
         self.assertFalse(result["passed"])
         self.assertEqual(self.cached.read_bytes(), "别人的内容".encode("utf-8"))
         self.assertFalse(self.manifest.exists())
+
+    def racing_link(self, content):
+        """os.link that lets another writer publish `content` first, as a concurrent process would."""
+        real = os.link
+        def link(src, dst):
+            Path(dst).write_bytes(content)
+            return real(src, dst)
+        return mock.patch("os.link", link)
+
+    def test_cache_file_race_is_refused_not_overwritten(self):
+        with self.racing_link("别人的内容".encode("utf-8")):
+            result = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertFalse(result["passed"])
+        self.assertEqual(self.cached.read_bytes(), "别人的内容".encode("utf-8"))
+        self.assertEqual([p.name for p in self.cache_dir.iterdir()], [self.cached.name])  # no temp or lock left
+
+    def test_held_manifest_lock_stops_the_cache(self):
+        self.cache_dir.mkdir()
+        lock = self.cache_dir / "manifest.json.lock"
+        lock.write_text("other", encoding="utf-8")
+        with mock.patch.object(receipt, "LOCK_TIMEOUT", 0.1):
+            with self.assertRaises(ValueError) as caught:
+                self.cache(*CHUNKS, "03-get.response.json")
+        self.assertIn("manifest.json.lock", str(caught.exception))
+        self.assertTrue(lock.exists())  # never auto-deleted
+        self.assertNothingCached()
+        lock.unlink()
+        self.assertTrue(self.cache(*CHUNKS, "03-get.response.json")["passed"])
+        self.assertFalse(lock.exists())
 
     def test_input_errors(self):
         def unsafe(value):

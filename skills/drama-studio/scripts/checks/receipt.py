@@ -8,6 +8,7 @@ anything was adopted; a receipt or cache entry is never adoption evidence.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime
 import hashlib
 import json
@@ -15,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
 
 try:
     from .contract_check import check_contract
@@ -23,6 +25,7 @@ except ImportError:  # loaded as a top-level module
 
 SCHEMA = "drama-studio/remote-receipt/v0"
 MANIFEST = "drama-studio/cache-manifest/v0"
+LOCK_TIMEOUT = 5.0
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 FINGERPRINT = re.compile(r"sha256:[a-f0-9]{64}")
 KINDS = ("research", "adaptation_options", "characters", "series_outline", "episode_outline", "episode_draft", "review")
@@ -145,7 +148,7 @@ def drama_dir(project: str) -> Path:
 
 
 def atomic_write(path: Path, content: bytes) -> None:
-    """Temp file in the same folder + os.replace. Receipt and cache callers check existence first."""
+    """Temp file in the same folder + os.replace; used only for the manifest, under manifest_lock."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
@@ -158,6 +161,46 @@ def atomic_write(path: Path, content: bytes) -> None:
         if os.path.exists(temp):
             os.unlink(temp)
         raise
+
+
+def publish_new(path: Path, content: bytes) -> bool:
+    """Exclusively create `path` (temp file + os.link). False when another writer got there first."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temp, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        os.unlink(temp)
+
+
+@contextmanager
+def manifest_lock(folder: Path):
+    """O_EXCL lock around manifest read-modify-write; a lock left behind is reported, never removed."""
+    folder.mkdir(parents=True, exist_ok=True)
+    lock, deadline = folder / "manifest.json.lock", time.monotonic() + LOCK_TIMEOUT
+    while True:
+        try:
+            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise ValueError(f"{lock} still exists after {LOCK_TIMEOUT}s: another receipt cache may be running. "
+                                 "If none is, delete that lock file by hand and retry") from None
+            time.sleep(0.05)
+    try:
+        os.write(handle, str(os.getpid()).encode())
+        os.close(handle)
+        yield
+    finally:
+        os.unlink(lock)
 
 
 def _now() -> str:
@@ -310,21 +353,21 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         if remote["inputSnapshotId"] not in contexts:
             base["warnings"].append("inputSnapshotId matches no local confirmed get_writing_context receipt; record that read before trusting this save's provenance")
     path = drama / "receipts" / f"{request_id}.json"
-    if path.exists():
-        existing = json.loads(path.read_text(encoding="utf-8"))
-        old, new = str(existing.get("inputFingerprint")), doc["inputFingerprint"]
-        if old == new and existing.get("outcome") != outcome:
-            return {**base, "warnings": [], "passed": False, "status": "outcome_differs", "path": str(path),
-                    "existingOutcome": existing.get("outcome"), "newOutcome": outcome,
-                    "error": f"requestId {request_id} is recorded as {existing.get('outcome')!r}; this response says {outcome!r}. "
-                             f"Receipts are append-only: record it under a new --request-id with --reconciles {request_id}."}
-        if old == new:
-            return {**base, "passed": True, "status": "replay", "path": str(path), "receipt": existing}
-        return {**base, "warnings": [], "passed": False, "status": "conflict", "path": str(path),
-                "existingInputFingerprint": old[7:19], "newInputFingerprint": new[7:19],
-                "error": f"requestId {request_id} already recorded with inputFingerprint {old[7:19]}…; new input is {new[7:19]}…. Existing receipt kept; never reuse a requestId for different input."}
-    atomic_write(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    return {**base, "passed": True, "status": "written", "path": str(path), "receipt": doc}
+    content = (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if not path.exists() and publish_new(path, content):
+        return {**base, "passed": True, "status": "written", "path": str(path), "receipt": doc}
+    existing = json.loads(path.read_text(encoding="utf-8"))  # present before us, or a concurrent writer won the race
+    old, new = str(existing.get("inputFingerprint")), doc["inputFingerprint"]
+    if old == new and existing.get("outcome") != outcome:
+        return {**base, "warnings": [], "passed": False, "status": "outcome_differs", "path": str(path),
+                "existingOutcome": existing.get("outcome"), "newOutcome": outcome,
+                "error": f"requestId {request_id} is recorded as {existing.get('outcome')!r}; this response says {outcome!r}. "
+                         f"Receipts are append-only: record it under a new --request-id with --reconciles {request_id}."}
+    if old == new:
+        return {**base, "passed": True, "status": "replay", "path": str(path), "receipt": existing}
+    return {**base, "warnings": [], "passed": False, "status": "conflict", "path": str(path),
+            "existingInputFingerprint": old[7:19], "newInputFingerprint": new[7:19],
+            "error": f"requestId {request_id} already recorded with inputFingerprint {old[7:19]}…; new input is {new[7:19]}…. Existing receipt kept; never reuse a requestId for different input."}
 
 
 def _notes(doc: dict) -> dict:
@@ -481,28 +524,27 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     digest = "sha256:" + hashlib.sha256(content).hexdigest()
     verified = server is not None and digest == server
     name = f"{artifact}@r{revision}.md"
-    path, manifest_path = drama / "cache" / name, drama / "cache" / "manifest.json"
-    manifest = {"schemaVersion": MANIFEST, "entries": []}
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
-            raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
-    status = "written"
-    if path.exists():
-        if path.read_bytes() != content:
-            return _refuse(f"{path} already exists with different bytes")
-        status = "unchanged"
-    else:
-        atomic_write(path, content)
-    rel = f".drama/cache/{name}"
+    folder = drama / "cache"
+    path, manifest_path, rel = folder / name, folder / "manifest.json", f".drama/cache/{name}"
     entry = {"path": rel, "artifactId": artifact, "slot": slot, "kind": kind, "episodeRef": episode_ref,
              "revision": revision, "sha256": digest, "serverFingerprint": server, "verified": verified,
              "operation": operation, "readAt": _now()}
-    existing = next((item for item in manifest["entries"] if isinstance(item, dict)
-                     and item.get("path") == rel and item.get("verified") == verified), None)
-    if existing is None:
-        manifest["entries"].append(entry)
-        atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    with manifest_lock(folder):
+        manifest = {"schemaVersion": MANIFEST, "entries": []}
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
+                raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
+        status = "written"
+        if path.exists() or not publish_new(path, content):
+            if path.read_bytes() != content:
+                return _refuse(f"{path} already exists with different bytes")
+            status = "unchanged"
+        existing = next((item for item in manifest["entries"] if isinstance(item, dict)
+                         and item.get("path") == rel and item.get("verified") == verified), None)
+        if existing is None:
+            manifest["entries"].append(entry)
+            atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": existing or entry,
             "manifestAppended": existing is None, "verified": verified, "warnings": warnings,
             "remote_verified": False, "adoption_verified": False}
