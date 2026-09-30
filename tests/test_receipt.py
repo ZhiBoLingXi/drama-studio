@@ -354,6 +354,24 @@ class RecordTests(ProjectCase):
         self.assertEqual(doc["inputFingerprint"], receipt.input_fingerprint(fixture("05-unknown.input.json")))
         self.assertEqual(check_contract("remote-receipt", doc), [])
 
+    def test_non_confirmed_resend_is_recorded_but_resolves_nothing(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        for index, response in enumerate(["05-unknown.response.json", "06-conflict.response.json"], 1):
+            with self.subTest(response):
+                result = self.record(response, "save_story_artifact", f"d1-save-3.resend-{index}", "05-unknown.input.json", reconciles="d1-save-3")
+                self.assertTrue(result["passed"], result)
+                self.assertNotEqual(result["receipt"]["outcome"], "confirmed")
+                self.assertIn("does not resolve", json.loads(result["receipt"]["notes"])["check"])
+        pending = receipt.pending(str(self.project))
+        self.assertEqual([item["requestId"] for item in pending["pending"]], ["d1-save-3"])
+        self.assertEqual(pending["pending"][0]["unconfirmedAttempts"], ["d1-save-3.resend-1", "d1-save-3.resend-2"])
+        self.assertEqual(pending["resolved_verified"], [])
+        changed = fixture("05-unknown.input.json")
+        changed["body"] += "！"
+        changed_path = Path(self.temp.name) / "changed.json"
+        changed_path.write_text(json.dumps(changed, ensure_ascii=False), encoding="utf-8")
+        self.assertFalse(self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3.resend-9", changed_path, reconciles="d1-save-3")["passed"])
+
     def test_resend_script_checks(self):
         self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
         changed = fixture("05-unknown.input.json")

@@ -276,14 +276,16 @@ def _reconcile_check(operation: str, reconciles: str, target, doc: dict, parsed:
         return f"local receipt {reconciles!r} fails contract-check; it cannot be reconciled", ""
     if target["operation"] != "save_story_artifact" or target["outcome"] != "unknown":
         return f"{reconciles!r} is a {target['operation']} with outcome {target['outcome']!r}; only an unknown save is reconciled", ""
-    if doc["outcome"] != "confirmed":
-        return f"this {operation} outcome is {doc['outcome']!r}; only a confirmed response can resolve an unknown", ""
     if doc["remote"]["projectId"] != target["remote"]["projectId"]:
         return f"projectId {doc['remote']['projectId']!r} is not the unknown save's {target['remote']['projectId']!r}", ""
+    if operation == "save_story_artifact" and doc["inputFingerprint"] != target.get("inputFingerprint"):
+        return "the re-send input differs from the unknown save (inputFingerprint); only an identical re-send may reconcile it", ""
+    if doc["outcome"] != "confirmed":
+        if operation == "save_story_artifact":  # the attempt is recorded, but only a confirmed re-send resolves the target
+            return None, {"check": f"identical re-send with outcome {doc['outcome']!r}; does not resolve {reconciles!r}"}
+        return f"this {operation} outcome is {doc['outcome']!r}; only a confirmed response can resolve an unknown", ""
     found = _field(parsed["data"].get("record"), "requestId")
     if operation == "save_story_artifact":
-        if doc["inputFingerprint"] != target.get("inputFingerprint"):
-            return "the re-send input differs from the unknown save (inputFingerprint); only an identical re-send may reconcile it", ""
         if found != reconciles:
             return f"the re-send response record.requestId is {found!r}, not {reconciles!r}", ""
         return None, {"check": "identical re-send; inputFingerprint and record.requestId matched (S)", "observedRequestId": found}
@@ -381,7 +383,8 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         return {**base, "warnings": [], "passed": False, "status": "outcome_differs", "path": str(path),
                 "existingOutcome": existing.get("outcome"), "newOutcome": outcome,
                 "error": f"requestId {request_id} is recorded as {existing.get('outcome')!r}; this response says {outcome!r}. "
-                         f"Receipts are append-only: record it under a new --request-id with --reconciles {request_id}."}
+                         f"Receipts are append-only: record it under a new --request-id (e.g. {request_id}.resend-1) with "
+                         f"--reconciles {request_id}; only a confirmed re-send resolves the unknown."}
     if old == new:
         return {**base, "passed": True, "status": "replay", "path": str(path), "receipt": existing}
     return {**base, "warnings": [], "passed": False, "status": "conflict", "path": str(path),
@@ -430,6 +433,10 @@ def pending(project: str) -> dict:
         request_id = doc["requestId"]
         if doc["outcome"] != "unknown" or request_id in verified or request_id in host_judged:
             continue
+        if doc["operation"] == "save_story_artifact" and doc.get("localRef", {}).get("kind") == "remote_receipt":
+            continue  # an unconfirmed re-send attempt: its target stays pending on its own
+        attempts = sorted(d["requestId"] for d in valid if d["operation"] == "save_story_artifact" and d["outcome"] != "confirmed"
+                          and d.get("localRef", {}).get("kind") == "remote_receipt" and d["localRef"]["id"] == request_id)
         if doc["operation"] not in WRITES:
             dead_end = doc["operation"] == "prepare_story_context"
             (unreconcilable if dead_end else read_only).append({
@@ -442,7 +449,7 @@ def pending(project: str) -> dict:
         newer = f"revision > {expected}" if _is_int(expected) else "each listed revision, newest first"
         list_args = {"project_id": project_id, **({"slot": slot} if slot else {})}
         items.append({"requestId": request_id, "operation": doc["operation"], "projectId": project_id, "slot": slot,
-                      "expectedRevision": expected, "retryAllowed": False, "steps": [
+                      "expectedRevision": expected, "retryAllowed": False, "unconfirmedAttempts": attempts, "steps": [
                           {"tool": "list_story_artifacts", "args": list_args, "why": "find revisions saved after the lost call"},
                           {"tool": "get_story_artifact", "args": {"project_id": project_id, "artifact_id": f"<id of {newer}>"},
                            "check": f"record.requestId == {request_id!r}"},
