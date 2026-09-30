@@ -26,6 +26,7 @@ except ImportError:  # loaded as a top-level module
 SCHEMA = "drama-studio/remote-receipt/v0"
 MANIFEST = "drama-studio/cache-manifest/v0"
 LOCK_TIMEOUT = 5.0
+FILE_MODE = 0o644  # published receipts, cache files and the manifest
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 FINGERPRINT = re.compile(r"sha256:[a-f0-9]{64}")
 KINDS = ("research", "adaptation_options", "characters", "series_outline", "episode_outline", "episode_draft", "review")
@@ -185,10 +186,7 @@ def atomic_write(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
+        _write_stream(handle, content)
         os.replace(temp, path)
     except BaseException:
         if os.path.exists(temp):
@@ -201,10 +199,7 @@ def publish_new(path: Path, content: bytes) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
+        _write_stream(handle, content)
         try:
             os.link(temp, path)
         except FileExistsError:
@@ -216,16 +211,21 @@ def publish_new(path: Path, content: bytes) -> bool:
         os.unlink(temp)
 
 
+def _write_stream(handle: int, content: bytes) -> None:
+    with os.fdopen(handle, "wb") as stream:
+        os.fchmod(stream.fileno(), FILE_MODE)
+        stream.write(content)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def _create_exclusive(path: Path, content: bytes) -> bool:
     try:
-        handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, FILE_MODE)
     except FileExistsError:
         return False
     try:
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
+        _write_stream(handle, content)
     except BaseException:
         os.unlink(path)  # never leave a partial file behind
         raise

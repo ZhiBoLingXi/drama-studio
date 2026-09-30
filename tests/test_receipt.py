@@ -688,6 +688,15 @@ class CacheTests(ProjectCase):
         self.assertEqual((downgrade["status"], downgrade["manifestAppended"], downgrade["entry"]["verified"]), ("unchanged", False, True))
         self.assertEqual(self.manifest.read_bytes(), before)
 
+    def test_published_files_are_world_readable(self):
+        self.save()
+        self.cache(*CHUNKS, "03-get.response.json")
+        with mock.patch("os.link", side_effect=PermissionError("links not supported")):
+            self.save("05-unknown.response.json", "d1-save-3", "05-unknown.input.json")
+        for path in (self.receipts / "d1-save-2.json", self.receipts / "d1-save-3.json", self.cached, self.manifest):
+            with self.subTest(path.name):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+
     def test_metadata_must_match_existing_entries(self):
         self.cache(*CHUNKS, "03-get.response.json")
         before = self.manifest.read_bytes()
