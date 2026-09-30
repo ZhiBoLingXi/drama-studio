@@ -11,6 +11,7 @@ import uuid
 
 sys.dont_write_bytecode = True
 from checks.contract_check import run_contract_check, schema_names
+from checks.context_pack import run_context_pack
 from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
 from checks.reference_check import run_reference_check
@@ -59,6 +60,14 @@ def main() -> int:
     contract = commands.add_parser("contract-check", help="Validate a workstation handoff object; shape and script rules only (examples in schemas/examples/)")
     contract.add_argument("contract", choices=schema_names())
     contract.add_argument("path")
+    pack = commands.add_parser("context-pack", help="Assemble a reproducible context-snapshot from local cache and knowledge cards; never truncates or goes online")
+    pack.add_argument("project")
+    pack.add_argument("--task", required=True)
+    pack.add_argument("--selection", required=True)
+    pack.add_argument("--role", required=True, choices=["author", "reader_effect", "fact_check", "similarity_review", "evaluation"])
+    pack.add_argument("--budget", required=True, type=int, help="Character budget; exceeding it exits 2 without writing")
+    pack.add_argument("--dry-run", action="store_true", help="Run every check and print the package; write nothing")
+    pack.add_argument("--allow-unverified", action="store_true", help="Accept manifest entries marked verified: false and note them in unknowns")
     args = parser.parse_args()
     try:
         if args.command == "doctor":
@@ -75,6 +84,9 @@ def main() -> int:
             result = run_contract_check(args.contract, args.path)
         elif args.command == "reference-check":
             result = run_reference_check(args.path, args.expected_episodes)
+        elif args.command == "context-pack":
+            result = run_context_pack(args.project, args.task, args.selection, args.role, args.budget,
+                                      dry_run=args.dry_run, allow_unverified=args.allow_unverified)
         else:
             result = run_dup_check(args.new, args.source, ks=args.k, threshold=args.threshold)
         print(json.dumps(result, ensure_ascii=False, indent=2))
