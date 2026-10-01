@@ -207,13 +207,18 @@ def _count(items: list[dict]) -> dict:
     return {name: sum(item["status"] == name for item in items) for name in ("stale", "unknown", "current")}
 
 
-def run_impact(project: str, slot: str | None = None, revision: int | None = None, artifact: str | None = None) -> dict:
+def run_impact(project: str, slot: str | None = None, revision: int | str | None = None, artifact: str | None = None) -> dict:
     """Mark every snapshot and run stale, unknown or current against one slot revision. Read-only."""
     drama = drama_dir(project)
     if not ((artifact is None and slot is not None and revision is not None) or (artifact is not None and slot is None and revision is None)):
         raise ValueError("给出 --slot 与 --revision 两者，或只给 --artifact；两组互斥，也不能只给一半")
-    if artifact is None and (type(revision) is not int or revision < 1):
-        raise ValueError("--revision 必须是不小于 1 的整数")
+    if artifact is None:
+        text = str(revision) if type(revision) in (int, str) else ""
+        if not (text.isascii() and text.isdigit() and int(text) >= 1):
+            raise ValueError(f"--revision 必须是不小于 1 的整数，收到 {revision!r}")
+        if not isinstance(slot, str) or not slot.strip():
+            raise ValueError("--slot 不能为空")
+        revision = int(text)
     entries = _entries(drama)
     resolved = "--slot/--revision"
     if artifact is not None:
@@ -230,9 +235,14 @@ def run_impact(project: str, slot: str | None = None, revision: int | None = Non
     snapshots = [_judge_snapshot(item, loaded, judge) for item in loaded.values()]
     by_id = {item["snapshotId"]: item for item in snapshots}
     runs = [_judge_run(item, loaded, by_id, judge, entries) for item in _records(drama, "runs", "run-handoff", "runId")]
-    return {"ok": True, "command": "impact", "project": str(drama.parent), "target": {"slot": slot, "revision": revision, "resolvedFrom": resolved},
+    seen = any(entry.get("slot") == slot for entry in entries)
+    warnings = [] if seen else [f"manifest 中没有任何条目属于 slot {slot}：可能是拼写错误，也可能该 slot 从未缓存。结论只覆盖记录在案的引用，"
+                                "全部为 current 不说明这个 slot 的修订没有影响"]
+    return {"ok": True, "command": "impact", "project": str(drama.parent),
+            "target": {"slot": slot, "revision": revision, "resolvedFrom": resolved, "slotInManifest": seen,
+                       "newestTrustedRevision": _newest(entries, slot)[0] or None},
             "snapshots": snapshots, "runs": runs, "summary": {"snapshots": _count(snapshots), "runs": _count(runs)},
-            "note": NOTE, "read_only": True, "remote_verified": False}
+            "warnings": warnings, "note": NOTE, "read_only": True, "remote_verified": False}
 
 
 def _newest(entries: list[dict], slot: str) -> tuple[int, str | None]:

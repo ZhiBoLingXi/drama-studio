@@ -117,7 +117,9 @@ class ImpactTests(ProjectCase):
         self.ac1_fixture()
         result, snapshots, _ = self.impact(slot="ep-1", revision=2)
         self.assertEqual({key: item["status"] for key, item in snapshots.items()}, {"ctx-a": "stale", "ctx-b": "current"})
-        self.assertEqual(result["target"], {"slot": "ep-1", "revision": 2, "resolvedFrom": "--slot/--revision"})
+        self.assertEqual(result["target"], {"slot": "ep-1", "revision": 2, "resolvedFrom": "--slot/--revision",
+                                            "slotInManifest": True, "newestTrustedRevision": 2})
+        self.assertEqual(result["warnings"], [])
         reason = snapshots["ctx-a"]["reasons"][0]
         self.assertEqual((reason["ref"], reason["status"]), ("items[1] art-1@r1", "stale"))
         self.assertIn("ep-1", reason["reason"])
@@ -127,7 +129,8 @@ class ImpactTests(ProjectCase):
     def test_ac1_artifact_resolves_through_the_manifest_to_the_same_result(self):
         self.ac1_fixture()
         by_slot, by_artifact = self.impact(slot="ep-1", revision=2)[0], self.impact(artifact="art-2")[0]
-        self.assertEqual(by_artifact["target"], {"slot": "ep-1", "revision": 2, "resolvedFrom": "--artifact art-2"})
+        self.assertEqual(by_artifact["target"], {"slot": "ep-1", "revision": 2, "resolvedFrom": "--artifact art-2",
+                                                 "slotInManifest": True, "newestTrustedRevision": 2})
         for key in ("snapshots", "runs", "summary"):
             self.assertEqual(by_artifact[key], by_slot[key])
 
@@ -364,6 +367,33 @@ class ImpactTests(ProjectCase):
         self.assertEqual(self.impact(slot="ep-03-outline", revision=2)[1]["ctx-ep3"]["status"], "stale")
         result, snapshots, _ = self.impact(artifact=ART1)
         self.assertEqual((result["target"]["slot"], result["target"]["revision"], snapshots["ctx-ep3"]["status"]), ("ep-03-outline", 1, "current"))
+
+    def test_target_slot_unseen_in_the_manifest_is_flagged_without_changing_verdicts(self):
+        self.ac1_fixture()
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-9", "ep-0", 1), entry("art-h", "ep-7", 4, "host"))
+        result, snapshots, _ = self.impact(slot="ep-l", revision=2)  # a typo of ep-1
+        self.assertEqual((result["target"]["slotInManifest"], result["target"]["newestTrustedRevision"]), (False, None))
+        self.assertEqual(len(result["warnings"]), 1)
+        for needle in ("ep-l", "拼写", "记录在案的引用"):
+            self.assertIn(needle, result["warnings"][0])
+        self.assertEqual({key: item["status"] for key, item in snapshots.items()}, {"ctx-a": "current", "ctx-b": "current"})
+        host_only = self.impact(slot="ep-7", revision=5)[0]
+        self.assertEqual((host_only["target"]["slotInManifest"], host_only["target"]["newestTrustedRevision"], host_only["warnings"]), (True, None, []))
+        ahead = self.impact(slot="ep-1", revision=9)[0]
+        self.assertEqual((ahead["target"]["revision"], ahead["target"]["newestTrustedRevision"], ahead["warnings"]), (9, 2, []))
+
+    def test_revision_is_validated_as_text_and_reported_as_an_integer(self):
+        self.ac1_fixture()
+        for good in ("2", 2, "02"):
+            with self.subTest(good=good):
+                self.assertEqual(self.impact(slot="ep-1", revision=good)[0]["target"]["revision"], 2)
+        for bad in ("abc", "", "0", "-1", "2.5", " 2", "２", True, 0, 2.0):
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(ValueError, "--revision"):
+                    self.impact(slot="ep-1", revision=bad)
+        for empty in ("", "  "):
+            with self.assertRaisesRegex(ValueError, "--slot"):
+                self.impact(slot=empty, revision=2)
 
     def test_target_arguments_are_checked(self):
         self.ac1_fixture()
@@ -757,7 +787,8 @@ class CliTests(ProjectCase):
     def test_impact_input_errors_exit_1(self):
         self.ac1_fixture()
         for target in ((), ("--slot", "ep-1"), ("--revision", "2"), ("--slot", "ep-1", "--revision", "2", "--artifact", "art-2"),
-                       ("--artifact", "art-404"), ("--slot", "ep-1", "--revision", "0")):
+                       ("--artifact", "art-404"), ("--slot", "ep-1", "--revision", "0"), ("--slot", "ep-1", "--revision", "abc"),
+                       ("--slot", "", "--revision", "2"), ("--slot", "ep-1", "--revision", "")):
             with self.subTest(target=target):
                 run = self.cli("impact", self.project, *target)
                 self.assertEqual((run.returncode, run.stdout), (1, ""))

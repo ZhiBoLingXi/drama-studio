@@ -111,7 +111,7 @@ def main() -> int:
     impact = commands.add_parser("impact", help="Mark snapshots and runs stale/unknown/current for a slot revision; read-only, implicit content dependencies not assessed")
     impact.add_argument("project")
     impact.add_argument("--slot", help="Target slot; needs --revision")
-    impact.add_argument("--revision", type=int, help="The slot's new revision")
+    impact.add_argument("--revision", help="The slot's new revision (integer >= 1)")
     impact.add_argument("--artifact", help="artifactId of the new revision, resolved through the cache manifest; excludes --slot/--revision")
     args = parser.parse_args()
     try:
