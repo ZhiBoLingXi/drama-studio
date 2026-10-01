@@ -1246,6 +1246,65 @@ class CliTests(ProjectCase):
                 self.assertEqual([(item["runId"], item["status"]) for item in result["runs"]], [("run-a", "stale")])
                 self.assertEqual((result["read_only"], result["remote_verified"]), (True, False))
 
+    def test_issue_20_reproduction_is_corrected_then_judged_by_impact_and_packed_by_context_pack(self):
+        chunks, get = [FIXTURES / name for name in CHUNKS], FIXTURES / "03-get.response.json"
+        temp, task, art2 = Path(self.temp.name), EXAMPLES / "task.json", "c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d"
+        elsewhere = json.loads(get.read_text(encoding="utf-8"))
+        elsewhere["structuredContent"]["data"]["record"].update(id="art-ep99", slot="ep-99-outline", episodeRef="ep-99")
+        (temp / "ep99-get.json").write_text(json.dumps(elsewhere, ensure_ascii=False), encoding="utf-8")
+
+        def run(code, *args):
+            done = self.cli(*args)
+            self.assertEqual(done.returncode, code, done.stdout + done.stderr)
+            return json.loads(done.stdout or done.stderr)
+
+        def pack(project, name, artifacts, *flags):
+            (temp / name).write_text(json.dumps({"schemaVersion": "drama-studio/selection/v0", "items": [
+                {"ref": {"kind": "remote_artifact", "id": artifact, "revision": revision}, "partition": "project_facts", "required": True,
+                 "reason": "测试"} for artifact, revision in artifacts]}), encoding="utf-8")
+            return "context-pack", project, "--task", task, "--selection", temp / name, "--role", "author", "--budget", "20000", *flags
+
+        for label, correction in [("chunks and get, as in the issue", [*chunks, get]), ("get only", [get])]:
+            with self.subTest(label):
+                project = temp / label.split()[0]
+                run(0, "init-project", project, "--title", "演示")
+                manifest = project / ".drama/cache/manifest.json"
+                wrong = run(0, "receipt", "cache", project, *chunks, "--slot", "ep-99-outline", "--kind", "episode_outline", "--episode-ref", "ep-03")
+                self.assertEqual((wrong["entry"]["slotSource"], wrong["entry"]["slot"]), ("host", "ep-99-outline"))
+                self.assertIn("可信的 slot", run(1, "impact", project, "--artifact", ART1)["error"])
+                first = manifest.read_bytes()
+                fixed = run(0, "receipt", "cache", project, *correction)
+                self.assertEqual((fixed["manifestAppended"], fixed["entry"]["slotSource"], fixed["entry"]["slot"], fixed["verified"]),
+                                 (True, "record", "ep-03-outline", True))
+                self.assertTrue(manifest.read_bytes().startswith(first[:first.rindex(b"\n  ]")]))
+                entries = json.loads(manifest.read_text(encoding="utf-8"))["entries"]
+                self.assertEqual([(item["slotSource"], item["slot"]) for item in entries], [("host", "ep-99-outline"), ("record", "ep-03-outline")])
+
+                impact = run(0, "impact", project, "--artifact", ART1)
+                self.assertEqual(impact["target"], {"slot": "ep-03-outline", "revision": 1, "resolvedFrom": f"--artifact {ART1}",
+                                                    "slotInManifest": True, "newestTrustedRevision": 1})
+                dry = run(0, *pack(project, "one.json", [(ART1, 1)], "--dry-run"))  # verified: no --allow-unverified needed
+                self.assertEqual((dry["passed"], dry["omitted_count"], dry["written"]), (True, 0, False))
+                packed = run(0, *pack(project, "one.json", [(ART1, 1)]))
+                self.assertNotIn("unknowns", json.loads(Path(packed["snapshot_path"]).read_text(encoding="utf-8")))
+                snapshot_id = packed["snapshot_id"]
+                judged = {target: {item["snapshotId"]: item for item in run(0, "impact", project, *target)["snapshots"]}[snapshot_id]
+                          for target in (("--artifact", ART1), ("--slot", "ep-03-outline", "--revision", "2"), ("--slot", "ep-99-outline", "--revision", "2"))}
+                self.assertEqual([item["status"] for item in judged.values()], ["current", "stale", "current"])
+                self.assertEqual(judged["--slot", "ep-03-outline", "--revision", "2"]["reasons"], [{
+                    "ref": f"items[1] {ART1}@r1", "status": "stale", "reason": "引用了 slot ep-03-outline 的旧修订 r1，目标修订为 r2"}])
+
+                run(0, "receipt", "cache", project, FIXTURES / "07-reconcile-get.response.json")  # revision 2 of ep-03-outline
+                run(0, "receipt", "cache", project, temp / "ep99-get.json")  # an artifact that really is in ep-99-outline
+                mixed = run(2, *pack(project, "mixed.json", [(ART1, 1), (art2, 2)], "--allow-unverified", "--dry-run"))
+                self.assertEqual(len(mixed["errors"]), 1, mixed["errors"])
+                for needle in ("slot 'ep-03-outline'", f"{ART1}@r1", "one package cannot mix revisions of a slot"):
+                    self.assertIn(needle, mixed["errors"][0])
+                apart = run(0, *pack(project, "apart.json", [(ART1, 1), ("art-ep99", 1)], "--allow-unverified", "--dry-run"))
+                self.assertEqual((apart["passed"], apart["omitted_count"], len(apart["items"])), (True, 0, 3))
+                status = run(0, "status", project, "--json")
+                self.assertEqual((status["invalid"], status["remote_verified"]), ([], False))
+
     def test_impact_input_errors_exit_1(self):
         self.ac1_fixture()
         for target in ((), ("--slot", "ep-1"), ("--revision", "2"), ("--slot", "ep-1", "--revision", "2", "--artifact", "art-2"),
