@@ -556,8 +556,7 @@ class StatusTests(ProjectCase):
                  "no manifest": lambda: (None, [ref("art-1", 1)]),
                  "artifact not in the manifest": lambda: (self.manifest(entry("art-2", "ep-1", 2)), [ref("art-1", 1)]),
                  "reference without a revision": lambda: (self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2)), [ref("art-1", None, required=False)]),
-                 "untrusted newer entry in the slot": lambda: (self.manifest(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3, "host")), [ref("art-1", 1)]),
-                 "unreadable manifest": lambda: (self.manifest(entry("art-1", "ep-1", 1)), [ref("art-1", 1)])}
+                 "untrusted newer entry in the slot": lambda: (self.manifest(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3, "host")), [ref("art-1", 1)])}
         for label, build in cases.items():
             with self.subTest(label):
                 if (self.drama / "cache/manifest.json").exists():
@@ -565,8 +564,6 @@ class StatusTests(ProjectCase):
                 _, items = build()
                 self.snapshot("ctx-a", items)
                 self.run_handoff("run-a", "ctx-a")
-                if label == "unreadable manifest":
-                    (self.drama / "cache/manifest.json").write_text("{", encoding="utf-8")
                 result, lines = self.status()
                 latest = result["runs"]["latest"]
                 self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"]), ("unknown", []))
@@ -577,6 +574,58 @@ class StatusTests(ProjectCase):
                 self.assertEqual(text.count("无法判断是否失效"), 1)
                 for word in ("可能已失效", "没有它所引用 slot 的更新修订"):
                     self.assertNotIn(word, text)
+
+    def test_corrupt_cache_manifest_is_an_invalid_record_and_leaves_staleness_unknown(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.run_handoff("run-a", "ctx-a")
+        for content in ("{", "[]", json.dumps({"schemaVersion": "other", "entries": []}), json.dumps({"schemaVersion": "drama-studio/cache-manifest/v0"})):
+            with self.subTest(content):
+                (self.drama / "cache/manifest.json").write_text(content, encoding="utf-8")
+                result, lines = self.status()
+                self.assertEqual([(item["kind"], item["path"]) for item in result["invalid"]], [("manifest", ".drama/cache/manifest.json")])
+                self.assertEqual((result["nextAction"]["basis"], result["nextAction"]["from"]), ("invalid_record", ".drama/cache/manifest.json"))
+                latest = result["runs"]["latest"]
+                self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"]), ("unknown", []))
+                self.assertNotIn("possiblyStale", latest)
+                self.assertTrue(lines[0].startswith("下一步：处理无效或损坏的记录 .drama/cache/manifest.json"), lines[0])
+                self.assertIn("[manifest] .drama/cache/manifest.json", "\n".join(lines))
+                with self.assertRaisesRegex(ValueError, "manifest"):
+                    project_status.run_impact(str(self.project), slot="ep-1", revision=2)
+        self.unknown_save()
+        self.assertEqual(self.status()[0]["nextAction"]["basis"], "unknown_receipt")
+
+    def test_each_kind_of_invalid_record_gets_advice_that_fits_it(self):
+        self.unknown_save()
+        self.record("07-reconcile-get.response.json", "get_story_artifact", "d1-reconcile-3", "07-reconcile-get.input.json", reconciles="d1-save-3")
+        receipts = self.drama / "receipts"
+        forged = json.loads((receipts / "d1-reconcile-3.json").read_text(encoding="utf-8"))
+        forged.update(requestId="uncounted", notes=json.dumps(dict(json.loads(forged["notes"]), observedRequestId="someone-else")))
+        (receipts / "uncounted.json").write_text(json.dumps(forged), encoding="utf-8")
+        (receipts / "broken.json").write_text("{", encoding="utf-8")
+        self.manifest()
+        (self.drama / "cache/manifest.json").write_text("{", encoding="utf-8")
+        self.snapshot("ctx-no-sidecar", [], sidecar=False)
+        (self.drama / "runs").mkdir()
+        (self.drama / "runs/run-broken.json").write_text("{", encoding="utf-8")
+        result, lines = self.status()
+        advice = {(item["kind"], Path(item["path"]).name): item["advice"] for item in result["invalid"]}
+        self.assertEqual(sorted(advice), [("manifest", "manifest.json"), ("receipt", "broken.json"), ("receipt", "uncounted.json"),
+                                          ("run", "run-broken.json"), ("snapshot", "ctx-no-sidecar.json")])
+        for key, needles in {("receipt", "broken.json"): ("回执只追加", "不能当作恢复依据"),
+                             ("receipt", "uncounted.json"): ("这份回执本身有效", "没有被计入", "不要改它", "新的 requestId"),
+                             ("manifest", "manifest.json"): ("manifest 只追加", "工具不会修正", "impact"),
+                             ("snapshot", "ctx-no-sidecar.json"): ("快照写入后不改", "context-pack"),
+                             ("run", "run-broken.json"): ("宿主",)}.items():
+            for needle in needles:
+                self.assertIn(needle, advice[key], (key, needle))
+        self.assertEqual(len(set(advice.values())), 5)
+        text = "\n".join(lines)
+        self.assertNotIn("修复或移走", text + json.dumps(result, ensure_ascii=False))
+        first = result["invalid"][0]
+        self.assertTrue(result["nextAction"]["text"].endswith(first["advice"]))
+        for item in result["invalid"]:
+            self.assertIn("    处理：" + item["advice"], lines)
 
     def test_run_without_a_usable_snapshot_has_unknown_staleness(self):
         self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2))

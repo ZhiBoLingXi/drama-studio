@@ -25,6 +25,11 @@ OPEN_RUNS = ("planned", "running", "interrupted")
 BASIS = {"unknown_receipt": "有结果未知、尚未对账的保存回执", "invalid_record": "有无效或损坏的本地记录",
          "stale_run": "最近一次运行的快照引用了旧修订，本地缓存已有更新的可信修订",
          "latest_run": "最近一次运行记录的 nextAction", "no_runs": ".drama/runs/ 中没有有效的运行记录"}
+ADVICE = {"receipt": "回执只追加、不修改，这份不能当作恢复依据：由人确认它的来历后移出 .drama/receipts/，需要时用新的 requestId 重新记录对应的响应",
+          "uncounted": "这份回执本身有效，只是它声称的对账没有被计入；回执只追加，不要改它：按原因重新对账，并用新的 requestId 记录正确的响应",
+          "manifest": "manifest 只追加，工具不会修正它：由人核对并处理这个文件；在此之前 impact 以退出码 1 结束，各运行是否失效均为未知",
+          "snapshot": "快照写入后不改，工具也不会覆盖它：不要沿用这份快照；由人移走损坏的文件后，用 context-pack 按同一任务与选材重新装包",
+          "run": "运行记录由宿主写入：由宿主按报错改正或重写这份 run-handoff，在此之前不要把它当作恢复依据"}
 WIDEN = "扩大阅读：本地记录无法判定，请重读该 slot 的最新修订和这份记录实际装入的材料，再决定是否重跑；不要当作未受影响。"
 
 
@@ -310,7 +315,7 @@ def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> di
     if invalid:
         first = invalid[0]
         return {"basis": "invalid_record", "from": first["path"],
-                "text": f"处理无效或损坏的记录 {first['path']}：{first['errors'][0]}（共 {len(invalid)} 项）；修复或移走之前不要把它们当作恢复依据"}
+                "text": f"处理无效或损坏的记录 {first['path']}：{first['errors'][0]}（共 {len(invalid)} 项）；{first['advice']}"}
     if latest is not None and latest.get("possiblyStale"):
         first, more = latest["newerRevisions"][0], len(latest["newerRevisions"]) - 1
         text = (f"先运行 {first['impactCommand']} 确认失效范围，再决定是否重新装包、重跑：最近运行 {latest['runId']} 的快照引用了 "
@@ -328,12 +333,14 @@ def run_status(project: str) -> dict:
     """Report unreconciled receipts, runs and snapshot integrity, and the next step they imply. Read-only."""
     drama = drama_dir(project)
     receipts = pending(project)
-    invalid = [{"kind": "receipt", "path": Path(item["path"]).relative_to(drama.parent).as_posix(), "errors": item["errors"]}
+    invalid = [{"kind": "receipt", "path": Path(item["path"]).relative_to(drama.parent).as_posix(), "errors": item["errors"],
+                "advice": ADVICE["uncounted" if item["errors"][0].startswith("reconciliation not counted") else "receipt"]}
                for item in receipts["invalid"]]
     try:
         entries, manifest_error = _entries(drama), None
-    except ValueError as error:
+    except ValueError as error:  # impact exits 1 on the same file; here it is an invalid record so the rest is still reported
         entries, manifest_error = [], str(error)
+        invalid.append({"kind": "manifest", "path": ".drama/cache/manifest.json", "errors": [manifest_error], "advice": ADVICE["manifest"]})
     snapshots, loaded = [], {}
     for item in _snapshots(drama):
         loaded[item["id"]] = item
@@ -345,8 +352,9 @@ def run_status(project: str) -> dict:
     newest_first = sorted((item for item in records if not item["problems"]),
                           key=lambda item: (item["file"].stat().st_mtime_ns, item["id"]), reverse=True)
     runs = [_run_summary(item, _staleness(item["doc"], loaded, entries, manifest_error, drama.parent)) for item in newest_first]
-    invalid += [{"kind": "snapshot", "path": item["path"], "errors": item["problems"]} for item in snapshots if not item["intact"]]
-    invalid += [{"kind": "run", "path": item["path"], "errors": item["problems"]} for item in records if item["problems"]]
+    invalid += [{"kind": "snapshot", "path": item["path"], "errors": item["problems"], "advice": ADVICE["snapshot"]}
+                for item in snapshots if not item["intact"]]
+    invalid += [{"kind": "run", "path": item["path"], "errors": item["problems"], "advice": ADVICE["run"]} for item in records if item["problems"]]
     latest = runs[0] if runs else None
     return {"ok": True, "command": "status", "project": str(drama.parent), "nextAction": _next_action(receipts, invalid, latest),
             "receipts": {key: receipts[key] for key in ("pending", "read_only_unknown", "unreconcilable_unknown", "resolved_verified", "resolved_host_judged")},
@@ -411,5 +419,6 @@ def render_status(result: dict) -> str:
         lines += [f"    {problem}" for problem in item["problems"]]
     if result["invalid"]:
         lines += ["", f"无效或损坏的记录（{len(result['invalid'])}）"]
-        lines += [f"- [{item['kind']}] {item['path']}：{'；'.join(item['errors'])}" for item in result["invalid"]]
+        for item in result["invalid"]:
+            lines += [f"- [{item['kind']}] {item['path']}：{'；'.join(item['errors'])}", f"    处理：{item['advice']}"]
     return "\n".join(map(_one_line, lines))
