@@ -38,6 +38,12 @@ def ref(artifact, revision, required=True):
             "required": required, "usage": "project_text", "chars": 10, "reason": "测试材料"}
 
 
+def other(kind, ref_id, revision=None):
+    """A packed item whose reference is not a remote_artifact; the schema allows these in hand-written snapshots."""
+    return {"ref": {"kind": kind, "id": ref_id, "revision": revision}, "partition": "project_facts", "required": False,
+            "usage": "project_text", "chars": 1, "reason": "宿主手写的引用"}
+
+
 class ProjectCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -213,6 +219,53 @@ class ImpactTests(ProjectCase):
         self.snapshot("ctx-task-only", [])
         _, snapshots, _ = self.impact(slot="ep-1", revision=2)
         self.assertEqual({key: item["status"] for key, item in snapshots.items()}, {"ctx-omitted": "current", "ctx-task-only": "current"})
+
+    def test_unassessed_reference_kinds_are_unknown_and_never_current(self):
+        self.ac1_fixture()
+        for kind, ref_id in [("local_file", ".drama/cache/art-1@r1.md"), ("remote_snapshot", "wsnap-77"), ("remote_brief", "brief-1"),
+                             ("remote_receipt", "d1-save-2")]:
+            self.snapshot(f"ctx-{kind}", [ref("art-9", 1), other(kind, ref_id)])
+        self.snapshot("ctx-ignored", [ref("art-9", 1), dict(other("knowledge_card", "kc-1", 1), partition="knowledge"),
+                                      other("local_file", "task:another-task")])
+        _, snapshots, _ = self.impact(slot="ep-1", revision=2)
+        self.assertEqual(snapshots["ctx-ignored"]["status"], "current")
+        for kind in ("local_file", "remote_snapshot", "remote_brief", "remote_receipt"):
+            with self.subTest(kind):
+                item = snapshots[f"ctx-{kind}"]
+                self.assertEqual(item["status"], "unknown")
+                self.assertEqual([(reason["status"], reason["reason"]) for reason in item["reasons"]], [("unknown", "该引用类型的依赖未评估")])
+                self.assertIn(f"items[2] {kind} ", item["reasons"][0]["ref"])
+                self.assertNotIn("current", json.dumps(item, ensure_ascii=False))
+                self.assertIn("扩大阅读", item["suggestion"])
+
+    def test_context_snapshot_reference_inherits_the_verdict_of_the_snapshot_it_names(self):
+        self.ac1_fixture()
+        self.snapshot("ctx-on-a", [other("context_snapshot", "ctx-a")])
+        self.snapshot("ctx-on-b", [other("context_snapshot", "ctx-b")])
+        self.snapshot("ctx-on-on-a", [ref("art-9", 1), other("context_snapshot", "ctx-on-a")])
+        self.snapshot("ctx-on-missing", [other("context_snapshot", "ctx-gone")])
+        self.snapshot("ctx-on-edited", [other("context_snapshot", "ctx-edited")])
+        edited = self.snapshot("ctx-edited", [ref("art-9", 1)])
+        edited.write_bytes(edited.read_bytes() + b" ")
+        self.snapshot("ctx-self", [other("context_snapshot", "ctx-self")])
+        self.snapshot("ctx-loop-1", [other("context_snapshot", "ctx-loop-2")])
+        self.snapshot("ctx-loop-2", [other("context_snapshot", "ctx-loop-1")])
+        self.run_handoff("run-nested", "ctx-on-on-a")
+        self.run_handoff("run-on-b", "ctx-on-b")
+        _, snapshots, runs = self.impact(slot="ep-1", revision=2)
+        self.assertEqual({key: item["status"] for key, item in snapshots.items()},
+                         {"ctx-a": "stale", "ctx-b": "current", "ctx-on-a": "stale", "ctx-on-b": "current", "ctx-on-on-a": "stale",
+                          "ctx-on-missing": "unknown", "ctx-on-edited": "unknown", "ctx-edited": "unknown", "ctx-self": "unknown",
+                          "ctx-loop-1": "unknown", "ctx-loop-2": "unknown"})
+        self.assertEqual(snapshots["ctx-on-on-a"]["reasons"], [{
+            "ref": "items[2] context_snapshot ctx-on-a > items[1] context_snapshot ctx-a > items[1] art-1@r1", "status": "stale",
+            "reason": "引用了 slot ep-1 的旧修订 r1，目标修订为 r2"}])
+        self.assertIn("ctx-gone", snapshots["ctx-on-missing"]["reasons"][0]["reason"])
+        self.assertIn(".sha256", snapshots["ctx-on-edited"]["reasons"][0]["reason"])
+        for key in ("ctx-self", "ctx-loop-1", "ctx-loop-2"):
+            self.assertIn("成环", snapshots[key]["reasons"][0]["reason"])
+        self.assertEqual((runs["run-nested"]["status"], runs["run-on-b"]["status"]), ("stale", "current"))
+        self.assertIn("art-1@r1", runs["run-nested"]["reasons"][-1]["ref"])
 
     def test_damaged_snapshot_is_unknown_whatever_it_references(self):
         self.manifest(entry("art-9", "ep-0", 1))
@@ -443,6 +496,28 @@ class StatusTests(ProjectCase):
         self.assertEqual({key: run["stalenessCheck"] for key, run in runs.items()}, {"run-lost": "unknown", "run-edited": "unknown"})
         self.assertIn("ctx-missing", runs["run-lost"]["stalenessReasons"][0])
         self.assertIn(".sha256", runs["run-edited"]["stalenessReasons"][0])
+
+    def test_status_follows_nested_snapshots_and_reports_unassessed_reference_kinds_as_unknown(self):
+        self.stale_fixture()
+        self.snapshot("ctx-nested", [other("context_snapshot", "ctx-a")])
+        self.run_handoff("run-a", "ctx-nested")
+        latest = self.status()[0]["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], latest["possiblyStale"]), ("newer_revision_cached", True))
+        self.assertEqual([(item["ref"], item["slot"], item["pinnedRevision"], item["newestTrustedRevision"]) for item in latest["newerRevisions"]],
+                         [("items[1] context_snapshot ctx-a > items[2] art-1@r1", "ep-1", 1, 2)])
+        for kind in ("local_file", "remote_snapshot", "remote_brief", "remote_receipt"):
+            with self.subTest(kind):
+                self.snapshot("ctx-other", [ref("art-9", 1), other(kind, "some-id")])
+                self.run_handoff("run-a", "ctx-other")
+                result, lines = self.status()
+                latest = result["runs"]["latest"]
+                self.assertEqual((latest["stalenessCheck"], result["nextAction"]["basis"]), ("unknown", "latest_run"))
+                self.assertNotIn("possiblyStale", latest)
+                self.assertIn("该引用类型的依赖未评估", latest["stalenessReasons"][0])
+                self.assertIn("无法判断是否失效", "\n".join(lines))
+        self.snapshot("ctx-loop", [other("context_snapshot", "ctx-loop")])
+        self.run_handoff("run-a", "ctx-loop")
+        self.assertEqual(self.status()[0]["runs"]["latest"]["stalenessCheck"], "unknown")
 
     def test_mixed_references_report_the_newer_revision_and_the_unresolved_one(self):
         self.stale_fixture(entry("art-h", "ep-5", 1, "host"), entry("art-7", "ep-7", 1), entry("art-8", "ep-7", 4))

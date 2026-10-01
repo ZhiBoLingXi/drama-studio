@@ -3,10 +3,11 @@
 `status` and `impact` only read `<project>/.drama/` (receipts, cache manifest, snapshots, runs): no writes, no lock
 files, no network, no model, no chat history. Passing proves only what those files record. `status` repeats what the
 records say is next and flags a run whose snapshot pins an older revision than the newest trusted one in the local
-cache; it does not judge whether that step is right, and it never says the remote has nothing newer. `stale` means a snapshot pins an older revision of
-the target slot through a manifest entry whose slot a get record or a save receipt vouches for; `current` means no
-recorded execution dependency points at an older revision of that slot. Content-level implicit dependencies are never
-assessed, anything uncertain is `unknown`, and nothing here proves remote state or adoption.
+cache; it does not judge whether that step is right, and it never says the remote has nothing newer. `stale` means a
+snapshot pins an older revision of the target slot through a manifest entry whose slot a get record or a save receipt
+vouches for; `current` means no recorded execution dependency points at an older revision of that slot. Reference
+kinds whose dependencies are not assessed, content-level implicit dependencies aside, are `unknown`; anything else
+uncertain is `unknown` too, and nothing here proves remote state or adoption.
 """
 from __future__ import annotations
 
@@ -114,7 +115,43 @@ def judge_ref(ref, entries: list[dict], slot: str, revision: int) -> tuple[str, 
 
 
 def _ref_label(index: int, ref: dict) -> str:
-    return f"items[{index}] {ref['id']}" + (f"@r{ref['revision']}" if type(ref["revision"]) is int else "")
+    name = ref["id"] if ref["kind"] == "remote_artifact" else f"{ref['kind']} {ref['id']}"
+    return f"items[{index}] {name}" + (f"@r{ref['revision']}" if type(ref["revision"]) is int else "")
+
+
+def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tuple = ()) -> list[dict]:
+    """Every dependency of a snapshot that is not clearly current, following context_snapshot references.
+
+    `judge(ref)` classifies one remote_artifact reference as (status, reason, slot, target revision). The task file
+    and knowledge cards are not slot dependencies; every other reference kind is unknown, never silently current.
+    """
+    item = snapshots.get(snapshot_id)
+    if item is None:
+        return [{"ref": None, "status": "unknown", "reason": f"快照 {snapshot_id} 不在 .drama/snapshots/ 中"}]
+    if item["problems"]:
+        return [{"ref": None, "status": "unknown", "reason": "快照未通过完整性检查：" + problem} for problem in item["problems"]]
+    found = []
+    for index, packed in enumerate(item["doc"]["items"]):  # omitted entries never entered the context, so they are not dependencies
+        ref = packed["ref"]
+        label = _ref_label(index, ref)
+        if ref["kind"] == "knowledge_card" or (ref["kind"] == "local_file" and ref["id"].startswith("task:")):
+            continue
+        if ref["kind"] == "remote_artifact":
+            status, why, slot, target = judge(ref)
+            if status != "current":
+                found.append({"ref": label, "status": status, "reason": why, "slot": slot, "pinned": ref["revision"], "target": target})
+        elif ref["kind"] != "context_snapshot":
+            found.append({"ref": label, "status": "unknown", "reason": "该引用类型的依赖未评估"})
+        elif ref["id"] in (*trail, snapshot_id):
+            found.append({"ref": label, "status": "unknown", "reason": "快照之间的引用成环，无法判定"})
+        else:
+            found += [dict(inner, ref=f"{label} > {inner['ref']}" if inner["ref"] else label)
+                      for inner in _dependencies(ref["id"], snapshots, judge, (*trail, snapshot_id))]
+    return found
+
+
+def _public(finding: dict) -> dict:
+    return {key: finding[key] for key in ("ref", "status", "reason")}
 
 
 def _verdict(result: dict, reasons: list[dict]) -> dict:
@@ -125,19 +162,8 @@ def _verdict(result: dict, reasons: list[dict]) -> dict:
     return result
 
 
-def _judge_snapshot(item: dict, entries: list[dict], slot: str, revision: int) -> dict:
-    result = {"snapshotId": item["id"], "path": item["path"]}
-    if item["problems"]:
-        return _verdict(result, [{"ref": None, "status": "unknown", "reason": "快照未通过完整性检查：" + problem} for problem in item["problems"]])
-    reasons = []
-    for index, packed in enumerate(item["doc"]["items"]):  # omitted entries never entered the context, so they are not dependencies
-        ref = packed["ref"]
-        if ref["kind"] != "remote_artifact":
-            continue
-        status, why = judge_ref(ref, entries, slot, revision)
-        if status != "current":
-            reasons.append({"ref": _ref_label(index, ref), "status": status, "reason": why})
-    return _verdict(result, reasons)
+def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
+    return _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(found) for found in _dependencies(item["id"], snapshots, judge)])
 
 
 def _judge_run(item: dict, snapshots: dict[str, dict]) -> dict:
@@ -172,7 +198,8 @@ def run_impact(project: str, slot: str | None = None, revision: int | None = Non
             raise ValueError(f"--artifact {artifact} 无法解析出可信的 slot 与 revision：{why}。"
                              "请用它的 get_story_artifact 响应重新缓存（receipt cache），或显式给出 --slot 与 --revision")
         (slot, revision), resolved = identity, f"--artifact {artifact}"
-    snapshots = [_judge_snapshot(item, entries, slot, revision) for item in _snapshots(drama)]
+    loaded = {item["id"]: item for item in _snapshots(drama)}
+    snapshots = [_judge_snapshot(item, loaded, lambda ref: (*judge_ref(ref, entries, slot, revision), slot, revision)) for item in loaded.values()]
     by_id = {item["snapshotId"]: item for item in snapshots}
     runs = [_judge_run(item, by_id) for item in _records(drama, "runs", "run-handoff", "runId")]
     return {"ok": True, "command": "impact", "project": str(drama.parent), "target": {"slot": slot, "revision": revision, "resolvedFrom": resolved},
@@ -196,32 +223,26 @@ def _newest(entries: list[dict], slot: str) -> tuple[int, str | None]:
     return newest, doubt
 
 
-def _staleness(snapshot: dict | None, snapshot_id: str, entries: list[dict], manifest_error: str | None, project: Path) -> dict:
+def _against_newest(ref: dict, entries: list[dict]) -> tuple[str, str | None, str, int]:
+    """judge_ref against the newest trusted revision cached for the reference's own slot."""
+    identity, _ = _identity(entries, ref["id"])
+    slot = identity[0] if identity else ""
+    newest, doubt = _newest(entries, slot)
+    status, why = judge_ref(ref, entries, slot, newest)
+    return ("unknown", doubt, slot, newest) if status == "current" and doubt else (status, why, slot, newest)
+
+
+def _staleness(snapshot_id: str, snapshots: dict[str, dict], entries: list[dict], manifest_error: str | None, project: Path) -> dict:
     """Compare what a run's snapshot pins with the newest trusted revision of each slot in the local cache manifest.
 
-    Uses judge_ref, so the rules are impact's. It only ever claims what the local cache shows.
+    Uses _dependencies and judge_ref, so the rules are impact's. It only ever claims what the local cache shows.
     """
-    newer, reasons = [], []
-    if manifest_error:
-        reasons = [manifest_error]
-    elif snapshot is None:
-        reasons = [f"所依赖的快照 {snapshot_id} 不在 .drama/snapshots/ 中"]
-    elif snapshot["problems"]:
-        reasons = ["快照未通过完整性检查：" + problem for problem in snapshot["problems"]]
-    else:
-        for index, packed in enumerate(snapshot["doc"]["items"]):
-            ref = packed["ref"]
-            if ref["kind"] != "remote_artifact":
-                continue
-            identity, _ = _identity(entries, ref["id"])
-            slot = identity[0] if identity else ""
-            newest, doubt = _newest(entries, slot)
-            status, why = judge_ref(ref, entries, slot, newest)
-            if status == "stale":
-                newer.append({"ref": _ref_label(index, ref), "slot": slot, "pinnedRevision": ref["revision"], "newestTrustedRevision": newest,
-                              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot {shlex.quote(slot)} --revision {newest}"})
-            elif status == "unknown" or doubt:
-                reasons.append(f"{_ref_label(index, ref)}：{why or doubt}")
+    found = ([{"ref": None, "status": "unknown", "reason": manifest_error}] if manifest_error
+             else _dependencies(snapshot_id, snapshots, lambda ref: _against_newest(ref, entries)))
+    newer = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
+              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot {shlex.quote(item['slot'])} --revision {item['target']}"}
+             for item in found if item["status"] == "stale"]
+    reasons = [f"{item['ref']}：{item['reason']}" if item["ref"] else item["reason"] for item in found if item["status"] == "unknown"]
     if newer:
         return {"stalenessCheck": "newer_revision_cached", "possiblyStale": True, "newerRevisions": newer, "stalenessReasons": reasons}
     return {"stalenessCheck": "unknown" if reasons else "no_newer_revision_cached", "newerRevisions": [], "stalenessReasons": reasons}
@@ -281,8 +302,8 @@ def run_status(project: str) -> dict:
     records = _records(drama, "runs", "run-handoff", "runId")
     newest_first = sorted((item for item in records if not item["problems"]),
                           key=lambda item: (item["file"].stat().st_mtime_ns, item["id"]), reverse=True)
-    runs = [_run_summary(item, _staleness(loaded.get(item["doc"]["contextSnapshotId"]), item["doc"]["contextSnapshotId"],
-                                          entries, manifest_error, drama.parent)) for item in newest_first]
+    runs = [_run_summary(item, _staleness(item["doc"]["contextSnapshotId"], loaded, entries, manifest_error, drama.parent))
+            for item in newest_first]
     invalid += [{"kind": "snapshot", "path": item["path"], "errors": item["problems"]} for item in snapshots if not item["intact"]]
     invalid += [{"kind": "run", "path": item["path"], "errors": item["problems"]} for item in records if item["problems"]]
     latest = runs[0] if runs else None
