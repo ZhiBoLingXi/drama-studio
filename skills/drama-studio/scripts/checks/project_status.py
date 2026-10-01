@@ -2,7 +2,8 @@
 
 `status` and `impact` only read `<project>/.drama/` (receipts, cache manifest, snapshots, runs): no writes, no lock
 files, no network, no model, no chat history. Passing proves only what those files record. `status` repeats what the
-records say is next; it does not judge whether that step is right. `stale` means a snapshot pins an older revision of
+records say is next and flags a run whose snapshot pins an older revision than the newest trusted one in the local
+cache; it does not judge whether that step is right, and it never says the remote has nothing newer. `stale` means a snapshot pins an older revision of
 the target slot through a manifest entry whose slot a get record or a save receipt vouches for; `current` means no
 recorded execution dependency points at an older revision of that slot. Content-level implicit dependencies are never
 assessed, anything uncertain is `unknown`, and nothing here proves remote state or adoption.
@@ -13,6 +14,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import shlex
 
 from .contract_check import check_contract
 from .receipt import MANIFEST, area, contained, drama_dir, pending, slot_rank
@@ -20,6 +22,7 @@ from .receipt import MANIFEST, area, contained, drama_dir, pending, slot_rank
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
 OPEN_RUNS = ("planned", "running", "interrupted")
 BASIS = {"unknown_receipt": "有结果未知、尚未对账的保存回执", "invalid_record": "有无效或损坏的本地记录",
+         "stale_run": "最近一次运行的快照引用了旧修订，本地缓存已有更新的可信修订",
          "latest_run": "最近一次运行记录的 nextAction", "no_runs": ".drama/runs/ 中没有有效的运行记录"}
 WIDEN = "扩大阅读：本地记录无法判定，请重读该 slot 的最新修订和这份记录实际装入的材料，再决定是否重跑；不要当作未受影响。"
 
@@ -110,6 +113,10 @@ def judge_ref(ref, entries: list[dict], slot: str, revision: int) -> tuple[str, 
     return "current", None
 
 
+def _ref_label(index: int, ref: dict) -> str:
+    return f"items[{index}] {ref['id']}" + (f"@r{ref['revision']}" if type(ref["revision"]) is int else "")
+
+
 def _verdict(result: dict, reasons: list[dict]) -> dict:
     status = next((name for name in ("stale", "unknown") if any(reason["status"] == name for reason in reasons)), "current")
     result.update(status=status, reasons=reasons)
@@ -129,8 +136,7 @@ def _judge_snapshot(item: dict, entries: list[dict], slot: str, revision: int) -
             continue
         status, why = judge_ref(ref, entries, slot, revision)
         if status != "current":
-            pinned = f"@r{ref['revision']}" if type(ref["revision"]) is int else ""
-            reasons.append({"ref": f"items[{index}] {ref['id']}{pinned}", "status": status, "reason": why})
+            reasons.append({"ref": _ref_label(index, ref), "status": status, "reason": why})
     return _verdict(result, reasons)
 
 
@@ -174,16 +180,63 @@ def run_impact(project: str, slot: str | None = None, revision: int | None = Non
             "note": NOTE, "read_only": True, "remote_verified": False}
 
 
-def _run_summary(item: dict) -> dict:
+def _newest(entries: list[dict], slot: str) -> tuple[int, str | None]:
+    """Newest trusted revision the manifest holds for a slot, and a doubt when an untrusted entry may be newer still."""
+    newest, untrusted = 0, []
+    for entry in entries:
+        if entry.get("slot") != slot:
+            continue
+        identity, _ = _identity(entries, entry.get("artifactId"))
+        if identity is None:
+            untrusted.append(entry)
+        else:
+            newest = max(newest, identity[1])
+    doubt = next((f"manifest 中 {entry.get('artifactId')} 也声称属于 slot {slot}，但条目不可信，无法排除它是更新的修订" for entry in untrusted
+                  if not (type(entry.get("revision")) is int and entry["revision"] <= newest)), None)
+    return newest, doubt
+
+
+def _staleness(snapshot: dict | None, snapshot_id: str, entries: list[dict], manifest_error: str | None, project: Path) -> dict:
+    """Compare what a run's snapshot pins with the newest trusted revision of each slot in the local cache manifest.
+
+    Uses judge_ref, so the rules are impact's. It only ever claims what the local cache shows.
+    """
+    newer, reasons = [], []
+    if manifest_error:
+        reasons = [manifest_error]
+    elif snapshot is None:
+        reasons = [f"所依赖的快照 {snapshot_id} 不在 .drama/snapshots/ 中"]
+    elif snapshot["problems"]:
+        reasons = ["快照未通过完整性检查：" + problem for problem in snapshot["problems"]]
+    else:
+        for index, packed in enumerate(snapshot["doc"]["items"]):
+            ref = packed["ref"]
+            if ref["kind"] != "remote_artifact":
+                continue
+            identity, _ = _identity(entries, ref["id"])
+            slot = identity[0] if identity else ""
+            newest, doubt = _newest(entries, slot)
+            status, why = judge_ref(ref, entries, slot, newest)
+            if status == "stale":
+                newer.append({"ref": _ref_label(index, ref), "slot": slot, "pinnedRevision": ref["revision"], "newestTrustedRevision": newest,
+                              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot {shlex.quote(slot)} --revision {newest}"})
+            elif status == "unknown" or doubt:
+                reasons.append(f"{_ref_label(index, ref)}：{why or doubt}")
+    if newer:
+        return {"stalenessCheck": "newer_revision_cached", "possiblyStale": True, "newerRevisions": newer, "stalenessReasons": reasons}
+    return {"stalenessCheck": "unknown" if reasons else "no_newer_revision_cached", "newerRevisions": [], "stalenessReasons": reasons}
+
+
+def _run_summary(item: dict, staleness: dict) -> dict:
     doc = item["doc"]
     modified = datetime.fromtimestamp(item["file"].stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
     return {"runId": doc["runId"], "path": item["path"], "taskId": doc["taskId"], "workstation": doc["workstation"],
             "contextSnapshotId": doc["contextSnapshotId"], "status": doc["status"], "unfinished": doc["unfinished"],
-            "nextAction": doc["nextAction"], "modifiedAt": modified}
+            "nextAction": doc["nextAction"], "modifiedAt": modified, **staleness}
 
 
 def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> dict:
-    """Unreconciled unknown saves first, then invalid records, then the latest run's own nextAction, then a hint."""
+    """Unknown saves first, then invalid records, then a possibly stale latest run, then its own nextAction, then a hint."""
     if receipts["pending"]:
         first, total = receipts["pending"][0], len(receipts["pending"])
         slot = f"（slot {first['slot']}）" if first["slot"] else ""
@@ -195,6 +248,13 @@ def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> di
         first = invalid[0]
         return {"basis": "invalid_record", "from": first["path"],
                 "text": f"处理无效或损坏的记录 {first['path']}：{first['errors'][0]}（共 {len(invalid)} 项）；修复或移走之前不要把它们当作恢复依据"}
+    if latest is not None and latest.get("possiblyStale"):
+        first, more = latest["newerRevisions"][0], len(latest["newerRevisions"]) - 1
+        text = (f"先运行 {first['impactCommand']} 确认失效范围，再决定是否重新装包、重跑：最近运行 {latest['runId']} 的快照引用了 "
+                f"slot {first['slot']} 的 r{first['pinnedRevision']}，本地缓存已有可信的 r{first['newestTrustedRevision']}"
+                + (f"（另有 {more} 个 slot 也有更新修订）" if more else ""))
+        return {"basis": "stale_run", "text": text, "from": latest["path"], "impactCommand": first["impactCommand"],
+                "recordedNextAction": latest["nextAction"]}
     if latest is not None:
         return {"basis": "latest_run", "text": latest["nextAction"], "from": latest["path"]}
     return {"basis": "no_runs", "from": None,
@@ -207,8 +267,13 @@ def run_status(project: str) -> dict:
     receipts = pending(project)
     invalid = [{"kind": "receipt", "path": Path(item["path"]).relative_to(drama.parent).as_posix(), "errors": item["errors"]}
                for item in receipts["invalid"]]
-    snapshots = []
+    try:
+        entries, manifest_error = _entries(drama), None
+    except ValueError as error:
+        entries, manifest_error = [], str(error)
+    snapshots, loaded = [], {}
     for item in _snapshots(drama):
+        loaded[item["id"]] = item
         doc = item["doc"] if isinstance(item["doc"], dict) else {}
         snapshots.append({"snapshotId": item["id"], "path": item["path"], "intact": not item["problems"],
                           "completeness": doc.get("completeness") if doc.get("completeness") in ("complete", "incomplete") else None,
@@ -216,7 +281,8 @@ def run_status(project: str) -> dict:
     records = _records(drama, "runs", "run-handoff", "runId")
     newest_first = sorted((item for item in records if not item["problems"]),
                           key=lambda item: (item["file"].stat().st_mtime_ns, item["id"]), reverse=True)
-    runs = [_run_summary(item) for item in newest_first]
+    runs = [_run_summary(item, _staleness(loaded.get(item["doc"]["contextSnapshotId"]), item["doc"]["contextSnapshotId"],
+                                          entries, manifest_error, drama.parent)) for item in newest_first]
     invalid += [{"kind": "snapshot", "path": item["path"], "errors": item["problems"]} for item in snapshots if not item["intact"]]
     invalid += [{"kind": "run", "path": item["path"], "errors": item["problems"]} for item in records if item["problems"]]
     latest = runs[0] if runs else None
@@ -225,21 +291,32 @@ def run_status(project: str) -> dict:
             "runs": {"count": len(records), "recencyBasis": "file_mtime", "latest": latest,
                      "open": [run for run in runs if run["status"]["run"] in OPEN_RUNS or run["unfinished"]]},
             "snapshots": snapshots, "invalid": invalid,
-            "note": "只读取 .drama/ 下的本地记录，不读聊天记录；不证明远端状态、采用或质量。最近运行按文件修改时间判定，复制或检出后可能不准。",
+            "note": "只读取 .drama/ 下的本地记录，不读聊天记录；不证明远端状态、采用或质量。最近运行按文件修改时间判定，复制或检出后可能不准。"
+                    "失效提示只比较本地缓存 manifest 里的可信条目，不说明远端有没有更新的修订。",
             "read_only": True, "remote_verified": False, "adoption_verified": False}
 
 
 def _run_lines(label: str, run: dict) -> list[str]:
     lines = [f"- {label}：{run['runId']}（{run['workstation']}，{run['status']['run']}/{run['status']['goal']}，任务 {run['taskId']}，"
              f"快照 {run['contextSnapshotId']}，修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
-    return lines + ([f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else [])
+    lines += [f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else []
+    lines += [f"    可能已失效：快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['newestTrustedRevision']}；"
+              f"先运行 {item['impactCommand']}" for item in run["newerRevisions"]]
+    if run["stalenessReasons"]:
+        lines.append(f"    {'其余引用' if run['newerRevisions'] else ''}无法判断是否失效：{'；'.join(run['stalenessReasons'])}")
+    elif not run["newerRevisions"]:
+        lines.append("    本地缓存中没有它所引用 slot 的更新修订；这不说明远端没有")
+    return lines
 
 
 def render_status(result: dict) -> str:
     """Human-readable status; the first line is the next action."""
     receipts, runs, action = result["receipts"], result["runs"], result["nextAction"]
-    lines = ["下一步：" + action["text"],
-             f"依据：{BASIS[action['basis']]}" + (f"（{action['from']}）" if action["from"] else "") + "。" + result["note"], "",
+    lines = ["下一步：" + action["text"]]
+    if action["basis"] == "stale_run":
+        pinned = runs["latest"]["newerRevisions"][0]["pinnedRevision"]
+        lines.append(f"该运行按旧修订 r{pinned} 的上下文记录的下一步（先看 impact 结果，不要直接照做）：{action['recordedNextAction']}")
+    lines += [f"依据：{BASIS[action['basis']]}" + (f"（{action['from']}）" if action["from"] else "") + "。" + result["note"], "",
              f"未决回执（{len(receipts['pending'])}）"]
     for item in receipts["pending"]:
         known = "".join(f"，{label} {item[key]}" for label, key in (("slot", "slot"), ("expectedRevision", "expectedRevision")) if item[key] is not None)

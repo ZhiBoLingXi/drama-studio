@@ -307,6 +307,7 @@ class StatusTests(ProjectCase):
         self.assertEqual(result["snapshots"], [{"snapshotId": "ctx-a", "path": ".drama/snapshots/ctx-a.json", "intact": True, "completeness": "complete",
                                                 "createdFor": {"taskId": "task-ep2-draft", "workstation": "C5", "role": "author"}, "problems": []}])
         self.assertEqual((result["nextAction"]["basis"], result["nextAction"]["from"]), ("unknown_receipt", ".drama/receipts/d1-save-3.json"))
+        self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"], latest["stalenessReasons"]), ("no_newer_revision_cached", [], []))
         self.assertTrue(lines[0].startswith("下一步：对账"), lines[0])
         for needle in ("d1-save-3", "ep-03-outline", "--reconciles d1-save-3", "不要换新 requestId"):
             self.assertIn(needle, lines[0])
@@ -349,6 +350,119 @@ class StatusTests(ProjectCase):
         self.assertEqual([item["requestId"] for item in result["receipts"]["read_only_unknown"]], ["read-lost"])
         self.assertEqual(result["nextAction"]["basis"], "no_runs")
         self.assertIn("read-lost", "\n".join(lines))
+
+    def stale_fixture(self, *extra):
+        """The latest run's snapshot pins art-1 (slot ep-1 r1) while the cache already holds a trusted r2 of that slot."""
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2, "receipt"), entry("art-9", "ep-0", 1), *extra)
+        self.snapshot("ctx-a", [ref("art-9", 1), ref("art-1", 1)])
+        self.run_handoff("run-a", "ctx-a")
+
+    def test_latest_run_pinning_an_older_revision_leads_with_the_impact_command(self):
+        self.stale_fixture()
+        result, lines = self.status()
+        command = f"drama_tools.py impact {self.project} --slot ep-1 --revision 2"
+        latest = result["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], latest["possiblyStale"]), ("newer_revision_cached", True))
+        self.assertEqual(latest["newerRevisions"], [{"ref": "items[2] art-1@r1", "slot": "ep-1", "pinnedRevision": 1,
+                                                     "newestTrustedRevision": 2, "impactCommand": command}])
+        self.assertEqual(latest["stalenessReasons"], [])
+        action = result["nextAction"]
+        self.assertEqual((action["basis"], action["from"], action["impactCommand"], action["recordedNextAction"]),
+                         ("stale_run", ".drama/runs/run-a.json", command, "请用户决定是否接受 C4 变更提案"))
+        self.assertTrue(lines[0].startswith(f"下一步：先运行 {command}"), lines[0])
+        for needle in ("run-a", "slot ep-1", "r1", "r2", "再决定"):
+            self.assertIn(needle, lines[0])
+        self.assertNotIn("请用户决定是否接受 C4 变更提案", lines[0])
+        self.assertEqual(lines[1], "该运行按旧修订 r1 的上下文记录的下一步（先看 impact 结果，不要直接照做）：请用户决定是否接受 C4 变更提案")
+        self.assertIn("可能已失效", "\n".join(lines[2:]))
+        self.assertEqual(json.loads(self.cli(*command.split()[1:]).stdout)["runs"][0]["status"], "stale")
+
+    def test_possibly_stale_run_yields_to_unknown_receipts_and_invalid_records(self):
+        self.stale_fixture()
+        (self.drama / "runs/run-broken.json").write_text("{", encoding="utf-8")
+        result, lines = self.status()
+        self.assertEqual((result["nextAction"]["basis"], result["runs"]["latest"]["possiblyStale"]), ("invalid_record", True))
+        self.unknown_save()
+        result, lines = self.status()
+        self.assertEqual(result["nextAction"]["basis"], "unknown_receipt")
+        self.assertIn("可能已失效", "\n".join(lines))
+        self.assertIn("--slot ep-1 --revision 2", "\n".join(lines))
+
+    def test_no_newer_cached_revision_claims_only_what_the_local_cache_shows(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-9", "ep-0", 1))
+        self.snapshot("ctx-a", [ref("art-2", 2), ref("art-9", 1)])
+        self.run_handoff("run-a", "ctx-a")
+        self.snapshot("ctx-task-only", [])
+        self.run_handoff("run-b", "ctx-task-only", status={"run": "running", "goal": "not_assessed"})
+        os.utime(self.drama / "runs/run-b.json", (1_000, 1_000))
+        result, lines = self.status()
+        for run in (result["runs"]["latest"], result["runs"]["open"][-1]):
+            self.assertEqual((run["stalenessCheck"], run["newerRevisions"], run["stalenessReasons"]), ("no_newer_revision_cached", [], []))
+            self.assertNotIn("possiblyStale", run)
+        self.assertEqual((result["nextAction"]["basis"], lines[0]), ("latest_run", "下一步：请用户决定是否接受 C4 变更提案"))
+        text = "\n".join(lines)
+        self.assertEqual(text.count("本地缓存中没有它所引用 slot 的更新修订；这不说明远端没有"), 2)
+        self.assertIn("本地缓存", result["note"])
+
+    def test_unassessable_staleness_is_reported_as_unknown_and_never_as_fresh_or_stale(self):
+        cases = {"host-declared slot": lambda: (self.manifest(entry("art-1", "ep-1", 1, "host"), entry("art-2", "ep-1", 2)), [ref("art-1", 1)]),
+                 "entry without slotSource": lambda: (self.manifest(entry("art-1", "ep-1", 1, None)), [ref("art-1", 1)]),
+                 "no manifest": lambda: (None, [ref("art-1", 1)]),
+                 "artifact not in the manifest": lambda: (self.manifest(entry("art-2", "ep-1", 2)), [ref("art-1", 1)]),
+                 "reference without a revision": lambda: (self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2)), [ref("art-1", None, required=False)]),
+                 "untrusted newer entry in the slot": lambda: (self.manifest(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3, "host")), [ref("art-1", 1)]),
+                 "unreadable manifest": lambda: (self.manifest(entry("art-1", "ep-1", 1)), [ref("art-1", 1)])}
+        for label, build in cases.items():
+            with self.subTest(label):
+                if (self.drama / "cache/manifest.json").exists():
+                    (self.drama / "cache/manifest.json").unlink()
+                _, items = build()
+                self.snapshot("ctx-a", items)
+                self.run_handoff("run-a", "ctx-a")
+                if label == "unreadable manifest":
+                    (self.drama / "cache/manifest.json").write_text("{", encoding="utf-8")
+                result, lines = self.status()
+                latest = result["runs"]["latest"]
+                self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"]), ("unknown", []))
+                self.assertTrue(latest["stalenessReasons"])
+                self.assertNotIn("possiblyStale", latest)
+                self.assertEqual((result["nextAction"]["basis"], lines[0]), ("latest_run", "下一步：请用户决定是否接受 C4 变更提案"))
+                text = "\n".join(lines)
+                self.assertEqual(text.count("无法判断是否失效"), 1)
+                for word in ("可能已失效", "没有它所引用 slot 的更新修订"):
+                    self.assertNotIn(word, text)
+
+    def test_run_without_a_usable_snapshot_has_unknown_staleness(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2))
+        edited = self.snapshot("ctx-edited", [ref("art-1", 1)])
+        self.run_handoff("run-lost", "ctx-missing")
+        self.run_handoff("run-edited", "ctx-edited", status={"run": "running", "goal": "not_assessed"})
+        edited.write_bytes(edited.read_bytes() + b" ")
+        result, _ = self.status()
+        runs = {run["runId"]: run for run in [result["runs"]["latest"], *result["runs"]["open"]]}
+        self.assertEqual({key: run["stalenessCheck"] for key, run in runs.items()}, {"run-lost": "unknown", "run-edited": "unknown"})
+        self.assertIn("ctx-missing", runs["run-lost"]["stalenessReasons"][0])
+        self.assertIn(".sha256", runs["run-edited"]["stalenessReasons"][0])
+
+    def test_mixed_references_report_the_newer_revision_and_the_unresolved_one(self):
+        self.stale_fixture(entry("art-h", "ep-5", 1, "host"), entry("art-7", "ep-7", 1), entry("art-8", "ep-7", 4))
+        self.snapshot("ctx-a", [ref("art-1", 1), ref("art-h", 1), ref("art-7", 1)])
+        latest = self.status()[0]["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], latest["possiblyStale"]), ("newer_revision_cached", True))
+        self.assertEqual([(item["slot"], item["pinnedRevision"], item["newestTrustedRevision"]) for item in latest["newerRevisions"]],
+                         [("ep-1", 1, 2), ("ep-7", 1, 4)])
+        self.assertEqual(len(latest["stalenessReasons"]), 1)
+        self.assertIn("art-h", latest["stalenessReasons"][0])
+
+    def test_impact_command_quotes_paths_and_slots_with_spaces(self):
+        self.manifest(entry("art-1", "ep 1", 1), entry("art-2", "ep 1", 2))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.run_handoff("run-a", "ctx-a")
+        spaced = self.project.with_name("my drama")
+        self.project.rename(spaced)
+        command = project_status.run_status(str(spaced))["runs"]["latest"]["newerRevisions"][0]["impactCommand"]
+        self.assertEqual(command, f"drama_tools.py impact '{spaced}' --slot 'ep 1' --revision 2")
+        spaced.rename(self.project)
 
     def test_missing_slot_revision_or_completeness_is_not_printed_as_none(self):
         bare = Path(self.temp.name) / "bare.input.json"
@@ -437,6 +551,16 @@ class CliTests(ProjectCase):
         for needle in ("请用户决定是否接受 C4 变更提案", "C4 变更待用户决定", "ctx-a：完好"):
             self.assertIn(needle, run.stdout)
 
+    def test_status_first_line_is_the_impact_command_when_the_latest_run_pins_an_older_revision(self):
+        self.ac1_fixture()
+        self.run_handoff("run-a", "ctx-a")
+        run = self.cli("status", self.project)
+        self.assertEqual((run.returncode, run.stderr), (0, ""))
+        lines = run.stdout.splitlines()
+        self.assertTrue(lines[0].startswith(f"下一步：先运行 drama_tools.py impact {self.project} --slot ep-1 --revision 2"), lines[0])
+        self.assertIn("请用户决定是否接受 C4 变更提案", lines[1])
+        self.assertEqual(json.loads(self.cli("status", self.project, "--json").stdout)["nextAction"]["basis"], "stale_run")
+
     def test_status_json_is_parseable_and_matches_the_text_view(self):
         self.ac4_fixture()
         run = self.cli("status", self.project, "--json")
@@ -500,6 +624,7 @@ class ReadOnlyTests(ProjectCase):
         receipt.record_receipt(str(self.project), str(FIXTURES / "02-save.response.json"), "save_story_artifact", "d1-save-2",
                                str(FIXTURES / "02-save.input.json"))
         receipt.cache(str(self.project), [str(FIXTURES / name) for name in CHUNKS] + [str(FIXTURES / "03-get.response.json")])
+        receipt.cache(str(self.project), [str(FIXTURES / "07-reconcile-get.response.json")])  # revision 2 of the same slot
         self.snapshot("ctx-ep3", [ref(ART1, 1)])
         self.snapshot("ctx-unknown", [ref("art-404", 1)])
         edited = self.snapshot("ctx-edited", [])
@@ -523,6 +648,10 @@ class ReadOnlyTests(ProjectCase):
                 after = tree(self.project)
                 self.assertEqual({name: digest for name, (digest, _) in after.items() if name.startswith(".drama/") and digest}, hashes)
                 self.assertEqual(after, before)  # no lock file, temp file or folder appeared anywhere in the project, even briefly
+        status = json.loads(self.cli("status", self.project, "--json").stdout)
+        flagged = {run["runId"]: run["stalenessCheck"] for run in [status["runs"]["latest"], *status["runs"]["open"]]}
+        self.assertEqual(flagged, {"run-ep3": "newer_revision_cached", "run-ep21-c5-1": "no_newer_revision_cached"})
+        self.assertEqual(tree(self.project), before)
         stale = json.loads(self.cli("impact", self.project, "--slot", "ep-03-outline", "--revision", "2").stdout)
         self.assertEqual({item["snapshotId"]: item["status"] for item in stale["snapshots"]},
                          {"ctx-a": "current", "ctx-edited": "unknown", "ctx-ep3": "stale", "ctx-unknown": "unknown"})
@@ -597,7 +726,7 @@ class InvariantTests(unittest.TestCase):
                 names.update(alias.name for alias in node.names)
             elif isinstance(node, ast.Call):
                 called.add(node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", ""))
-        self.assertEqual(imported, {"__future__", "datetime", "hashlib", "json", "pathlib", ".contract_check", ".receipt"})
+        self.assertEqual(imported, {"__future__", "datetime", "hashlib", "json", "pathlib", "shlex", ".contract_check", ".receipt"})
         writers = {"open", "write", "write_text", "write_bytes", "mkdir", "makedirs", "unlink", "rmdir", "rename", "replace", "touch",
                    "link", "symlink_to", "atomic_write", "publish_new", "manifest_lock", "cache", "record_receipt"}
         self.assertEqual((called | names) & writers, set())
