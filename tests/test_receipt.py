@@ -609,7 +609,7 @@ class CacheTests(ProjectCase):
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
         self.assertEqual(manifest["schemaVersion"], "drama-studio/cache-manifest/v0")
         entry = manifest["entries"][0]
-        self.assertEqual(set(entry), {"path", "artifactId", "slot", "kind", "episodeRef", "revision", "sha256", "serverFingerprint", "verified", "operation", "readAt"})
+        self.assertEqual(set(entry), {"path", "artifactId", "slot", "kind", "episodeRef", "revision", "sha256", "serverFingerprint", "verified", "operation", "readAt", "slotSource"})
         self.assertEqual(digest, entry["sha256"])
         self.assertEqual(digest, entry["serverFingerprint"])
         self.assertEqual(digest, self.fingerprint)
@@ -752,6 +752,95 @@ class CacheTests(ProjectCase):
         lock.unlink()
         self.assertTrue(self.cache(*CHUNKS, "03-get.response.json")["passed"])
         self.assertFalse(lock.exists())
+
+    META = {"slot": "ep-03-outline", "kind": "episode_outline", "episode_ref": "ep-03"}
+
+    def entries(self):
+        return json.loads(self.manifest.read_text(encoding="utf-8"))["entries"]
+
+    def test_slot_source_is_record_when_a_get_response_is_given(self):
+        self.assertEqual(self.cache(*CHUNKS, "03-get.response.json")["entry"]["slotSource"], "record")
+        self.assertEqual(self.cache("03-get.response.json")["entry"]["slotSource"], "record")
+        self.assertEqual([entry["slotSource"] for entry in self.entries()], ["record"])
+
+    def test_slot_source_is_host_when_only_chunks_and_no_save_receipt(self):
+        result = self.cache(*CHUNKS, **self.META)
+        self.assertEqual((result["passed"], result["entry"]["slotSource"]), (True, "host"))
+        self.assertTrue(any("slotSource" in warning and "get_story_artifact" in warning for warning in result["warnings"]))
+        self.assertEqual(self.cache(*CHUNKS, "03-get.response.json")["warnings"], [])
+
+    def test_slot_source_is_receipt_when_a_confirmed_save_receipt_agrees(self):
+        self.save()
+        result = self.cache(*CHUNKS, **self.META)
+        self.assertEqual((result["passed"], result["entry"]["slotSource"], result["warnings"]), (True, "receipt", []))
+
+    def test_slot_disagreeing_with_the_save_receipt_is_refused(self):
+        self.save()
+        result = self.cache(*CHUNKS, **dict(self.META, slot="ep-04-outline"))
+        self.assertEqual((result["passed"], result["status"]), (False, "refused"))
+        for needle in ("ep-04-outline", "ep-03-outline", "d1-save-2"):
+            self.assertIn(needle, result["error"])
+        self.assertNothingCached()
+
+    def test_only_a_valid_confirmed_save_of_the_same_artifact_vouches_for_the_slot(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")  # unknown: no artifactId
+        self.record("03-get.response.json", "get_story_artifact", "d1-get-1", "03-get.input.json")  # a read, not a save
+        self.save()
+        path = self.receipts / "d1-save-2.json"
+        good = json.loads(path.read_text(encoding="utf-8"))
+        cases = {"fails contract-check": dict(good, extra=True),
+                 "other artifact": dict(good, remote=dict(good["remote"], artifactId="c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d")),
+                 "other revision": dict(good, remote=dict(good["remote"], revision=2)),
+                 "other project": dict(good, remote=dict(good["remote"], projectId="other-project")),
+                 "not confirmed": dict(good, outcome="rejected_other")}
+        for index, (label, doc) in enumerate(cases.items()):
+            with self.subTest(label):
+                path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+                result = self.cache(*CHUNKS, **self.META)
+                self.assertEqual((result["passed"], result["entry"]["slotSource"]), (True, "host"))
+                self.assertEqual(len(self.entries()), 1)
+
+    def test_stronger_slot_source_is_appended_and_earlier_entries_never_change(self):
+        self.assertTrue(self.cache(*CHUNKS, **self.META)["manifestAppended"])
+        first = self.entries()
+        self.save()
+        upgraded = self.cache(*CHUNKS, **self.META)
+        self.assertEqual((upgraded["status"], upgraded["manifestAppended"], upgraded["entry"]["slotSource"]), ("unchanged", True, "receipt"))
+        strongest = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertEqual((strongest["manifestAppended"], strongest["entry"]["slotSource"]), (True, "record"))
+        entries = self.entries()
+        self.assertEqual([entry["slotSource"] for entry in entries], ["host", "receipt", "record"])
+        self.assertEqual(entries[:1], first)
+        self.assertEqual(len({(entry["path"], entry["sha256"], entry["slot"], entry["verified"]) for entry in entries}), 1)
+        before = self.manifest.read_bytes()
+        for weaker in (lambda: self.cache(*CHUNKS, **self.META), lambda: self.cache("03-get.response.json")):
+            result = weaker()
+            self.assertEqual((result["manifestAppended"], result["entry"]["slotSource"]), (False, "record"))
+            self.assertEqual(self.manifest.read_bytes(), before)
+
+    def test_get_after_a_host_declared_read_adds_the_slot_source_and_keeps_verification(self):
+        self.cache(*CHUNKS, **self.META)
+        result = self.cache("03-get.response.json")
+        self.assertTrue(result["manifestAppended"])
+        host, record = self.entries()
+        self.assertEqual((host["slotSource"], host["verified"]), ("host", True))
+        self.assertEqual({key: record[key] for key in ("slotSource", "verified", "serverFingerprint", "sha256", "operation")},
+                         {"slotSource": "record", "verified": True, "serverFingerprint": self.fingerprint,
+                          "sha256": self.fingerprint, "operation": "read_story_artifact"})
+
+    def test_context_pack_still_reads_a_manifest_with_an_upgraded_entry(self):
+        self.cache(*CHUNKS, **self.META)
+        self.cache(*CHUNKS, "03-get.response.json")
+        self.assertEqual(len(self.entries()), 2)
+        selection = Path(self.temp.name) / "selection.json"
+        selection.write_text(json.dumps({"schemaVersion": "drama-studio/selection/v0", "items": [
+            {"ref": {"kind": "remote_artifact", "id": ART1, "revision": 1}, "partition": "current_plan", "required": True, "reason": "测试"}]}),
+            encoding="utf-8")
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "context-pack", str(self.project), "--task",
+                              str(ROOT / "skills/drama-studio/schemas/examples/task.json"), "--selection", str(selection),
+                              "--role", "author", "--budget", "20000", "--dry-run"], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertEqual(json.loads(run.stdout)["omitted_count"], 0)
 
     def test_input_errors(self):
         def unsafe(value):

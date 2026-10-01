@@ -37,6 +37,7 @@ EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("reco
 TOOL_RESULT = "mali-tool-result/v1"
 RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact")
 WRITES = ("save_story_artifact",)  # unknowns reconcilable by requestId; prepare_story_context has no lookup
+SLOT_SOURCES = ("host", "receipt", "record")  # weakest first; a manifest entry without slotSource counts as host
 
 
 class Unparseable(ValueError):
@@ -577,9 +578,25 @@ def _join(chunks: list[dict]) -> tuple[str | None, str | None]:
     return text, None
 
 
+def slot_rank(entry: dict) -> int:
+    source = entry.get("slotSource")
+    return SLOT_SOURCES.index(source) if source in SLOT_SOURCES else 0
+
+
+def _saved_slots(drama: Path, project_id: str, artifact: str, revision: int) -> dict[str, str]:
+    """slot -> requestId of every valid confirmed local save receipt for exactly this artifact revision."""
+    return {_slot(doc): doc["requestId"] for _, doc in _receipts(drama)
+            if isinstance(doc, dict) and not check_contract("remote-receipt", doc)
+            and doc["operation"] == "save_story_artifact" and doc["outcome"] == "confirmed" and _slot(doc)
+            and (doc["remote"]["projectId"], doc["remote"].get("artifactId"), doc["remote"].get("revision")) == (project_id, artifact, revision)}
+
+
 def cache(project: str, response_paths: list[str], slot: str | None = None, kind: str | None = None,
           episode_ref: str | None = None) -> dict:
-    """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified)."""
+    """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified).
+
+    The entry's slotSource says who vouches for the slot: the get record, a local confirmed save receipt, or only the host.
+    """
     drama = drama_dir(project)
     chunks, records = [], {}
     for name in response_paths:
@@ -618,6 +635,15 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
         if record is not None and (record.get("id"), record.get("revision"), record.get("body")) != (artifact, revision, text):
             return _refuse("the get_story_artifact record is not the same artifact revision and text as the read chunks")
         operation = "read_story_artifact"
+        if record is None:  # read responses carry no slot: --slot is the host's word unless a save receipt backs it
+            saved = _saved_slots(drama, chunks[0]["projectId"], artifact, revision)
+            clash = sorted(f"{name!r} (receipt {request_id})" for name, request_id in saved.items() if name != slot)
+            if clash:
+                return _refuse(f"--slot {slot!r} disagrees with the local confirmed save receipt for {artifact}: slot {', '.join(clash)}")
+            source = "receipt" if saved else "host"
+            if source == "host":
+                warnings.append("slot is the host's declaration (slotSource: host), so impact reports references to this artifact as unknown; "
+                                "re-cache with the get_story_artifact response to record the slot")
     else:
         text, artifact, revision, server = record["body"], record["id"], record["revision"], None
         operation = "get_story_artifact"
@@ -632,7 +658,7 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
         contained(file, drama)
     entry = {"path": rel, "artifactId": artifact, "slot": slot, "kind": kind, "episodeRef": episode_ref,
              "revision": revision, "sha256": digest, "serverFingerprint": server, "verified": verified,
-             "operation": operation, "readAt": _now()}
+             "operation": operation, "readAt": _now(), "slotSource": "record" if record is not None else source}
     with manifest_lock(folder):
         manifest = {"schemaVersion": MANIFEST, "entries": []}
         if manifest_path.exists():
@@ -650,9 +676,13 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             if path.read_bytes() != content:
                 return _refuse(f"{path} already exists with different bytes")
             status = "unchanged"
-        existing = next((item for item in same if item.get("verified") == verified), None)
         if not verified:  # never shadow a verified read with a later unverified entry for the same bytes
-            existing = next((item for item in same if item.get("verified") is True and item.get("sha256") == digest), existing)
+            read = next((item for item in same if item.get("verified") is True and item.get("sha256") == digest), None)
+            if read is not None:
+                entry.update(serverFingerprint=read.get("serverFingerprint"), verified=True, operation=read.get("operation"))
+        # append-only: an entry is reused unless this call brings a stronger slot source for the same path
+        existing = max((item for item in same if item.get("verified") == entry["verified"] and slot_rank(item) >= slot_rank(entry)),
+                       key=slot_rank, default=None)
         if existing is None:
             manifest["entries"].append(entry)
             atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
