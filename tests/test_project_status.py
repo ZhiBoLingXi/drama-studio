@@ -350,6 +350,18 @@ class StatusTests(ProjectCase):
         self.assertEqual(result["nextAction"]["basis"], "no_runs")
         self.assertIn("read-lost", "\n".join(lines))
 
+    def test_missing_slot_revision_or_completeness_is_not_printed_as_none(self):
+        bare = Path(self.temp.name) / "bare.input.json"
+        bare.write_text(json.dumps({"project_id": "2f70c1e9fad74f35ae27f", "input_snapshot_id": FILLER, "request_id": "lost-1"}), encoding="utf-8")
+        receipt.record_receipt(str(self.project), str(Path(self.temp.name) / "missing.json"), "save_story_artifact", "lost-1", str(bare))
+        (self.drama / "snapshots").mkdir()
+        (self.drama / "snapshots/ctx-broken.json").write_text("{", encoding="utf-8")
+        result, lines = self.status()
+        self.assertEqual((result["receipts"]["pending"][0]["slot"], result["snapshots"][0]["completeness"]), (None, None))
+        self.assertTrue(lines[0].startswith("下一步：对账结果未知的保存回执 lost-1："), lines[0])
+        self.assertNotIn("None", "\n".join(lines))
+        self.assertIn("completeness: 未知", "\n".join(lines))
+
     def test_invalid_receipts_and_damaged_snapshots_are_invalid_records(self):
         (self.drama / "receipts").mkdir()
         (self.drama / "receipts/broken.json").write_text("{", encoding="utf-8")

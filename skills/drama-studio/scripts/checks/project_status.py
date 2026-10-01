@@ -186,7 +186,8 @@ def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> di
     """Unreconciled unknown saves first, then invalid records, then the latest run's own nextAction, then a hint."""
     if receipts["pending"]:
         first, total = receipts["pending"][0], len(receipts["pending"])
-        text = (f"对账结果未知的保存回执 {first['requestId']}（slot {first['slot']}）：先用 list_story_artifacts 查该 slot 的新修订，"
+        slot = f"（slot {first['slot']}）" if first["slot"] else ""
+        text = (f"对账结果未知的保存回执 {first['requestId']}{slot}：先用 list_story_artifacts 查该 slot 的新修订，"
                 f"再用 get_story_artifact 核对 record.requestId，然后 receipt record … --reconciles {first['requestId']}；"
                 "对账前不要换新 requestId 重试" + (f"（共 {total} 份未决回执）" if total > 1 else ""))
         return {"basis": "unknown_receipt", "text": text, "from": f".drama/receipts/{first['requestId']}.json"}
@@ -241,7 +242,8 @@ def render_status(result: dict) -> str:
              f"依据：{BASIS[action['basis']]}" + (f"（{action['from']}）" if action["from"] else "") + "。" + result["note"], "",
              f"未决回执（{len(receipts['pending'])}）"]
     for item in receipts["pending"]:
-        lines.append(f"- {item['requestId']}：{item['operation']}，slot {item['slot']}，expectedRevision {item['expectedRevision']}；不可重试，先对账")
+        known = "".join(f"，{label} {item[key]}" for label, key in (("slot", "slot"), ("expectedRevision", "expectedRevision")) if item[key] is not None)
+        lines.append(f"- {item['requestId']}：{item['operation']}{known}；不可重试，先对账")
         for step in item["steps"]:
             call = step.get("command") or f"{step['tool']} {json.dumps(step['args'], ensure_ascii=False)}"
             lines.append("    " + call + (f"；核对 {step['check']}" if "check" in step else ""))
@@ -257,7 +259,7 @@ def render_status(result: dict) -> str:
             lines += _run_lines("未结束", run)
     lines += ["", f"快照（{len(result['snapshots'])}）"]
     for item in result["snapshots"]:
-        lines.append(f"- {item['snapshotId']}：{'完好' if item['intact'] else '有问题'}，completeness: {item['completeness']}")
+        lines.append(f"- {item['snapshotId']}：{'完好' if item['intact'] else '有问题'}，completeness: {item['completeness'] or '未知'}")
         lines += [f"    {problem}" for problem in item["problems"]]
     if result["invalid"]:
         lines += ["", f"无效或损坏的记录（{len(result['invalid'])}）"]
