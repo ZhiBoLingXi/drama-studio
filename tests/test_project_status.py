@@ -299,7 +299,7 @@ class ImpactTests(ProjectCase):
                 if older:
                     self.assertEqual(runs["run-rev"]["reasons"], [{
                         "ref": "items[1] art-1@r1", "status": "current",
-                        "reason": "该运行自身产出了 slot ep-1 的 r2（outputs[0] art-2@r2），快照对旧修订 r1 的引用不使它失效"}])
+                        "reason": "运行记录声称产出了 slot ep-1 的 r2（outputs[0] art-2@r2），快照对旧修订 r1 的引用不使它失效"}])
                 else:
                     self.assertEqual(runs["run-rev"]["reasons"], [])
 
@@ -320,6 +320,50 @@ class ImpactTests(ProjectCase):
                 self.assertEqual([reason["status"] for reason in run["reasons"]], ["stale", "stale"])
         self.run_handoff("run-rev", "ctx-a", outputs=[output("art-2", 2), output("art-3", 3)], **DONE)
         self.assertEqual(self.impact(slot="ep-1", revision=3)[2]["run-rev"]["status"], "current")
+
+    def test_own_output_must_cover_every_cached_revision_between_the_pin_and_the_target(self):
+        self.revision_fixture()  # ep-1 has trusted r1, r2 and r3 cached
+        self.run_handoff("run-skipped", "ctx-a", outputs=[output("art-3", 3)], **DONE)  # never saw r2 and did not produce it
+        self.run_handoff("run-chain", "ctx-a", outputs=[output("art-2", 2), output("art-3", 3)], **DONE)
+        self.run_handoff("run-first", "ctx-a", outputs=[output("art-2", 2)], **DONE)
+        for revision, expected in [(2, {"run-skipped": "stale", "run-chain": "current", "run-first": "current"}),
+                                   (3, {"run-skipped": "stale", "run-chain": "current", "run-first": "stale"})]:
+            with self.subTest(revision=revision):
+                runs = self.impact(slot="ep-1", revision=revision)[2]
+                self.assertEqual({key: run["status"] for key, run in runs.items()}, expected)
+        chain = self.impact(slot="ep-1", revision=3)[2]["run-chain"]["reasons"]
+        self.assertEqual(chain, [{"ref": "items[1] art-1@r1", "status": "current",
+                                  "reason": "运行记录声称产出了 slot ep-1 的 r2、r3（outputs[0] art-2@r2、outputs[1] art-3@r3），快照对旧修订 r1 的引用不使它失效"}])
+        skipped = self.impact(slot="ep-1", revision=3)[2]["run-skipped"]["reasons"]
+        self.assertEqual([reason["status"] for reason in skipped], ["stale", "stale"])
+
+    def test_own_output_never_clears_a_target_revision_that_is_not_cached(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.run_handoff("run-rev", "ctx-a", outputs=[output("art-3", 3)], **DONE)
+        self.assertEqual(self.impact(slot="ep-1", revision=2)[2]["run-rev"]["status"], "stale")  # nothing cached at r2
+        self.assertEqual(self.impact(slot="ep-1", revision=3)[2]["run-rev"]["status"], "current")
+        self.assertEqual(self.impact(slot="ep-1", revision=4)[2]["run-rev"]["status"], "stale")
+
+    def test_own_output_rule_is_not_applied_to_planned_or_failed_runs(self):
+        self.revision_fixture()
+        for state, expected in [("planned", "stale"), ("failed", "stale"), ("running", "current"), ("interrupted", "current"), ("finished", "current")]:
+            with self.subTest(state):
+                self.run_handoff("run-rev", "ctx-a", outputs=[output("art-2", 2)], status={"run": state, "goal": "not_assessed"}, unfinished=[])
+                self.assertEqual(self.impact(slot="ep-1", revision=2)[2]["run-rev"]["status"], expected)
+
+    def test_lead_reason_of_a_run_describes_the_findings_that_remain(self):
+        self.revision_fixture()
+        self.snapshot("ctx-mixed", [ref("art-1", 1), ref("art-404", 1)])
+        self.run_handoff("run-rev", "ctx-mixed", outputs=[output("art-2", 2)], **DONE)
+        self.run_handoff("run-reader", "ctx-mixed", outputs=[], **DONE)
+        _, snapshots, runs = self.impact(slot="ep-1", revision=2)
+        self.assertEqual((snapshots["ctx-mixed"]["status"], runs["run-rev"]["status"], runs["run-reader"]["status"]), ("stale", "unknown", "stale"))
+        lead = runs["run-rev"]["reasons"][0]
+        self.assertEqual((lead["ref"], lead["status"]), ("context_snapshot ctx-mixed", "unknown"))
+        self.assertNotIn("快照为 stale", lead["reason"])
+        self.assertIn("无法判定", lead["reason"])
+        self.assertEqual(runs["run-reader"]["reasons"][0]["reason"], "所依赖的快照为 stale")
 
     def test_own_output_clears_only_its_own_slot(self):
         self.revision_fixture()
@@ -509,8 +553,8 @@ class StatusTests(ProjectCase):
         command = f"drama_tools.py impact {self.project} --slot=ep-1 --revision 2"
         latest = result["runs"]["latest"]
         self.assertEqual((latest["stalenessCheck"], latest["possiblyStale"]), ("newer_revision_cached", True))
-        self.assertEqual(latest["newerRevisions"], [{"ref": "items[2] art-1@r1", "slot": "ep-1", "pinnedRevision": 1,
-                                                     "newestTrustedRevision": 2, "impactCommand": command}])
+        self.assertEqual(latest["newerRevisions"], [{"ref": "items[2] art-1@r1", "slot": "ep-1", "pinnedRevision": 1, "newestTrustedRevision": 2,
+                                                     "staleAgainstRevision": 2, "impactCommand": command}])
         self.assertEqual(latest["stalenessReasons"], [])
         action = result["nextAction"]
         self.assertEqual((action["basis"], action["from"], action["impactCommand"], action["recordedNextAction"]),
@@ -673,9 +717,33 @@ class StatusTests(ProjectCase):
                                                  "output": "outputs[0] art-2@r2"}])
         self.assertEqual((result["nextAction"]["basis"], lines[0]), ("latest_run", "下一步：请编剧审阅第 1 集修订稿"))
         text = "\n".join(lines)
-        self.assertIn("更新的 r2 是该运行自己的产出", text)
+        self.assertIn("运行记录声称更新的 r2 是它自己的产出", text)
         for word in ("可能已失效", "不要直接照做", "没有它所引用 slot 的更新修订", "无法判断"):
             self.assertNotIn(word, text)
+
+    def test_status_is_stale_against_the_highest_revision_the_run_did_not_produce(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.run_handoff("run-skipped", "ctx-a", outputs=[output("art-3", 3)], nextAction="请编剧审阅", **DONE)
+        result, lines = self.status()
+        latest = result["runs"]["latest"]
+        command = f"drama_tools.py impact {self.project} --slot=ep-1 --revision 2"
+        self.assertEqual((latest["stalenessCheck"], latest["possiblyStale"], latest["ownOutputs"]), ("newer_revision_cached", True, []))
+        self.assertEqual(latest["newerRevisions"], [{"ref": "items[1] art-1@r1", "slot": "ep-1", "pinnedRevision": 1, "newestTrustedRevision": 3,
+                                                     "staleAgainstRevision": 2, "impactCommand": command}])
+        self.assertEqual(result["nextAction"]["basis"], "stale_run")
+        self.assertTrue(lines[0].startswith(f"下一步：先运行 {command} "), lines[0])
+        self.assertIn("本地缓存已有可信的 r2", lines[0])
+        self.assertEqual(json.loads(self.cli(*command.split()[1:]).stdout)["runs"][0]["status"], "stale")
+        self.run_handoff("run-skipped", "ctx-a", outputs=[output("art-2", 2), output("art-3", 3)], nextAction="请编剧审阅", **DONE)
+        result, lines = self.status()
+        latest = result["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], lines[0]), ("newer_revision_is_own_output", "下一步：请编剧审阅"))
+        self.assertEqual(latest["ownOutputs"], [{"ref": "items[1] art-1@r1", "slot": "ep-1", "pinnedRevision": 1, "producedRevision": 3,
+                                                 "output": "outputs[1] art-3@r3"}])
+        self.run_handoff("run-skipped", "ctx-a", outputs=[output("art-2", 2), output("art-3", 3)], nextAction="请编剧审阅",
+                         status={"run": "failed", "goal": "not_met"}, unfinished=[])
+        self.assertEqual(self.status()[0]["nextAction"]["basis"], "stale_run")
 
     def test_own_output_does_not_hide_a_newer_revision_or_another_slot(self):
         self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3), entry("art-9", "ep-0", 1),
@@ -684,7 +752,7 @@ class StatusTests(ProjectCase):
         self.snapshot("ctx-two", [ref("art-1", 1), ref("art-9", 1)])
         for label, snapshot_id, outputs, slots in [("someone cached r3 after this run's r2", "ctx-a", [output("art-2", 2)], ["ep-1"]),
                                                    ("host-declared output", "ctx-a", [output("art-h", 2)], ["ep-1"]),
-                                                   ("the other slot moved too", "ctx-two", [output("art-3", 3)], ["ep-0"])]:
+                                                   ("the other slot moved too", "ctx-two", [output("art-2", 2), output("art-3", 3)], ["ep-0"])]:
             with self.subTest(label):
                 self.run_handoff("run-rev", snapshot_id, outputs=outputs, **DONE)
                 result, lines = self.status()

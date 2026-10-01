@@ -171,26 +171,37 @@ def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
     return _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(found) for found in _dependencies(item["id"], snapshots, judge)])
 
 
-def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Split a run's findings into those that still count and the stale pins the run itself superseded.
+def _trusted_revisions(entries: list[dict], slot: str) -> set[int]:
+    return {identity[1] for identity in (_identity(entries, entry.get("artifactId"))[0] for entry in entries if entry.get("slot") == slot) if identity}
 
-    A pin of an older revision does not make stale the run that produced the target revision of that slot (or a later
-    one). Only outputs the manifest resolves to a trusted slot at exactly the listed revision count; an output that is
-    host-declared, unresolved or older never clears anything.
+
+def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split a run's findings into those that still count and the stale pins its own recorded outputs cover.
+
+    A pin of revision P is covered only when the judged revision is itself cached and every trusted cached revision
+    of that slot above P up to the judged one is listed in the run's outputs: a revision in between that the run did
+    not produce is one it never saw. Outputs are the run record's claim; only those the manifest resolves to a
+    trusted slot at exactly the listed revision count, and a planned or failed run covers nothing.
     """
-    produced: dict[str, tuple[int, str]] = {}
-    for index, ref in enumerate(run["outputs"]):
+    produced: dict[str, dict[int, str]] = {}
+    for index, ref in enumerate(run["outputs"] if run["status"]["run"] not in ("planned", "failed") else []):
         identity, _ = _identity(entries, ref["id"]) if ref["kind"] == "remote_artifact" else (None, None)
-        if identity and ref["revision"] == identity[1] and identity[1] > produced.get(identity[0], (0, ""))[0]:
-            produced[identity[0]] = (identity[1], f"outputs[{index}] {ref['id']}@r{identity[1]}")
+        if identity and ref["revision"] == identity[1]:
+            produced.setdefault(identity[0], {}).setdefault(identity[1], f"outputs[{index}] {ref['id']}@r{identity[1]}")
     kept, own = [], []
     for item in found:
-        revision, label = produced.get(item.get("slot"), (0, "")) if item["status"] == "stale" else (0, "")
-        if revision and revision >= item["target"]:
-            own.append(dict(item, status="current", produced=revision, output=label,
-                            reason=f"该运行自身产出了 slot {item['slot']} 的 r{revision}（{label}），快照对旧修订 r{item['pinned']} 的引用不使它失效"))
-        else:
+        if item["status"] != "stale":
             kept.append(item)
+            continue
+        cached, mine = _trusted_revisions(entries, item["slot"]), produced.get(item["slot"], {})
+        between = sorted(revision for revision in cached if item["pinned"] < revision <= item["target"])
+        foreign = [revision for revision in between if revision not in mine]
+        if item["target"] in cached and not foreign:
+            own.append(dict(item, status="current", produced=item["target"], output=mine[item["target"]],
+                            reason=f"运行记录声称产出了 slot {item['slot']} 的 {'、'.join(f'r{revision}' for revision in between)}"
+                                   f"（{'、'.join(mine[revision] for revision in between)}），快照对旧修订 r{item['pinned']} 的引用不使它失效"))
+        else:  # stale against the highest revision that is not its own output
+            kept.append(dict(item, against=foreign[-1] if foreign else item["target"]))
     return kept, own
 
 
@@ -204,7 +215,8 @@ def _judge_run(item: dict, loaded: dict[str, dict], snapshots: dict[str, dict], 
         return _verdict(result, [{"ref": ref, "status": "unknown", "reason": "所依赖的快照不在 .drama/snapshots/ 中"}])
     kept, own = _own_outputs(_dependencies(snapshot_id, loaded, judge), item["doc"], entries)
     worst = "stale" if any(found["status"] == "stale" for found in kept) else "unknown"
-    lead = [{"ref": ref, "status": worst, "reason": f"所依赖的快照为 {snapshots[snapshot_id]['status']}"}] if kept else []
+    text = f"所依赖的快照为 {worst}" if snapshots[snapshot_id]["status"] == worst else "所依赖的快照中有无法判定的引用"
+    lead = [{"ref": ref, "status": worst, "reason": text}] if kept else []
     return _verdict(result, lead + [_public(found) for found in kept + own])
 
 
@@ -285,7 +297,8 @@ def _staleness(run: dict, snapshots: dict[str, dict], entries: list[dict], manif
     produced = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "producedRevision": item["produced"],
                  "output": item["output"]} for item in own]
     newer = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
-              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot={shlex.quote(item['slot'])} --revision {item['target']}"}
+              "staleAgainstRevision": item["against"],
+              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot={shlex.quote(item['slot'])} --revision {item['against']}"}
              for item in found if item["status"] == "stale"]
     reasons = [f"{item['ref']}：{item['reason']}" if item["ref"] else item["reason"] for item in found if item["status"] == "unknown"]
     if newer:
@@ -319,7 +332,7 @@ def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> di
     if latest is not None and latest.get("possiblyStale"):
         first, more = latest["newerRevisions"][0], len(latest["newerRevisions"]) - 1
         text = (f"先运行 {first['impactCommand']} 确认失效范围，再决定是否重新装包、重跑：最近运行 {latest['runId']} 的快照引用了 "
-                f"slot {first['slot']} 的 r{first['pinnedRevision']}，本地缓存已有可信的 r{first['newestTrustedRevision']}"
+                f"slot {first['slot']} 的 r{first['pinnedRevision']}，本地缓存已有可信的 r{first['staleAgainstRevision']}"
                 + (f"（另有 {more} 个 slot 也有更新修订）" if more else ""))
         return {"basis": "stale_run", "text": text, "from": latest["path"], "impactCommand": first["impactCommand"],
                 "recordedNextAction": latest["nextAction"]}
@@ -370,9 +383,9 @@ def _run_lines(label: str, run: dict) -> list[str]:
     lines = [f"- {label}：{run['runId']}（{run['workstation']}，{run['status']['run']}/{run['status']['goal']}，任务 {run['taskId']}，"
              f"快照 {run['contextSnapshotId']}，修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
     lines += [f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else []
-    lines += [f"    可能已失效：快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['newestTrustedRevision']}；"
+    lines += [f"    可能已失效：快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['staleAgainstRevision']}；"
               f"先运行 {item['impactCommand']}" for item in run["newerRevisions"]]
-    lines += [f"    快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}；更新的 r{item['producedRevision']} 是该运行自己的产出"
+    lines += [f"    快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}；运行记录声称更新的 r{item['producedRevision']} 是它自己的产出"
               f"（{item['output']}），不因此失效" for item in run["ownOutputs"]]
     if run["stalenessReasons"]:
         lines.append(f"    {'其余引用' if run['newerRevisions'] else ''}无法判断是否失效：{'；'.join(run['stalenessReasons'])}")
