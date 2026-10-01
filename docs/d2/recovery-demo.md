@@ -3,7 +3,7 @@
 **本记录用的是合成夹具（`tests/fixtures/mcp-synthetic/`），不是 #9 的真实产物。** 夹具是按 mali-story 源码手写的 MCP 响应，没有连接 mali-story，没有调用模型，也没有真人创作内容。
 用 #9 真实产物重做这次演示的部分待 #9 完成后补录，见文末“待 #9 真实产物补录”。在那之前 #10 的 AC-6 不勾选，issue 保持打开。
 
-记录日期：2026-10-01。“步骤与输出”和“只读证明”里的输出与哈希，是在分支 `feat/status-impact-commands` 检出提交 `5064cd5` 时重跑全部步骤采集的（本文件随后的提交只改文档）。“全新会话恢复记录”一节是此前在提交 `ae3440b` 的输出上做的，没有重做：那时 `status` 打印的命令写作 `--slot ep-03-outline`，现在写作 `--slot=ep-03-outline`，两种写法解析结果相同，输出的其余部分与当时一致。Python 3.11.8。
+记录日期：2026-10-01。“步骤与输出”和“只读证明”里的输出与哈希，是在分支 `feat/status-impact-commands` 检出提交 `e136c27` 时重跑全部步骤采集的（本文件随后的提交只改文档）。“全新会话恢复记录”一节是此前在提交 `ae3440b` 的输出上做的，没有重做：那时 `status` 打印的命令写作 `--slot ep-03-outline`，现在写作 `--slot=ep-03-outline`，两种写法解析结果相同，输出的其余部分与当时一致。Python 3.11.8。
 
 ## 这份记录证明什么，不证明什么
 
@@ -125,7 +125,7 @@ $T receipt cache <proj> $F/08-read-chunk-1.response.json $F/08-read-chunk-2.resp
     "serverFingerprint": "sha256:fe0f26908f9b8a1e25e4a1ec189d3b706a212865bd846fd8a8d674f97b2c0147",
     "verified": true,
     "operation": "read_story_artifact",
-    "readAt": "2026-10-01T11:21:21+08:00",
+    "readAt": "2026-10-01T11:48:00+08:00",
     "slotSource": "record"
   },
   "manifestAppended": true,
@@ -223,7 +223,7 @@ $T status <proj>
     drama_tools.py receipt record <project> <get-response.json> --operation get_story_artifact --request-id <new-read-id> --input <get-input.json> --reconciles d1-save-3
 
 运行（1 份；最近一次按文件修改时间判定，recencyBasis: file_mtime）
-- 最近：run-ep04-c4-1（C4，interrupted/not_assessed，任务 task-ep04-outline，快照 ctx-5b73bed85580707d，修改于 2026-10-01T03:21:21+00:00）
+- 最近：run-ep04-c4-1（C4，interrupted/not_assessed，任务 task-ep04-outline，快照 ctx-5b73bed85580707d，修改于 2026-10-01T03:48:00+00:00）
     下一步：续写第4集集纲后半并定结尾钩子，写完后保存为 ep-04-outline 候选
     未完成：第4集集纲只写到中段，结尾钩子未定
     本地缓存中没有它所引用 slot 的更新修订；这不说明远端没有
@@ -254,7 +254,7 @@ $T status <proj>
 未决回执（0）
 
 运行（1 份；最近一次按文件修改时间判定，recencyBasis: file_mtime）
-- 最近：run-ep04-c4-1（C4，interrupted/not_assessed，任务 task-ep04-outline，快照 ctx-5b73bed85580707d，修改于 2026-10-01T03:21:21+00:00）
+- 最近：run-ep04-c4-1（C4，interrupted/not_assessed，任务 task-ep04-outline，快照 ctx-5b73bed85580707d，修改于 2026-10-01T03:48:00+00:00）
     下一步：续写第4集集纲后半并定结尾钩子，写完后保存为 ep-04-outline 候选
     未完成：第4集集纲只写到中段，结尾钩子未定
     本地缓存中没有它所引用 slot 的更新修订；这不说明远端没有
@@ -284,7 +284,7 @@ $T status <proj>
 未决回执（0）
 
 运行（1 份；最近一次按文件修改时间判定，recencyBasis: file_mtime）
-- 最近：run-ep04-c4-1（C4，interrupted/not_assessed，任务 task-ep04-outline，快照 ctx-5b73bed85580707d，修改于 2026-10-01T03:21:21+00:00）
+- 最近：run-ep04-c4-1（C4，interrupted/not_assessed，任务 task-ep04-outline，快照 ctx-5b73bed85580707d，修改于 2026-10-01T03:48:00+00:00）
     下一步：续写第4集集纲后半并定结尾钩子，写完后保存为 ep-04-outline 候选
     未完成：第4集集纲只写到中段，结尾钩子未定
     可能已失效：快照引用 slot ep-03-outline 的 r1，本地缓存已有可信的 r2；先运行 drama_tools.py impact <proj> --slot=ep-03-outline --revision 2
@@ -369,7 +369,7 @@ $T impact <proj> --artifact c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d
 }
 ```
 
-第二条的输出与第一条只差一行：`"resolvedFrom": "--artifact c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d",`（两份输出做过 `diff`）。第一条是照 `status` 第一行打印的写法（`--slot=…`）执行的；写成 `--slot ep-03-outline` 输出逐字节相同（做过 `cmp`）。`target` 里的 `slotInManifest: true` 表示 manifest 里有属于这个 slot 的条目，`newestTrustedRevision: 2` 是该 slot 已缓存的最新可信修订；`warnings` 为空。
+第二条的输出与第一条只差一行：`"resolvedFrom": "--artifact c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d",`（两份输出做过 `diff`）。第一条是照 `status` 第一行打印的写法（`--slot=…`）执行的。`target` 里的 `slotInManifest: true` 表示 manifest 里有属于这个 slot 的条目，`newestTrustedRevision: 2` 是该 slot 已缓存的最新可信修订；`warnings` 为空。
 
 修订 1 和修订 2 的 artifactId 不同（`9e3f6a2c…` 与 `c41d2b7a…`），判定靠的是 manifest 里它们同属 slot `ep-03-outline`。
 
@@ -424,7 +424,7 @@ $T status <proj> --json
       "第4集集纲只写到中段，结尾钩子未定"
     ],
     "nextAction": "续写第4集集纲后半并定结尾钩子，写完后保存为 ep-04-outline 候选",
-    "modifiedAt": "2026-10-01T03:21:21+00:00",
+    "modifiedAt": "2026-10-01T03:48:00+00:00",
     "stalenessCheck": "newer_revision_cached",
     "possiblyStale": true,
     "newerRevisions": [
@@ -433,6 +433,7 @@ $T status <proj> --json
         "slot": "ep-03-outline",
         "pinnedRevision": 1,
         "newestTrustedRevision": 2,
+        "staleAgainstRevision": 2,
         "impactCommand": "drama_tools.py impact <proj> --slot=ep-03-outline --revision 2"
       }
     ],
@@ -454,12 +455,12 @@ $T status <proj> --json
 | --- | --- | --- |
 | `.drama/cache/9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41@r1.md` | `fe0f26908f9b8a1e25e4a1ec189d3b706a212865bd846fd8a8d674f97b2c0147` | `fe0f26908f9b8a1e25e4a1ec189d3b706a212865bd846fd8a8d674f97b2c0147` |
 | `.drama/cache/c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d@r2.md` | `3008ac957c8ca6dd3690e0453e155adf3f15f2f21719a6e69265f6581db30c76` | `3008ac957c8ca6dd3690e0453e155adf3f15f2f21719a6e69265f6581db30c76` |
-| `.drama/cache/manifest.json` | `052523c87564856dd0a032613976fee2f0d89ff2b5f30bb73cdcc511f469a02b` | `052523c87564856dd0a032613976fee2f0d89ff2b5f30bb73cdcc511f469a02b` |
-| `.drama/project.json` | `ddfaf3d968f27e22c524820c288f71362fa622ca98852e7a3fbd4614fc3e3a63` | `ddfaf3d968f27e22c524820c288f71362fa622ca98852e7a3fbd4614fc3e3a63` |
-| `.drama/receipts/d1-ctx-1.json` | `1b72db8f8f236cfb9ba1631746725760dde540671d09ebd109ffd51f302b6719` | `1b72db8f8f236cfb9ba1631746725760dde540671d09ebd109ffd51f302b6719` |
-| `.drama/receipts/d1-reconcile-3.json` | `b470c2dd933973fb024520af8dacd5462bd3b103d0ec6f490c1127d3e8aea77e` | `b470c2dd933973fb024520af8dacd5462bd3b103d0ec6f490c1127d3e8aea77e` |
-| `.drama/receipts/d1-save-2.json` | `9568cab00b94af3dc086659fa31d112fcd63d2257a9ffa2dd30111132cdae3b8` | `9568cab00b94af3dc086659fa31d112fcd63d2257a9ffa2dd30111132cdae3b8` |
-| `.drama/receipts/d1-save-3.json` | `8b470237fdeef0017bf746371027f970d8528c0e69bd9f6925e4914213b1c153` | `8b470237fdeef0017bf746371027f970d8528c0e69bd9f6925e4914213b1c153` |
+| `.drama/cache/manifest.json` | `618e2473a8ebb804ca9fbd4587ae39424013d26d3cabcfc9e638a1e4762fb202` | `618e2473a8ebb804ca9fbd4587ae39424013d26d3cabcfc9e638a1e4762fb202` |
+| `.drama/project.json` | `7f2b77963016f5770b68ee9b5b0fe13dd7c2f2c3daf2b715b35c50be1dff59d3` | `7f2b77963016f5770b68ee9b5b0fe13dd7c2f2c3daf2b715b35c50be1dff59d3` |
+| `.drama/receipts/d1-ctx-1.json` | `d93c50e87430894894fe633b6bbbe2a31d0fa4406270c3334099f694c6ff31a3` | `d93c50e87430894894fe633b6bbbe2a31d0fa4406270c3334099f694c6ff31a3` |
+| `.drama/receipts/d1-reconcile-3.json` | `61f33939a3034792e6c5133ef84604e83de8b40c767efe6594b3da7b3bf8d86e` | `61f33939a3034792e6c5133ef84604e83de8b40c767efe6594b3da7b3bf8d86e` |
+| `.drama/receipts/d1-save-2.json` | `f25b96af84c24fd12c7e89d992e0f9a789f61fcba389599c1526bb448b16dbb1` | `f25b96af84c24fd12c7e89d992e0f9a789f61fcba389599c1526bb448b16dbb1` |
+| `.drama/receipts/d1-save-3.json` | `9da759f8de8c0845fe43f9d6e496b094adb83847a4a3764296b93db81bc5c275` | `9da759f8de8c0845fe43f9d6e496b094adb83847a4a3764296b93db81bc5c275` |
 | `.drama/runs/run-ep04-c4-1.json` | `51ea4a544ff1747d7b0fe1f32712fc1b2e6b21d1be218948006cfbb65247d473` | `51ea4a544ff1747d7b0fe1f32712fc1b2e6b21d1be218948006cfbb65247d473` |
 | `.drama/snapshots/ctx-5b73bed85580707d.json` | `4851df63b17e502c02d3fd3c91c87922ae91301145955d5a5cb32b552b8cd95b` | `4851df63b17e502c02d3fd3c91c87922ae91301145955d5a5cb32b552b8cd95b` |
 | `.drama/snapshots/ctx-5b73bed85580707d.sha256` | `f5eacc99c65dba7340146f272d2e9692a4251b8f3d6bfcccae4fd9121e864492` | `f5eacc99c65dba7340146f272d2e9692a4251b8f3d6bfcccae4fd9121e864492` |
@@ -471,7 +472,7 @@ $T status <proj> --json
 - 失效提示只在新修订已经缓存、并且 manifest 条目的 slot 可信时出现。第 6 步对账回执已经记下修订 2，`status` 仍没有提示，直到第 7 步把修订 2 缓存下来。恢复时如果对账发现了新修订，要先缓存它。
 - 提示出现后不会自己消失：这次运行的快照一直引用修订 1，所以在用新修订重新装包并写出新的运行记录之前，`status` 的第一行会一直是 `impact` 命令。工具不记录“已经看过 impact 结果”。
 - `status` 的提示只回答“这次运行的快照引用的修订，是不是低于本地缓存里同一 slot 的最新可信修订”。受影响的完整范围（其他快照、其他运行）要看 `impact` 的输出。
-- 演示里的修订 2 来自一次没有运行记录的保存，没有哪次运行的 `outputs` 列着它，所以“自身产出目标修订的运行不算失效”这条规则在这里没有被演示，只有自动化测试覆盖。快照里也只有任务文件和一条 `remote_artifact` 引用，`context_snapshot` 等其他引用类型同样只有测试覆盖。
+- 演示里的修订 2 来自一次没有运行记录的保存，没有哪次运行的 `outputs` 列着它，所以“运行记录声称产出了这些修订的运行不因此失效”这条规则在这里没有被演示，只有自动化测试覆盖。快照里也只有任务文件和一条 `remote_artifact` 引用，`context_snapshot` 等其他引用类型同样只有测试覆盖。
 - “最近运行”按文件修改时间判定。这个演示里只有一份运行记录，没有检验多份运行在复制或检出后的排序。
 - 运行记录是手写后复制进去的。真实工位运行怎样写出 `run-handoff`，这次演示没有涉及。
 
