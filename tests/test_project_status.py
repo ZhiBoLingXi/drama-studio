@@ -1039,7 +1039,7 @@ class DocsTests(unittest.TestCase):
             self.assertIn(needle, steps[0])
         for needle in ("[两次审批](approval-flow.md)", "不重建同名项目", "只报告缓存状态及其日期", "响应未知的提交", "阅读测试进行到哪一步",
                        "不能猜造 ID", "drama_tools.py impact <项目目录> --slot", "--artifact", "stale", "unknown", "扩大阅读", "隐含依赖",
-                       "不自动重跑", "反馈修订接续时", "宿主切换先停止原宿主写入"):
+                       "不自动重跑", "反馈修订接续时", "宿主切换先停止原宿主写入", "自身产出", "warnings"):
             self.assertIn(needle, section, needle)
 
     def test_readme_documents_status_and_impact_with_examples(self):
@@ -1049,7 +1049,9 @@ class DocsTests(unittest.TestCase):
             self.assertIn(example, text)
         for needle in ("slotSource", "`record`", "`receipt`", "`host`", "`stale`", "`unknown`", "`current`", "扩大阅读", "隐含依赖未评估",
                        "recencyBasis: file_mtime", "read_only: true", "remote_verified: false", "第一行是下一步动作", "不写任何文件",
-                       "possiblyStale", "stalenessCheck", "no_newer_revision_cached", "newer_revision_cached", "不说明远端"):
+                       "possiblyStale", "stalenessCheck", "no_newer_revision_cached", "newer_revision_cached", "不说明远端",
+                       "newer_revision_is_own_output", "自身产出", "`context_snapshot`", "该引用类型的依赖未评估", "slotInManifest",
+                       "newestTrustedRevision", "拼写", "`--slot=", "record.slot", "kind 为 `manifest`"):
             self.assertIn(needle, text, needle)
 
     def test_recovery_demo_states_its_synthetic_source_before_anything_else(self):
