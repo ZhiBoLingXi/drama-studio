@@ -39,6 +39,7 @@ RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifac
 WRITES = ("save_story_artifact",)  # unknowns reconcilable by requestId; prepare_story_context has no lookup
 SLOT_CHECK = "record.slot matched --input slot (S)"  # receipt note; without it a save receipt does not vouch for a slot
 SLOT_SOURCES = ("host", "receipt", "record")  # weakest first; a manifest entry without slotSource counts as host
+SLOT_FIELDS = ("slot", "kind", "episodeRef")  # what a stronger slot source corrects
 
 
 class Unparseable(ValueError):
@@ -594,6 +595,16 @@ def slot_rank(entry: dict) -> int:
     return SLOT_SOURCES.index(source) if source in SLOT_SOURCES else 0
 
 
+def effective_entries(entries: list[dict]) -> list[dict]:
+    """Of the manifest entries for one artifact revision, those from its strongest slot source (record > receipt > host).
+
+    Every reader takes slot, kind and episodeRef from these alone: a weaker entry that differs has been corrected by
+    them, whatever the order, and only disagreement among them is a conflict.
+    """
+    top = max(map(slot_rank, entries), default=0)
+    return [entry for entry in entries if slot_rank(entry) == top]
+
+
 def _saved_slots(drama: Path, project_id: str, artifact: str, revision: int) -> dict[str, str]:
     """slot -> requestId of every valid confirmed local save receipt for exactly this artifact revision.
 
@@ -612,6 +623,8 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified).
 
     The entry's slotSource says who vouches for the slot: the get record, a local confirmed save receipt, or only the host.
+    A call from a stronger source than every entry for the path appends an entry that corrects their slot, kind and
+    episodeRef; an equal or weaker source that differs from the strongest entries is refused.
     """
     drama = drama_dir(project)
     chunks, records = [], {}
@@ -678,17 +691,20 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
                 raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
         same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
-        for item in same:
-            clash = [f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)"
-                     for key in ("slot", "kind", "episodeRef") if item.get(key) != entry[key]]
-            if clash:
-                problem = f"{rel} is already cached with different metadata: " + "; ".join(clash)
-                if record is not None and item.get("slot") != slot and max(map(slot_rank, same)) == 0:
-                    problem += (f". The existing slot {item.get('slot')!r} was only declared by the host; the get_story_artifact record says {slot!r}. "
-                                "The manifest is append-only and this tool cannot correct or supersede that entry, so impact keeps "
-                                "reporting references to this artifact as unknown. To resolve it a person has to remove the wrong "
-                                f"entry from {manifest_path.name} by hand and then re-run receipt cache with the get_story_artifact response")
-                return _refuse(problem)
+        for item in effective_entries(same):
+            differing = "; ".join(f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)" for key in SLOT_FIELDS if item.get(key) != entry[key])
+            if not differing:
+                continue
+            held = SLOT_SOURCES[slot_rank(item)]
+            if slot_rank(entry) <= slot_rank(item):  # an equal or weaker source never overrides what is cached
+                return _refuse(f"{rel} is already cached with different metadata: {differing}. The manifest values come from "
+                               f"slotSource {held!r} and this call's from {entry['slotSource']!r}; only a stronger source corrects "
+                               "cached metadata (record > receipt > host)"
+                               + ("" if held == "record" else ": re-cache with the get_story_artifact response to correct it"))
+            warnings.append(f"this call's slotSource {entry['slotSource']!r} corrects metadata cached from slotSource {held!r}: {differing}. "
+                            "The earlier manifest entry is kept unchanged and readers use the strongest source; snapshots packed "
+                            "before this were checked against the old values")
+            break
         status = "written"
         if path.exists() or not publish_new(path, content):
             if path.read_bytes() != content:
@@ -700,9 +716,9 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
                 # the same bytes were verified by that read: restate it with this call's slot source rather than claim a new read
                 entry.update(serverFingerprint=read.get("serverFingerprint"), verified=True, operation=read.get("operation"),
                              readAt=read.get("readAt"))
-        # append-only: an entry is reused unless this call brings a stronger slot source for the same path
-        existing = max((item for item in same if item.get("verified") == entry["verified"] and slot_rank(item) >= slot_rank(entry)),
-                       key=slot_rank, default=None)
+        # append-only: an entry is reused unless this call brings a stronger slot source for the same path (which may correct it)
+        existing = max((item for item in same if item.get("verified") == entry["verified"] and slot_rank(item) >= slot_rank(entry)
+                        and all(item.get(key) == entry[key] for key in SLOT_FIELDS)), key=slot_rank, default=None)
         if existing is None:
             manifest["entries"].append(entry)
             atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))

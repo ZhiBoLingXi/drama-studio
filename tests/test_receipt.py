@@ -1,4 +1,5 @@
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -882,18 +883,177 @@ class CacheTests(ProjectCase):
                          {"slotSource": "record", "verified": True, "serverFingerprint": self.fingerprint,
                           "sha256": self.fingerprint, "operation": "read_story_artifact"})
 
-    def test_wrong_host_declared_slot_refusal_says_the_tool_cannot_correct_it(self):
-        self.cache(*CHUNKS, **dict(self.META, slot="ep-04-outline"))
-        before = self.manifest.read_bytes()
-        result = self.cache(*CHUNKS, "03-get.response.json")
-        self.assertEqual((result["passed"], result["status"]), (False, "refused"))
-        for needle in ("ep-04-outline", "ep-03-outline", "only declared by the host", "cannot correct", "by hand", "manifest.json",
-                       "unknown", "nothing written"):
+    FIXED = {"slot": "ep-03-outline", "kind": "episode_outline", "episodeRef": "ep-03"}
+    WRONG = dict(META, slot="ep-99-outline")
+    DRAFT = dict(META, kind="episode_draft")
+
+    def earlier(self):
+        """The manifest bytes up to the end of its last entry: exactly what an append has to leave untouched."""
+        data = self.manifest.read_bytes()
+        return data[:data.rindex(b"\n  ]")]
+
+    def reset(self):
+        shutil.rmtree(self.cache_dir, ignore_errors=True)
+        shutil.rmtree(self.receipts, ignore_errors=True)
+
+    def assertCorrected(self, wrong, weak, fix, source):
+        """Cache `wrong` metadata from the `weak` source, run `fix`, and expect one correcting entry after the untouched earlier ones."""
+        first = self.cache(*CHUNKS, **wrong)
+        self.assertEqual((first["passed"], first["entry"]["slotSource"]), (True, weak), first)
+        earlier, count = self.earlier(), len(self.entries())
+        result = fix()
+        self.assertEqual((result["passed"], result["status"], result["manifestAppended"], result["entry"]["slotSource"]),
+                         (True, "unchanged", True, source), result)
+        self.assertTrue(self.manifest.read_bytes().startswith(earlier))
+        entries = self.entries()
+        self.assertEqual(len(entries), count + 1)
+        self.assertEqual({key: entries[-1][key] for key in self.FIXED}, self.FIXED)
+        self.assertEqual({key: receipt.effective_entries(entries)[0][key] for key in self.FIXED}, self.FIXED)
+        self.assertEqual((result["verified"], entries[-1]["verified"], entries[-1]["serverFingerprint"]), (True, True, self.fingerprint))
+        return result
+
+    def assertRefusedUnchanged(self, result, before, *needles):
+        self.assertEqual((result["passed"], result["status"]), (False, "refused"), result)
+        for needle in (*needles, "nothing written"):
             self.assertIn(needle, result["error"], needle)
+        for advice in ("by hand", "remove the wrong"):  # the manifest is append-only: nobody is told to edit it
+            self.assertNotIn(advice, result["error"])
         self.assertEqual(self.manifest.read_bytes(), before)
-        self.manifest.unlink()
-        self.cached.unlink()
-        self.cache(*CHUNKS, "03-get.response.json")  # a slot vouched for by the record gets the plain refusal
+
+    def test_effective_entries_are_the_strongest_ranked_and_an_absent_or_odd_source_counts_as_host(self):
+        host, legacy, odd = {"slotSource": "host", "slot": "a"}, {"slot": "b"}, {"slotSource": "trusted-by-me", "slot": "c"}
+        saved, record, again = {"slotSource": "receipt", "slot": "d"}, {"slotSource": "record", "slot": "e"}, {"slotSource": "record", "slot": "f"}
+        self.assertEqual(receipt.effective_entries([]), [])
+        self.assertEqual(receipt.effective_entries([host, legacy, odd]), [host, legacy, odd])
+        self.assertEqual(receipt.effective_entries([host, saved, legacy]), [saved])
+        self.assertEqual(receipt.effective_entries([record, saved, host, again]), [record, again])
+
+    def test_record_corrects_a_wrong_host_declared_slot_by_appending(self):
+        result = self.assertCorrected(self.WRONG, "host", lambda: self.cache(*CHUNKS, "03-get.response.json"), "record")
+        host, record = self.entries()
+        self.assertEqual((host["slotSource"], host["slot"], record["slotSource"], record["slot"]), ("host", "ep-99-outline", "record", "ep-03-outline"))
+        correction = [warning for warning in result["warnings"] if "ep-99-outline" in warning]
+        self.assertEqual(len(correction), 1, result["warnings"])
+        for needle in ("ep-03-outline", "host", "record", "kept"):
+            self.assertIn(needle, correction[0])
+        self.assertFalse(any("impact reports" in warning for warning in result["warnings"]))  # the slot is no longer only the host's word
+        before = self.manifest.read_bytes()
+        self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.WRONG), before, "ep-99-outline", "ep-03-outline", "'record'")  # host never corrects back
+        again = self.cache(*CHUNKS, **self.META)
+        self.assertEqual((again["manifestAppended"], again["entry"]["slotSource"], again["entry"]["slot"], again["warnings"]),
+                         (False, "record", "ep-03-outline", []))
+        self.assertEqual(self.manifest.read_bytes(), before)
+
+    def test_get_only_correction_after_a_verified_host_read_stays_verified(self):
+        result = self.assertCorrected(self.WRONG, "host", lambda: self.cache("03-get.response.json"), "record")
+        self.assertEqual((result["entry"]["operation"], result["entry"]["sha256"]), ("read_story_artifact", self.fingerprint))
+        self.assertFalse(any("verified=false" in warning for warning in result["warnings"]))
+
+    def test_kind_or_episode_ref_alone_is_corrected_and_receipt_corrects_host(self):
+        get = lambda: self.cache(*CHUNKS, "03-get.response.json")  # noqa: E731
+        for label, wrong in [("kind", self.DRAFT), ("episodeRef", dict(self.META, episode_ref="ep-99"))]:
+            with self.subTest(label):
+                result = self.assertCorrected(wrong, "host", get, "record")
+                self.assertEqual(self.entries()[0]["slot"], "ep-03-outline")
+                self.assertTrue(any(label in warning for warning in result["warnings"]))
+                self.reset()
+        with self.subTest("a confirmed save receipt corrects the host's slot"):
+            def backed():
+                self.save()
+                return self.cache(*CHUNKS, **self.META)
+            self.assertCorrected(self.WRONG, "host", backed, "receipt")
+            self.assertEqual([(entry["slotSource"], entry["slot"]) for entry in self.entries()], [("host", "ep-99-outline"), ("receipt", "ep-03-outline")])
+            self.reset()
+        with self.subTest("the record corrects what a receipt-backed call said"):
+            self.save()
+            self.assertCorrected(self.DRAFT, "receipt", get, "record")
+            self.assertEqual([(entry["slotSource"], entry["kind"]) for entry in self.entries()], [("receipt", "episode_draft"), ("record", "episode_outline")])
+
+    def test_equal_or_weaker_source_with_different_metadata_is_refused_and_names_the_existing_source(self):
+        def other_slot(value):
+            value["structuredContent"]["data"]["record"]["slot"] = "ep-99-outline"
+        get = lambda: self.cache(*CHUNKS, "03-get.response.json")  # noqa: E731
+        with self.subTest("host call against a record entry"):
+            get()
+            before = self.manifest.read_bytes()
+            self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.WRONG), before, "slot 'ep-03-outline'", "'ep-99-outline'", "'record'", "'host'")
+        with self.subTest("receipt-backed call against a record entry"):
+            self.save()
+            self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.DRAFT), before, "kind 'episode_outline'", "'episode_draft'", "'record'", "'receipt'")
+        with self.subTest("second record against a record entry"):
+            contrary = self.variant("03-get.response.json", other_slot, "other-slot-get.json")
+            self.assertRefusedUnchanged(self.cache(contrary), before, "'ep-99-outline'", "'record'")
+            self.reset()
+        with self.subTest("host call against a receipt-backed entry"):
+            self.save()
+            self.assertEqual(self.cache(*CHUNKS, **self.META)["entry"]["slotSource"], "receipt")
+            before = self.manifest.read_bytes()
+            shutil.rmtree(self.receipts)  # without the receipt the same call is only the host's word
+            self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.WRONG), before, "'ep-99-outline'", "'receipt'", "'host'", "get_story_artifact")
+        with self.subTest("receipt-backed call against a receipt-backed entry"):
+            self.save()
+            self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.DRAFT), before, "'episode_draft'", "'receipt'")
+            self.reset()
+        with self.subTest("host call against a host entry"):
+            self.cache(*CHUNKS, **self.META)
+            before = self.manifest.read_bytes()
+            self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.WRONG), before, "'ep-99-outline'", "'host'", "get_story_artifact")
+
+    def test_contradicting_strongest_entries_are_never_settled_by_an_equal_or_weaker_call(self):
+        self.cache(*CHUNKS, "03-get.response.json")
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["entries"].append(dict(manifest["entries"][0], slot="ep-99-outline"))  # two record entries, two slots: not something this tool writes
+        self.manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        before = self.manifest.read_bytes()
+        for label, call in [("record", lambda: self.cache(*CHUNKS, "03-get.response.json")), ("get only", lambda: self.cache("03-get.response.json")),
+                            ("host, first slot", lambda: self.cache(*CHUNKS, **self.META)), ("host, second slot", lambda: self.cache(*CHUNKS, **self.WRONG))]:
+            with self.subTest(label):
+                self.assertRefusedUnchanged(call(), before, "'record'")
+
+    def test_manifest_is_append_only_and_only_a_stronger_source_changes_the_effective_metadata_in_any_call_order(self):
+        self.save()
+        saved = (self.receipts / "d1-save-2.json").read_bytes()
+
+        def call(backed, *names, **meta):
+            def run():
+                self.reset() if not self.manifest.exists() else shutil.rmtree(self.receipts, ignore_errors=True)
+                if backed:
+                    self.receipts.mkdir()
+                    (self.receipts / "d1-save-2.json").write_bytes(saved)
+                return self.cache(*names, **meta)
+            return run
+        calls = {"host, wrong slot": call(False, *CHUNKS, **self.WRONG), "host, right": call(False, *CHUNKS, **self.META),
+                 "receipt, wrong kind": call(True, *CHUNKS, **self.DRAFT), "receipt, right": call(True, *CHUNKS, **self.META),
+                 "get only": call(False, "03-get.response.json"), "chunks and get": call(False, *CHUNKS, "03-get.response.json")}
+        appended = 0
+        for order in itertools.permutations(calls):
+            self.reset()
+            for step, name in enumerate(order):
+                exists = self.manifest.exists()
+                before, earlier, old = (self.manifest.read_bytes(), self.earlier(), self.entries()) if exists else (None, b"", [])
+                result = calls[name]()
+                where = f"{order} step {step} ({name}): {result.get('error')}"
+                if not result["passed"]:
+                    self.assertEqual(self.manifest.read_bytes() if self.manifest.exists() else None, before, where)
+                    continue
+                new = self.entries()
+                self.assertTrue(self.manifest.read_bytes().startswith(earlier), where)
+                self.assertEqual(new[:len(old)], old, where)
+                self.assertEqual(len(new) - len(old), int(result["manifestAppended"]), where)
+                appended += len(new) - len(old)
+                strongest, now = receipt.effective_entries(old), receipt.effective_entries(new)
+                self.assertEqual(len({tuple(entry[key] for key in self.FIXED) for entry in now}), 1, where)  # this tool never writes a contradiction
+                if strongest and receipt.slot_rank(new[-1]) <= receipt.slot_rank(strongest[0]):
+                    self.assertEqual([{key: entry[key] for key in self.FIXED} for entry in now][:1],
+                                     [{key: entry[key] for key in self.FIXED} for entry in strongest][:1], where)
+                if any(entry["verified"] for entry in old):  # once verified, the last entry for the path stays verified
+                    self.assertTrue(new[-1]["verified"], where)
+            if any(receipt.slot_rank(entry) == 2 for entry in self.entries()):
+                self.assertEqual({key: receipt.effective_entries(self.entries())[0][key] for key in self.FIXED}, self.FIXED, order)
+        self.assertGreater(appended, len(calls))
+
+    def test_refusal_of_a_slot_the_record_vouches_for_never_suggests_editing_the_manifest(self):
+        self.cache(*CHUNKS, "03-get.response.json")
         plain = self.cache(*CHUNKS, **dict(self.META, slot="ep-04-outline"))
         self.assertFalse(plain["passed"])
         self.assertNotIn("by hand", plain["error"])
@@ -1010,6 +1170,24 @@ class ReceiptCliTests(ProjectCase):
         code, result, _ = self.cli("receipt", "cache", self.project, *chunks, "--slot", "ep-03-outline", "--kind", "episode_outline", "--episode-ref", "ep-03")
         self.assertEqual((code, result["status"]), (0, "unchanged"))
         self.assertEqual(self.cli("receipt", "cache", self.project, *chunks)[0], 1)
+
+    def test_ac1_and_ac5_issue_20_reproduction_corrects_the_host_slot_and_a_host_call_cannot_correct_back(self):
+        chunks, manifest = [FIXTURES / name for name in CHUNKS], self.project / ".drama/cache/manifest.json"
+        wrong = ("--slot", "ep-99-outline", "--kind", "episode_outline", "--episode-ref", "ep-03")
+        code, result, _ = self.cli("receipt", "cache", self.project, *chunks, *wrong)
+        self.assertEqual((code, result["entry"]["slotSource"], result["entry"]["slot"]), (0, "host", "ep-99-outline"))
+        first = manifest.read_bytes()
+        code, result, _ = self.cli("receipt", "cache", self.project, *chunks, FIXTURES / "03-get.response.json")
+        self.assertEqual((code, result["passed"], result["manifestAppended"], result["remote_verified"]), (0, True, True, False), result)
+        self.assertEqual([(entry["slotSource"], entry["slot"]) for entry in json.loads(manifest.read_text(encoding="utf-8"))["entries"]],
+                         [("host", "ep-99-outline"), ("record", "ep-03-outline")])
+        self.assertTrue(manifest.read_bytes().startswith(first[:first.rindex(b"\n  ]")]))  # the first entry's bytes are unchanged
+        corrected = manifest.read_bytes()
+        code, result, _ = self.cli("receipt", "cache", self.project, *chunks, *wrong)
+        self.assertEqual((code, result["passed"]), (2, False))
+        for needle in ("ep-99-outline", "ep-03-outline", "'record'", "nothing written"):
+            self.assertIn(needle, result["error"])
+        self.assertEqual(manifest.read_bytes(), corrected)
 
     def test_odd_existing_files_fail_cleanly(self):
         self.receipts.mkdir()
