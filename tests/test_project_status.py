@@ -739,7 +739,8 @@ class DocsTests(unittest.TestCase):
         section = text.split("\n## 恢复顺序\n", 1)[1].split("\n## ", 1)[0]
         steps = [line for line in section.splitlines() if re.match(r"\d+\. ", line)]
         self.assertEqual([step.split(".")[0] for step in steps], ["1", "2", "3", "4", "5"])
-        for needle in ("scripts/drama_tools.py status <项目目录>", "第一行", "不读聊天记录", "退出码 1"):
+        for needle in ("scripts/drama_tools.py status <项目目录>", "第一行", "不读聊天记录", "退出码 1", "引用了旧修订", "impact 命令",
+                       "不说明远端", "无法判断"):
             self.assertIn(needle, steps[0])
         for needle in ("[两次审批](approval-flow.md)", "不重建同名项目", "只报告缓存状态及其日期", "响应未知的提交", "阅读测试进行到哪一步",
                        "不能猜造 ID", "drama_tools.py impact <项目目录> --slot", "--artifact", "stale", "unknown", "扩大阅读", "隐含依赖",
@@ -752,7 +753,8 @@ class DocsTests(unittest.TestCase):
                         "drama_tools.py impact ../my-drama --slot ep-03-outline --revision 2\n", "drama_tools.py impact ../my-drama --artifact "):
             self.assertIn(example, text)
         for needle in ("slotSource", "`record`", "`receipt`", "`host`", "`stale`", "`unknown`", "`current`", "扩大阅读", "隐含依赖未评估",
-                       "recencyBasis: file_mtime", "read_only: true", "remote_verified: false", "第一行是下一步动作", "不写任何文件"):
+                       "recencyBasis: file_mtime", "read_only: true", "remote_verified: false", "第一行是下一步动作", "不写任何文件",
+                       "possiblyStale", "stalenessCheck", "no_newer_revision_cached", "newer_revision_cached", "不说明远端"):
             self.assertIn(needle, text, needle)
 
     def test_recovery_demo_states_its_synthetic_source_before_anything_else(self):
