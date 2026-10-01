@@ -176,17 +176,35 @@ def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
     return _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(found) for found in _dependencies(item["id"], snapshots, judge)])
 
 
-def _trusted_revisions(entries: list[dict], slot: str) -> set[int]:
-    return {identity[1] for identity in (_identity(entries, entry.get("artifactId"))[0] for entry in entries if entry.get("slot") == slot) if identity}
+def _slot_evidence(entries: list[dict], slot: str) -> tuple[dict[int, list], list[tuple]]:
+    """What the manifest holds for a slot: trusted {revision: [artifactId]} and the claimants that cannot be trusted.
+
+    A claimant is an artifact with an entry naming this slot whose identity does not resolve (host-declared, no or
+    unexpected slotSource, conflicting entries); it comes back as (artifactId, why, every revision its entries state).
+    """
+    trusted: dict[int, list] = {}
+    claimants: dict[str, tuple] = {}
+    for entry in entries:
+        if entry.get("slot") != slot:
+            continue
+        artifact = entry.get("artifactId")
+        identity, why = _identity(entries, artifact)
+        if identity is None:
+            claimants[repr(artifact)] = (artifact, why, [other.get("revision") for other in entries if other.get("artifactId") == artifact])
+        elif artifact not in trusted.setdefault(identity[1], []):
+            trusted[identity[1]].append(artifact)
+    return trusted, list(claimants.values())
 
 
 def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[list[dict], list[dict]]:
     """Split a run's findings into those that still count and the stale pins its own recorded outputs cover.
 
-    A pin of revision P is covered only when the judged revision is itself cached and every trusted cached revision
-    of that slot above P up to the judged one is listed in the run's outputs: a revision in between that the run did
-    not produce is one it never saw. Outputs are the run record's claim; only those the manifest resolves to a
-    trusted slot at exactly the listed revision count, and a planned or failed run covers nothing.
+    The rule only ever clears on complete, trusted, unambiguous evidence. Revisions of a slot increase by one per
+    save, so a pin of revision P is covered against judged revision T only when every revision P+1..T is a trusted
+    cached entry listed in the run's outputs, none of them is claimed by two trusted artifacts, and no untrusted or
+    ambiguous entry claims the slot at a revision not provably at or below P. A trusted revision in that span the
+    run did not produce leaves the pin stale; any other shortfall leaves it unknown. Outputs are the run record's
+    claim; a planned or failed run covers nothing, and a run with no own output in the span is judged without the rule.
     """
     produced: dict[str, dict[int, str]] = {}
     for index, ref in enumerate(run["outputs"] if run["status"]["run"] not in ("planned", "failed") else []):
@@ -198,15 +216,27 @@ def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[lis
         if item["status"] != "stale":
             kept.append(item)
             continue
-        cached, mine = _trusted_revisions(entries, item["slot"]), produced.get(item["slot"], {})
-        between = sorted(revision for revision in cached if item["pinned"] < revision <= item["target"])
-        foreign = [revision for revision in between if revision not in mine]
-        if item["target"] in cached and not foreign:
-            own.append(dict(item, status="current", produced=item["target"], output=mine[item["target"]],
-                            reason=f"运行记录声称产出了 slot {item['slot']} 的 {'、'.join(f'r{revision}' for revision in between)}"
-                                   f"（{'、'.join(mine[revision] for revision in between)}），快照对旧修订 r{item['pinned']} 的引用不使它失效"))
-        else:  # stale against the highest revision that is not its own output
+        slot, pinned, mine = item["slot"], item["pinned"], produced.get(item["slot"], {})
+        trusted, claimants = _slot_evidence(entries, slot)
+        span = range(pinned + 1, item["target"] + 1)
+        foreign = [revision for revision in span if revision in trusted and revision not in mine]
+        claimed = [revision for revision in span if revision in mine]
+        if foreign or not claimed:  # stale as it would be without the rule, against the highest revision that is not its own output
             kept.append(dict(item, against=foreign[-1] if foreign else item["target"]))
+            continue
+        stated = {revision for _, _, revisions in claimants for revision in revisions if type(revision) is int}
+        doubts = [f"r{revision} " + ("只有不可信的缓存条目" if revision in stated else "未缓存") + "，无法确认是否为该运行产出"
+                  for revision in span if revision not in trusted]
+        doubts += [f"r{revision} 有多个不同的可信 artifactId（{'、'.join(map(str, trusted[revision]))}）" for revision in span if len(trusted.get(revision, [])) > 1]
+        doubts += [f"manifest 中 {artifact} 声称属于该 slot，但{why}" for artifact, why, revisions in claimants
+                   if not all(type(revision) is int and revision <= pinned for revision in revisions)]
+        named = f"slot {slot} 的 {'、'.join(f'r{revision}' for revision in claimed)}（{'、'.join(mine[revision] for revision in claimed)}）"
+        if doubts:
+            kept.append(dict(item, status="unknown", reason=f"运行记录声称产出了 {named}，但证据不完整，无法确认它覆盖了 r{pinned} 之后的全部修订："
+                                                             + "；".join(doubts)))
+        else:
+            own.append(dict(item, status="current", produced=item["target"], output=mine[item["target"]],
+                            reason=f"运行记录声称产出了 {named}，快照对旧修订 r{pinned} 的引用不使它失效"))
     return kept, own
 
 

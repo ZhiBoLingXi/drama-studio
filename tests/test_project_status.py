@@ -282,7 +282,7 @@ class ImpactTests(ProjectCase):
     def revision_fixture(self):
         """ctx-a pins ep-1 r1; ctx-two also pins ep-0 r1. The manifest holds trusted r2 and r3 of ep-1 and r2 of ep-0."""
         self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3, "receipt"),
-                      entry("art-9", "ep-0", 1), entry("art-9b", "ep-0", 2), entry("art-h", "ep-1", 2, "host"))
+                      entry("art-9", "ep-0", 1), entry("art-9b", "ep-0", 2), entry("art-h", "ep-5", 2, "host"))
         self.snapshot("ctx-a", [ref("art-1", 1)])
         self.snapshot("ctx-two", [ref("art-1", 1), ref("art-9", 1)])
 
@@ -342,9 +342,86 @@ class ImpactTests(ProjectCase):
         self.manifest(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3))
         self.snapshot("ctx-a", [ref("art-1", 1)])
         self.run_handoff("run-rev", "ctx-a", outputs=[output("art-3", 3)], **DONE)
-        self.assertEqual(self.impact(slot="ep-1", revision=2)[2]["run-rev"]["status"], "stale")  # nothing cached at r2
-        self.assertEqual(self.impact(slot="ep-1", revision=3)[2]["run-rev"]["status"], "current")
-        self.assertEqual(self.impact(slot="ep-1", revision=4)[2]["run-rev"]["status"], "stale")
+        self.assertEqual(self.impact(slot="ep-1", revision=2)[2]["run-rev"]["status"], "stale")  # nothing cached at r2, no own output up to r2
+        for revision, missing in [(3, ["r2 未缓存"]), (4, ["r2 未缓存", "r4 未缓存"])]:
+            run = self.impact(slot="ep-1", revision=revision)[2]["run-rev"]
+            self.assertEqual(run["status"], "unknown")
+            for needle in missing:
+                self.assertIn(needle, run["reasons"][1]["reason"])
+
+    def strict(self, *entries, outputs=("art-3", 3), pins=("art-1", 1)):
+        """Write the manifest, a snapshot pinning `pins` and a finished run listing `outputs`; return both commands' view of the run."""
+        self.manifest(*entries)
+        self.snapshot("ctx-a", [ref(*pins)])
+        listed = [outputs] if isinstance(outputs[0], str) else list(outputs)
+        self.run_handoff("run-rev", "ctx-a", outputs=[output(*item) for item in listed], nextAction="请编剧审阅", **DONE)
+        newest = max(item[1] for item in listed)
+        run = self.impact(slot="ep-1", revision=newest)[2]["run-rev"]
+        status = project_status.run_status(str(self.project))
+        return run, status["runs"]["latest"], status, project_status.render_status(status).splitlines()
+
+    def assertDoubt(self, view, *needles):
+        run, latest, status, lines = view
+        self.assertEqual((run["status"], latest["stalenessCheck"]), ("unknown", "unknown"))
+        self.assertIn("扩大阅读", run["suggestion"])
+        self.assertNotIn("current", json.dumps(run["reasons"], ensure_ascii=False))
+        self.assertEqual((latest["newerRevisions"], latest["ownOutputs"]), ([], []))
+        self.assertNotIn("possiblyStale", latest)
+        self.assertEqual((status["nextAction"]["basis"], lines[0]), ("latest_run", "下一步：请编剧审阅"))
+        self.assertIn("最近运行是否失效无法判断，见下。", lines[1])
+        text = "\n".join(lines)
+        self.assertIn("无法判断是否失效", text)
+        for word in ("不因此失效", "可能已失效", "没有它所引用 slot 的更新修订"):
+            self.assertNotIn(word, text)
+        for needle in needles:
+            self.assertIn(needle, " ".join(reason["reason"] for reason in run["reasons"]))
+            self.assertIn(needle, " ".join(latest["stalenessReasons"]))
+
+    def test_repro_1_untrusted_or_ambiguous_claimant_between_the_pin_and_the_output_is_unknown(self):
+        r1, r3 = entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3)
+        cases = {"host-declared r2": [entry("art-2", "ep-1", 2, "host")],
+                 "r2 without slotSource": [entry("art-2", "ep-1", 2, None)],
+                 "r2 with an unexpected slotSource": [entry("art-2", "ep-1", 2, "trusted-by-me")],
+                 "r2 with conflicting entries": [entry("art-2", "ep-1", 2), entry("art-2", "ep-4", 2)],
+                 "r2 with conflicting revisions": [entry("art-2", "ep-1", 2), entry("art-2", "ep-1", 5)]}
+        for label, middle in cases.items():
+            with self.subTest(label):
+                self.assertDoubt(self.strict(r1, *middle, r3), "art-2", "r2 只有不可信的缓存条目")
+            with self.subTest(label + ", listed among the run's outputs"):
+                self.assertDoubt(self.strict(r1, *middle, r3, outputs=[("art-2", 2), ("art-3", 3)]), "art-2")
+
+    def test_repro_2_untrusted_claimant_above_the_own_output_is_unknown(self):
+        view = self.strict(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3, "host"), outputs=("art-2", 2))
+        self.assertDoubt(view, "art-3", "宿主声明")
+        self.assertNotEqual(view[1]["stalenessCheck"], "newer_revision_is_own_output")
+        legacy = self.strict(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-odd", "ep-1", "3", None), outputs=("art-2", 2))
+        self.assertDoubt(legacy, "art-odd")
+
+    def test_repro_3_uncached_revision_between_the_pin_and_the_output_is_unknown(self):
+        self.assertDoubt(self.strict(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3)), "r2 未缓存，无法确认是否为该运行产出")
+        self.assertDoubt(self.strict(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3), entry("art-5", "ep-1", 5),
+                                     outputs=[("art-3", 3), ("art-5", 5)]), "r2 未缓存", "r4 未缓存")
+
+    def test_repro_4_two_trusted_artifacts_at_one_revision_is_unknown(self):
+        view = self.strict(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-2b", "ep-1", 2, "receipt"), outputs=("art-2", 2))
+        self.assertDoubt(view, "r2", "art-2b", "多个")
+
+    def test_own_output_still_clears_on_complete_trusted_unambiguous_evidence(self):
+        trusted = [entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3, "receipt")]
+        below_the_pin = [entry("art-0", "ep-1", 1, "host"), entry("art-other", "ep-9", 7, "host")]  # provably not above the pin, or another slot
+        for label, entries, outputs in [("in-place r1 to r2", trusted[:2], ("art-2", 2)),
+                                        ("r2 and r3 from r1", trusted, [("art-2", 2), ("art-3", 3)]),
+                                        ("untrusted claimants at or below the pin or elsewhere", trusted[:2] + below_the_pin, ("art-2", 2))]:
+            with self.subTest(label):
+                run, latest, status, lines = self.strict(*entries, outputs=outputs)
+                self.assertEqual((run["status"], latest["stalenessCheck"], status["nextAction"]["basis"]), ("current", "newer_revision_is_own_output", "latest_run"))
+                self.assertIn("运行记录声称产出了", run["reasons"][0]["reason"])
+        run, latest, status, lines = self.strict(*trusted)  # r2 is someone else's trusted revision: stale, not doubt
+        self.assertEqual((run["status"], latest["stalenessCheck"], latest["possiblyStale"], status["nextAction"]["basis"]),
+                         ("stale", "newer_revision_cached", True, "stale_run"))
+        self.assertEqual(latest["newerRevisions"][0]["staleAgainstRevision"], 2)
+        run, latest, _, _ = self.strict(*trusted, entry("art-h", "ep-1", 4, "host"))  # stale wins over the doubt a claimant adds
+        self.assertEqual((run["status"], latest["stalenessCheck"]), ("stale", "newer_revision_cached"))
 
     def test_own_output_rule_is_not_applied_to_planned_or_failed_runs(self):
         self.revision_fixture()
