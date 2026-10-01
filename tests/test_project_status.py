@@ -614,6 +614,17 @@ class DocsTests(unittest.TestCase):
                        "recencyBasis: file_mtime", "read_only: true", "remote_verified: false", "第一行是下一步动作", "不写任何文件"):
             self.assertIn(needle, text, needle)
 
+    def test_recovery_demo_states_its_synthetic_source_before_anything_else(self):
+        text = (ROOT / "docs/d2/recovery-demo.md").read_text(encoding="utf-8")
+        opening = "\n".join(text.splitlines()[:6])
+        for needle in ("合成夹具", "tests/fixtures/mcp-synthetic/", "不是 #9 的真实产物", "待 #9"):
+            self.assertIn(needle, opening, needle)
+        for heading in ("## 全新会话恢复记录", "## 待 #9 真实产物补录", "## 只读证明"):
+            self.assertIn(f"\n{heading}", text)
+        self.assertNotIn("/Users/", text)
+        self.assertIn("AC-6 不勾选", text)
+        self.assertIn("docs/d2/recovery-demo.md", (ROOT / "README.md").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
