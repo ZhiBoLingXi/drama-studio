@@ -616,8 +616,10 @@ def effective_entries(entries: list[dict]) -> list[dict]:
     return [entry for entry in entries if slot_rank(entry) == top]
 
 
-def _saved_slots(drama: Path, project_id: str, artifact: str, revision: int) -> dict[str, str]:
+def _saved_slots(drama: Path, project_id: str | None, artifact: str, revision: int) -> dict[str, str]:
     """slot -> requestId of every valid confirmed local save receipt for exactly this artifact revision.
+
+    project_id None (a get record that carries none) matches on artifact and revision alone.
 
     Only receipts whose notes say the slot was matched against the response's record.slot count; one written from a
     response without a slot, or before that check existed, records only what the host's input claimed.
@@ -626,7 +628,8 @@ def _saved_slots(drama: Path, project_id: str, artifact: str, revision: int) -> 
             if isinstance(doc, dict) and not check_contract("remote-receipt", doc)
             and doc["operation"] == "save_story_artifact" and doc["outcome"] == "confirmed" and _slot(doc)
             and _notes(doc).get("slotCheck") == SLOT_CHECK
-            and (doc["remote"]["projectId"], doc["remote"].get("artifactId"), doc["remote"].get("revision")) == (project_id, artifact, revision)}
+            and project_id in (None, doc["remote"]["projectId"])
+            and (doc["remote"].get("artifactId"), doc["remote"].get("revision")) == (artifact, revision)}
 
 
 def cache(project: str, response_paths: list[str], slot: str | None = None, kind: str | None = None,
@@ -709,6 +712,10 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             if not fields:
                 continue
             differing = "; ".join(f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)" for key in fields)
+            odd = [key for key in fields if not isinstance(item.get(key), str) and (key != "episodeRef" or item.get(key) is not None)]
+            if odd:  # nothing this tool writes: such an entry is reported, never corrected
+                return _refuse(f"{rel} is already cached with different metadata: {differing}. The manifest entry's {', '.join(odd)} "
+                               "is not a string, so the entry was not written by this tool and is not corrected")
             held = f"{_vouched(item, fields)}; this call's source is {entry['slotSource']!r}"
             if slot_rank(entry) <= slot_rank(item):  # an equal or weaker source never overrides what is cached
                 return _refuse(f"{rel} is already cached with different metadata: {differing}. {held}. Only a stronger source corrects "
@@ -722,11 +729,12 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
                                 "The earlier manifest entry is kept unchanged and readers use the strongest source; snapshots packed "
                                 "before this were checked against the old values")
             if "slot" in fields and item.get("slotSource") == "receipt" and not disputed:  # both slots were derived from saved server responses
-                saved = _saved_slots(drama, chunks[0]["projectId"] if chunks else record.get("projectId"), artifact, revision).get(item.get("slot"))
+                project_id = chunks[0]["projectId"] if chunks else record.get("projectId") if isinstance(record.get("projectId"), str) else None
+                saved = _saved_slots(drama, project_id, artifact, revision).get(item["slot"])
                 disputed = True
                 warnings.append(f"two saved server responses disagree about this artifact revision's slot: the get_story_artifact record says "
                                 f"{entry['slot']!r}, while a confirmed save receipt "
-                                + (f"({saved}) " if saved else "(no longer among the valid local receipts) ")
+                                + (f"({saved}) " if saved else "(no matching local save receipt was found) ")
                                 + f"vouched for {item.get('slot')!r}. The record is followed; inspect that receipt and both saved "
                                   "responses before relying on either")
             corrected = True

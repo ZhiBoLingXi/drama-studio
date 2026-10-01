@@ -1084,6 +1084,44 @@ class CacheTests(ProjectCase):
         self.cache(*CHUNKS, **self.WRONG)  # host against record is an ordinary correction
         self.assertEqual(len(self.cache(*CHUNKS, "03-get.response.json")["warnings"]), 1)
 
+    def test_receipt_contradiction_warning_finds_the_receipt_when_the_record_has_no_project_id(self):
+        record = dict(fixture("03-get.response.json")["structuredContent"]["data"]["record"], slot="ep-99-outline")
+        del record["projectId"]
+        bare = Path(self.temp.name) / "bare-get.json"
+        bare.write_text(json.dumps({"record": record}, ensure_ascii=False), encoding="utf-8")
+        for label, keep, present, absent in [("receipt on disk", True, ("(d1-save-2)",), ("no longer", "no matching")),
+                                             ("receipt gone", False, ("no matching local save receipt was found",), ("no longer", "d1-save-2"))]:
+            with self.subTest(label):
+                self.save()
+                self.assertEqual(self.cache(*CHUNKS, **self.META)["entry"]["slotSource"], "receipt")
+                if not keep:
+                    shutil.rmtree(self.receipts)
+                result = self.cache(bare)
+                self.assertEqual((result["passed"], result["manifestAppended"], result["entry"]["slot"]), (True, True, "ep-99-outline"), result)
+                warning = next(warning for warning in result["warnings"] if "disagree" in warning)
+                for needle in present:
+                    self.assertIn(needle, warning)
+                for needle in absent:
+                    self.assertNotIn(needle, warning)
+                self.reset()
+
+    def test_malformed_manifest_values_are_refused_not_corrected_and_never_crash(self):
+        chunks = [str(FIXTURES / name) for name in CHUNKS]
+        for source in ("receipt", "host", None):
+            for field, value in [("slot", ["ep-03-outline"]), ("slot", None), ("kind", {"a": 1}), ("episodeRef", 3)]:
+                with self.subTest(source=source, field=field, value=value):
+                    self.cache(*CHUNKS, **self.META)
+                    manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+                    manifest["entries"][0].update({field: value, "slotSource": source})
+                    self.manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                    before = self.manifest.read_bytes()
+                    for call in ([*chunks, str(FIXTURES / "03-get.response.json")], [str(FIXTURES / "03-get.response.json")]):
+                        run = subprocess.run([sys.executable, "-B", str(TOOL), "receipt", "cache", str(self.project), *call], capture_output=True, text=True)
+                        self.assertEqual((run.returncode, run.stderr), (2, ""), run.stdout + run.stderr)
+                        result = json.loads(run.stdout)
+                        self.assertRefusedUnchanged(result, before, "is already cached with different metadata", field, "not written by this tool")
+                    self.reset()
+
     def test_contradicting_strongest_entries_are_never_settled_by_an_equal_or_weaker_call(self):
         self.cache(*CHUNKS, "03-get.response.json")
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
