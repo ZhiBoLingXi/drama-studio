@@ -18,7 +18,7 @@ from pathlib import Path
 import shlex
 
 from .contract_check import check_contract
-from .receipt import MANIFEST, area, contained, drama_dir, effective_entries, pending, slot_rank
+from .receipt import MANIFEST, SLOT_SOURCES, area, contained, drama_dir, effective_entries, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
 LINE_BREAKS = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"  # what str.splitlines splits on
@@ -318,8 +318,15 @@ def run_impact(project: str, slot: str | None = None, revision: int | str | None
     by_id = {item["snapshotId"]: item for item in snapshots}
     runs = [_judge_run(item, loaded, by_id, judge, entries) for item in _records(drama, "runs", "run-handoff", "runId")]
     seen = bool(_claims(entries, slot))
-    warnings = [] if seen else [f"manifest 中没有任何条目属于 slot {slot}：可能是拼写错误，也可能该 slot 从未缓存。结论只覆盖记录在案的引用，"
-                                "全部为 current 不说明这个 slot 的修订没有影响"]
+    moved = {}  # artifacts an entry placed in this slot before a stronger source settled them elsewhere
+    for entry in entries if not seen else []:
+        if entry.get("slot") == slot:
+            found = [other for other in entries if other.get("artifactId") == entry.get("artifactId")]
+            moved[repr(entry.get("artifactId"))] = (f"manifest 中有条目把 {entry.get('artifactId')} 记在 slot {slot}，但已被来源为 "
+                                                    f"{SLOT_SOURCES[max(map(slot_rank, found))]} 的条目纠正为 slot {_identity(entries, entry.get('artifactId'))[0][0]}")
+    warnings = [] if seen else [("；".join(moved.values()) + f"；现在没有任何条目属于 slot {slot}。" if moved else
+                                 f"manifest 中没有任何条目属于 slot {slot}：可能是拼写错误，也可能该 slot 从未缓存。")
+                                + "结论只覆盖记录在案的引用，全部为 current 不说明这个 slot 的修订没有影响"]
     newest = _newest(entries, slot)[0] or None
     if newest and revision < newest:
         warnings.append(f"目标修订 r{revision} 低于 slot {slot} 已缓存的最新可信修订 r{newest}：结论只针对 r{revision}，"

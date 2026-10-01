@@ -246,6 +246,9 @@ class ImpactTests(ProjectCase):
                 result, snapshots, _ = self.impact(slot="ep-9", revision=5)  # the slot only the corrected entry named
                 self.assertEqual(snapshots["ctx-a"]["status"], "current")
                 self.assertEqual((result["target"]["slotInManifest"], result["target"]["newestTrustedRevision"], len(result["warnings"])), (False, None, 1))
+                for needle in ("art-fix", "slot ep-9", "纠正为 slot ep-1", f"来源为 {entries[-1][1] if entries[-1][1] != 'host' else 'record'} 的条目", "记录在案的引用"):
+                    self.assertIn(needle, result["warnings"][0])
+                self.assertNotIn("拼写", result["warnings"][0])  # an entry did name this slot: not a typo
 
     def test_contradicting_strongest_entries_stay_unknown_and_revisions_are_never_corrected(self):
         cases = {"two record entries": [entry("art-x", "ep-1", 1), entry("art-x", "ep-4", 1)],
@@ -356,6 +359,11 @@ class ImpactTests(ProjectCase):
         self.assertEqual(self.impact(slot="ep-03-outline", revision=2)[1]["ctx-ep3"]["status"], "stale")
         wrong = self.impact(slot="ep-99-outline", revision=2)
         self.assertEqual((wrong[1]["ctx-ep3"]["status"], wrong[0]["target"]["slotInManifest"]), ("current", False))
+        self.assertEqual(len(wrong[0]["warnings"]), 1)
+        for needle in (ART1, "slot ep-99-outline", "纠正为 slot ep-03-outline", "来源为 record 的条目"):
+            self.assertIn(needle, wrong[0]["warnings"][0])
+        self.assertNotIn("拼写", wrong[0]["warnings"][0])
+        self.assertIn("拼写", self.impact(slot="ep-98-outline", revision=2)[0]["warnings"][0])  # a slot nothing ever named is still a likely typo
 
     def test_only_packed_remote_artifacts_count_as_dependencies(self):
         self.manifest(entry("art-1", "ep-1", 1))
