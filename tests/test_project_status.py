@@ -1,3 +1,4 @@
+import ast
 import hashlib
 import json
 import os
@@ -79,6 +80,16 @@ class ProjectCase(unittest.TestCase):
     def impact(self, **target):
         result = project_status.run_impact(str(self.project), **target)
         return result, {item["snapshotId"]: item for item in result["snapshots"]}, {item["runId"]: item for item in result["runs"]}
+
+    def ac4_fixture(self):
+        """One unknown save receipt (real receipt record on the synthetic fixture) and one run whose nextAction is set."""
+        receipt.record_receipt(str(self.project), str(FIXTURES / "05-unknown.response.json"), "save_story_artifact", "d1-save-3",
+                               str(FIXTURES / "05-unknown.input.json"))
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-ep21-c5-1", "ctx-a")
+
+    def cli(self, *args):
+        return subprocess.run([sys.executable, "-B", str(TOOL), *map(str, args)], capture_output=True, text=True)
 
     def ac1_fixture(self):
         """art-1 = slot ep-1 r1, art-2 = slot ep-1 r2; snapshot A pins art-1, snapshot B pins nothing in slot ep-1."""
@@ -394,15 +405,6 @@ class StatusTests(ProjectCase):
 
 
 class CliTests(ProjectCase):
-    def cli(self, *args):
-        return subprocess.run([sys.executable, "-B", str(TOOL), *map(str, args)], capture_output=True, text=True)
-
-    def ac4_fixture(self):
-        receipt.record_receipt(str(self.project), str(FIXTURES / "05-unknown.response.json"), "save_story_artifact", "d1-save-3",
-                               str(FIXTURES / "05-unknown.input.json"))
-        self.snapshot("ctx-a", [])
-        self.run_handoff("run-ep21-c5-1", "ctx-a")
-
     def test_help_lists_status_and_impact(self):
         listing = self.cli("--help").stdout
         self.assertLess(listing.index("receipt"), listing.index("status"))
@@ -470,6 +472,122 @@ class CliTests(ProjectCase):
                     self.assertIn("init-project", error["error"])
         self.assertEqual(list(bare.iterdir()), [])
         self.assertFalse((Path(self.temp.name) / "absent").exists())
+
+
+def tree(root):
+    """Every path under root with its sha256 (files) and mtime, so a new, changed, or created-then-deleted file shows up."""
+    return {path.relative_to(root).as_posix(): (None if path.is_dir() or path.is_symlink() else hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                path.lstat().st_mtime_ns) for path in sorted(root.rglob("*"))}
+
+
+class ReadOnlyTests(ProjectCase):
+    def full_project(self):
+        """Real receipts and cache from the synthetic MCP fixtures, plus valid and damaged snapshots and runs."""
+        self.ac4_fixture()
+        receipt.record_receipt(str(self.project), str(FIXTURES / "02-save.response.json"), "save_story_artifact", "d1-save-2",
+                               str(FIXTURES / "02-save.input.json"))
+        receipt.cache(str(self.project), [str(FIXTURES / name) for name in CHUNKS] + [str(FIXTURES / "03-get.response.json")])
+        self.snapshot("ctx-ep3", [ref(ART1, 1)])
+        self.snapshot("ctx-unknown", [ref("art-404", 1)])
+        edited = self.snapshot("ctx-edited", [])
+        edited.write_bytes(edited.read_bytes() + b" ")
+        self.run_handoff("run-ep3", "ctx-ep3", status={"run": "interrupted", "goal": "not_assessed"})
+        (self.drama / "runs/run-broken.json").write_text("{", encoding="utf-8")
+        (self.drama / "receipts/broken.json").write_text("[]", encoding="utf-8")
+
+    def test_ac5_every_file_under_drama_is_unchanged_by_status_and_impact(self):
+        self.full_project()
+        before = tree(self.project)
+        hashes = {name: digest for name, (digest, _) in before.items() if name.startswith(".drama/") and digest}
+        self.assertGreaterEqual(len(hashes), 12)
+        calls = [("status",), ("status", "--json"), ("impact", "--slot", "ep-03-outline", "--revision", "2"), ("impact", "--artifact", ART1),
+                 ("impact", "--artifact", "art-404"), ("impact", "--slot", "ep-03-outline")]
+        for call, code in zip(calls, (0, 0, 0, 0, 1, 1)):
+            with self.subTest(call=call):
+                run = self.cli(call[0], self.project, *call[1:])
+                self.assertEqual(run.returncode, code, run.stderr)
+                self.assertNotIn("Traceback", run.stderr)
+                after = tree(self.project)
+                self.assertEqual({name: digest for name, (digest, _) in after.items() if name.startswith(".drama/") and digest}, hashes)
+                self.assertEqual(after, before)  # no lock file, temp file or folder appeared anywhere in the project, even briefly
+        stale = json.loads(self.cli("impact", self.project, "--slot", "ep-03-outline", "--revision", "2").stdout)
+        self.assertEqual({item["snapshotId"]: item["status"] for item in stale["snapshots"]},
+                         {"ctx-a": "current", "ctx-edited": "unknown", "ctx-ep3": "stale", "ctx-unknown": "unknown"})
+        self.assertEqual({item["runId"]: item["status"] for item in stale["runs"]},
+                         {"run-broken": "unknown", "run-ep21-c5-1": "current", "run-ep3": "stale"})
+
+    def test_empty_project_stays_empty(self):
+        before = tree(self.project)
+        self.assertEqual(self.cli("status", self.project).returncode, 0)
+        result = json.loads(self.cli("impact", self.project, "--slot", "ep-1", "--revision", "2").stdout)
+        self.assertEqual((result["snapshots"], result["runs"]), ([], []))
+        self.assertEqual(tree(self.project), before)
+        self.assertEqual(sorted(path.name for path in self.drama.iterdir()), ["project.json"])
+
+    def test_areas_symlinked_outside_the_project_are_refused_not_read(self):
+        outside = Path(self.temp.name) / "outside"
+        impact = ("impact", "--slot", "ep-1", "--revision", "2")
+        for name, refused in [("receipts", [("status",)]), ("cache", [impact]), ("snapshots", [("status",), impact]), ("runs", [("status",), impact])]:
+            with self.subTest(name):
+                (outside / name).mkdir(parents=True)
+                (self.drama / name).symlink_to(outside / name, target_is_directory=True)
+                for call in refused:
+                    run = self.cli(call[0], self.project, *call[1:])
+                    self.assertEqual(run.returncode, 1, run.stdout)
+                    self.assertIn("outside the project", json.loads(run.stderr)["error"])
+                (self.drama / name).unlink()
+        self.assertEqual(list(outside.rglob("*.*")), [])
+
+    def test_records_symlinked_outside_or_malformed_are_reported_without_a_traceback(self):
+        elsewhere = Path(self.temp.name) / "elsewhere.json"
+        elsewhere.write_text((EXAMPLES / "run-handoff.json").read_text(encoding="utf-8"), encoding="utf-8")
+        for name in ("snapshots", "runs"):
+            folder = self.drama / name
+            folder.mkdir()
+            (folder / "run-ep21-c5-1.json").symlink_to(elsewhere)
+            (folder / "dangling.json").symlink_to(folder / "nowhere.json")
+            (folder / "list.json").write_text("[]", encoding="utf-8")
+            (folder / "binary.json").write_bytes(b"\xff\xfe")
+            (folder / "folder.json").mkdir()
+        before = tree(self.project)
+        run = self.cli("status", self.project, "--json")
+        self.assertEqual((run.returncode, run.stderr), (0, ""))
+        result = json.loads(run.stdout)
+        self.assertEqual(len(result["invalid"]), 10)
+        self.assertEqual((result["runs"]["latest"], result["nextAction"]["basis"]), (None, "invalid_record"))
+        self.assertTrue(all(not item["intact"] for item in result["snapshots"]))
+        outside = next(item for item in result["invalid"] if item["path"] == ".drama/runs/run-ep21-c5-1.json")
+        self.assertIn("outside the project", outside["errors"][0])
+        run = self.cli("impact", self.project, "--slot", "ep-1", "--revision", "2")
+        self.assertEqual((run.returncode, run.stderr), (0, ""))
+        result = json.loads(run.stdout)
+        self.assertEqual({item["status"] for item in result["snapshots"] + result["runs"]}, {"unknown"})
+        self.assertEqual(self.cli("status", self.project).returncode, 0)
+        self.assertEqual(tree(self.project), before)
+
+
+class InvariantTests(unittest.TestCase):
+    def test_doctor_still_reports_offline_and_the_same_contracts(self):
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "doctor"], capture_output=True, text=True)
+        result = json.loads(run.stdout)
+        self.assertEqual((run.returncode, result["network_used"], result["models_called"], result["mali_story"]), (0, False, False, "not_checked"))
+        self.assertEqual(result["contracts"], ["context-snapshot", "knowledge-card", "remote-receipt", "review-record", "run-handoff", "selection", "task"])
+
+    def test_module_imports_only_the_standard_library_and_sibling_checks(self):
+        source = (ROOT / "skills/drama-studio/scripts/checks/project_status.py").read_text(encoding="utf-8")
+        imported, names, called = set(), set(), set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported.add("." + node.module if node.level else node.module.split(".")[0])
+                names.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.Call):
+                called.add(node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", ""))
+        self.assertEqual(imported, {"__future__", "datetime", "hashlib", "json", "pathlib", ".contract_check", ".receipt"})
+        writers = {"open", "write", "write_text", "write_bytes", "mkdir", "makedirs", "unlink", "rmdir", "rename", "replace", "touch",
+                   "link", "symlink_to", "atomic_write", "publish_new", "manifest_lock", "cache", "record_receipt"}
+        self.assertEqual((called | names) & writers, set())
 
 
 if __name__ == "__main__":
