@@ -286,6 +286,31 @@ class RecordTests(ProjectCase):
         with self.assertRaises(ValueError):
             receipt.record_receipt(self.temp.name, str(FIXTURES / "02-save.response.json"), "save_story_artifact", "d1-save-2", str(FIXTURES / "02-save.input.json"))
 
+    def test_confirmed_save_whose_record_slot_differs_from_the_input_is_refused(self):
+        def variant(label, **changes):
+            data = fixture("02-save.input.json")
+            data.update(changes)
+            path = Path(self.temp.name) / label
+            path.write_text(json.dumps({k: v for k, v in data.items() if v is not None}, ensure_ascii=False), encoding="utf-8")
+            return path
+        for label, path in [("other slot", variant("other.json", slot="ep-04-outline")), ("no slot", variant("none.json", slot=None))]:
+            for response in ("02-save.response.json", "02-save-bare.response.json"):
+                with self.subTest(label=label, response=response):
+                    with self.assertRaisesRegex(ValueError, "record.slot is 'ep-03-outline'"):
+                        self.save(response, "d1-save-2", path)
+                    self.assertFalse(self.receipts.exists() and any(self.receipts.iterdir()))
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "receipt", "record", str(self.project), str(FIXTURES / "02-save.response.json"),
+                              "--operation", "save_story_artifact", "--request-id", "d1-save-2", "--input", str(variant("cli.json", slot="ep-04-outline"))],
+                             capture_output=True, text=True)
+        self.assertEqual((run.returncode, run.stdout), (1, ""))
+        self.assertIn("ep-04-outline", json.loads(run.stderr)["error"])
+        self.assertFalse(self.receipts.exists() and any(self.receipts.iterdir()))
+        # nothing to compare when the outcome is unknown: the receipt records the input's slot as before
+        unknown = self.record("05-unknown.response.json", "save_story_artifact", "d1-save-2", variant("unknown.json", slot="ep-04-outline"))
+        self.assertEqual((unknown["receipt"]["outcome"], unknown["receipt"]["localRef"]["id"]), ("unknown", "slot:ep-04-outline"))
+        self.assertEqual(receipt.cache(str(self.project), [str(FIXTURES / name) for name in CHUNKS], slot="ep-04-outline",
+                                       kind="episode_outline", episode_ref="ep-03")["entry"]["slotSource"], "host")
+
     def test_project_id_must_be_known(self):
         bare_input = Path(self.temp.name) / "input.json"
         bare_input.write_text(json.dumps({"slot": "a", "input_snapshot_id": SNAPSHOT}), encoding="utf-8")
@@ -827,6 +852,46 @@ class CacheTests(ProjectCase):
         self.assertEqual({key: record[key] for key in ("slotSource", "verified", "serverFingerprint", "sha256", "operation")},
                          {"slotSource": "record", "verified": True, "serverFingerprint": self.fingerprint,
                           "sha256": self.fingerprint, "operation": "read_story_artifact"})
+
+    def test_wrong_host_declared_slot_refusal_says_the_tool_cannot_correct_it(self):
+        self.cache(*CHUNKS, **dict(self.META, slot="ep-04-outline"))
+        before = self.manifest.read_bytes()
+        result = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertEqual((result["passed"], result["status"]), (False, "refused"))
+        for needle in ("ep-04-outline", "ep-03-outline", "only declared by the host", "cannot correct", "by hand", "manifest.json",
+                       "unknown", "nothing written"):
+            self.assertIn(needle, result["error"], needle)
+        self.assertEqual(self.manifest.read_bytes(), before)
+        self.manifest.unlink()
+        self.cached.unlink()
+        self.cache(*CHUNKS, "03-get.response.json")  # a slot vouched for by the record gets the plain refusal
+        plain = self.cache(*CHUNKS, **dict(self.META, slot="ep-04-outline"))
+        self.assertFalse(plain["passed"])
+        self.assertNotIn("by hand", plain["error"])
+
+    def test_host_warning_follows_the_entry_that_is_returned(self):
+        self.cache(*CHUNKS, "03-get.response.json")
+        weaker = self.cache(*CHUNKS, **self.META)
+        self.assertEqual((weaker["entry"]["slotSource"], weaker["warnings"]), ("record", []))
+        self.save()
+        self.manifest.unlink()
+        self.assertEqual(self.cache(*CHUNKS, **self.META)["warnings"], [])  # receipt-backed
+
+    def test_get_after_a_verified_read_reports_the_verification_it_returns(self):
+        first = self.cache("03-get.response.json")
+        self.assertEqual((first["verified"], first["entry"]["verified"], len(first["warnings"])), (False, False, 1))
+        self.manifest.unlink()
+        for label, read in [("record entry reused", lambda: self.cache(*CHUNKS, "03-get.response.json")),
+                            ("verification carried over", lambda: self.cache(*CHUNKS, **self.META))]:
+            with self.subTest(label):
+                read_at = read()["entry"]["readAt"]
+                with mock.patch.object(receipt, "_now", return_value="2030-01-01T00:00:00+00:00"):
+                    result = self.cache("03-get.response.json")
+                self.assertEqual((result["verified"], result["entry"]["verified"], result["entry"]["slotSource"]), (True, True, "record"))
+                self.assertEqual(result["warnings"], [])
+                self.assertEqual(result["entry"]["readAt"], read_at)  # the verified read happened then, not now
+                self.assertEqual([entry["readAt"] for entry in self.entries()], [read_at] * len(self.entries()))
+                self.manifest.unlink()
 
     def test_context_pack_still_reads_a_manifest_with_an_upgraded_entry(self):
         self.cache(*CHUNKS, **self.META)

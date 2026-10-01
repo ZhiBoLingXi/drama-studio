@@ -389,6 +389,11 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         raise ValueError(f"--input declares request_id {declared!r}, not {request_id!r}")
     parsed, evidence = _load_response(response_path, operation)
     outcome, retry = outcome_of(parsed)
+    if operation == "save_story_artifact" and outcome == "confirmed":  # the receipt's slot is later trusted by receipt cache
+        saved = parsed["data"]["record"].get("slot") if isinstance(parsed["data"].get("record"), dict) else None
+        if isinstance(saved, str) and saved != _field(request, "slot"):
+            raise ValueError(f"--input says slot {_field(request, 'slot')!r} but the confirmed save response's record.slot is {saved!r}: "
+                             "this input is not the request the response answers. Nothing written")
     remote = _remote(operation, parsed, request)
     if outcome != "confirmed":
         remote.update(artifactId=None, revision=None)
@@ -641,13 +646,9 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             if clash:
                 return _refuse(f"--slot {slot!r} disagrees with the local confirmed save receipt for {artifact}: slot {', '.join(clash)}")
             source = "receipt" if saved else "host"
-            if source == "host":
-                warnings.append("slot is the host's declaration (slotSource: host), so impact reports references to this artifact as unknown; "
-                                "re-cache with the get_story_artifact response to record the slot")
     else:
         text, artifact, revision, server = record["body"], record["id"], record["revision"], None
         operation = "get_story_artifact"
-        warnings.append("get_story_artifact carries no full-text fingerprint: cached as verified=false; read the artifact with read_story_artifact to nextOffset null to verify")
     content = text.encode("utf-8")
     digest = "sha256:" + hashlib.sha256(content).hexdigest()
     verified = server is not None and digest == server
@@ -670,7 +671,13 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             clash = [f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)"
                      for key in ("slot", "kind", "episodeRef") if item.get(key) != entry[key]]
             if clash:
-                return _refuse(f"{rel} is already cached with different metadata: " + "; ".join(clash))
+                problem = f"{rel} is already cached with different metadata: " + "; ".join(clash)
+                if record is not None and item.get("slot") != slot and max(map(slot_rank, same)) == 0:
+                    problem += (f". The existing slot {item.get('slot')!r} was only declared by the host; the get_story_artifact record says {slot!r}. "
+                                "The manifest is append-only and this tool cannot correct or supersede that entry, so impact keeps "
+                                "reporting references to this artifact as unknown. To resolve it a person has to remove the wrong "
+                                f"entry from {manifest_path.name} by hand and then re-run receipt cache with the get_story_artifact response")
+                return _refuse(problem)
         status = "written"
         if path.exists() or not publish_new(path, content):
             if path.read_bytes() != content:
@@ -679,15 +686,23 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
         if not verified:  # never shadow a verified read with a later unverified entry for the same bytes
             read = next((item for item in same if item.get("verified") is True and item.get("sha256") == digest), None)
             if read is not None:
-                entry.update(serverFingerprint=read.get("serverFingerprint"), verified=True, operation=read.get("operation"))
+                # the same bytes were verified by that read: restate it with this call's slot source rather than claim a new read
+                entry.update(serverFingerprint=read.get("serverFingerprint"), verified=True, operation=read.get("operation"),
+                             readAt=read.get("readAt"))
         # append-only: an entry is reused unless this call brings a stronger slot source for the same path
         existing = max((item for item in same if item.get("verified") == entry["verified"] and slot_rank(item) >= slot_rank(entry)),
                        key=slot_rank, default=None)
         if existing is None:
             manifest["entries"].append(entry)
             atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": existing or entry,
-            "manifestAppended": existing is None, "verified": verified, "warnings": warnings,
+    returned = existing or entry
+    if not returned.get("verified"):
+        warnings.append("get_story_artifact carries no full-text fingerprint: cached as verified=false; read the artifact with read_story_artifact to nextOffset null to verify")
+    if slot_rank(returned) == 0:
+        warnings.append("slot is the host's declaration (slotSource: host), so impact reports references to this artifact as unknown; "
+                        "re-cache with the get_story_artifact response to record the slot")
+    return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": returned,
+            "manifestAppended": existing is None, "verified": returned.get("verified") is True, "warnings": warnings,
             "remote_verified": False, "adoption_verified": False}
 
 
