@@ -44,6 +44,13 @@ def other(kind, ref_id, revision=None):
             "usage": "project_text", "chars": 1, "reason": "宿主手写的引用"}
 
 
+def output(artifact, revision):
+    return {"kind": "remote_artifact", "id": artifact, "revision": revision}
+
+
+DONE = {"status": {"run": "finished", "goal": "met"}, "unfinished": []}
+
+
 class ProjectCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -266,6 +273,61 @@ class ImpactTests(ProjectCase):
             self.assertIn("成环", snapshots[key]["reasons"][0]["reason"])
         self.assertEqual((runs["run-nested"]["status"], runs["run-on-b"]["status"]), ("stale", "current"))
         self.assertIn("art-1@r1", runs["run-nested"]["reasons"][-1]["ref"])
+
+    def revision_fixture(self):
+        """ctx-a pins ep-1 r1; ctx-two also pins ep-0 r1. The manifest holds trusted r2 and r3 of ep-1 and r2 of ep-0."""
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3, "receipt"),
+                      entry("art-9", "ep-0", 1), entry("art-9b", "ep-0", 2), entry("art-h", "ep-1", 2, "host"))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.snapshot("ctx-two", [ref("art-1", 1), ref("art-9", 1)])
+
+    def test_run_that_produced_the_target_revision_itself_is_not_stale(self):
+        self.revision_fixture()
+        self.run_handoff("run-rev", "ctx-a", outputs=[output("art-2", 2)], **DONE)
+        self.run_handoff("run-reader", "ctx-a", outputs=[], **DONE)
+        for target in ({"artifact": "art-2"}, {"slot": "ep-1", "revision": 2}, {"slot": "ep-1", "revision": 1}):
+            with self.subTest(target=target):
+                _, snapshots, runs = self.impact(**target)
+                older = target.get("revision") != 1
+                self.assertEqual(snapshots["ctx-a"]["status"], "stale" if older else "current")
+                self.assertEqual((runs["run-rev"]["status"], runs["run-reader"]["status"]), ("current", "stale" if older else "current"))
+                self.assertNotIn("suggestion", runs["run-rev"])
+                if older:
+                    self.assertEqual(runs["run-rev"]["reasons"], [{
+                        "ref": "items[1] art-1@r1", "status": "current",
+                        "reason": "该运行自身产出了 slot ep-1 的 r2（outputs[0] art-2@r2），快照对旧修订 r1 的引用不使它失效"}])
+                else:
+                    self.assertEqual(runs["run-rev"]["reasons"], [])
+
+    def test_only_a_trusted_output_at_or_above_the_target_clears_a_run(self):
+        self.revision_fixture()
+        cases = {"output older than the target": ([output("art-2", 2)], {"slot": "ep-1", "revision": 3}),
+                 "output only declared by the host": ([output("art-h", 2)], {"slot": "ep-1", "revision": 2}),
+                 "output not in the manifest": ([output("art-404", 2)], {"slot": "ep-1", "revision": 2}),
+                 "output revision differs from the manifest": ([output("art-2", 5)], {"slot": "ep-1", "revision": 2}),
+                 "output without a revision": ([output("art-2", None)], {"slot": "ep-1", "revision": 2}),
+                 "output in another slot": ([output("art-9b", 2)], {"slot": "ep-1", "revision": 2}),
+                 "output is not a remote artifact": ([{"kind": "local_file", "id": "art-2", "revision": 2}], {"slot": "ep-1", "revision": 2})}
+        for label, (outputs, target) in cases.items():
+            with self.subTest(label):
+                self.run_handoff("run-rev", "ctx-a", outputs=outputs, **DONE)
+                run = self.impact(**target)[2]["run-rev"]
+                self.assertEqual(run["status"], "stale")
+                self.assertEqual([reason["status"] for reason in run["reasons"]], ["stale", "stale"])
+        self.run_handoff("run-rev", "ctx-a", outputs=[output("art-2", 2), output("art-3", 3)], **DONE)
+        self.assertEqual(self.impact(slot="ep-1", revision=3)[2]["run-rev"]["status"], "current")
+
+    def test_own_output_clears_only_its_own_slot(self):
+        self.revision_fixture()
+        self.run_handoff("run-rev", "ctx-two", outputs=[output("art-2", 2)], **DONE)
+        run = self.impact(slot="ep-0", revision=2)[2]["run-rev"]
+        self.assertEqual((run["status"], [reason["ref"] for reason in run["reasons"]]), ("stale", ["context_snapshot ctx-two", "items[2] art-9@r1"]))
+        run = self.impact(slot="ep-1", revision=2)[2]["run-rev"]
+        self.assertEqual((run["status"], [reason["status"] for reason in run["reasons"]]), ("current", ["current"]))
+        self.snapshot("ctx-two", [ref("art-1", 1), ref("art-404", 1)])
+        run = self.impact(slot="ep-1", revision=2)[2]["run-rev"]
+        self.assertEqual((run["status"], [reason["status"] for reason in run["reasons"]]), ("unknown", ["unknown", "unknown", "current"]))
+        self.assertIn("扩大阅读", run["suggestion"])
 
     def test_damaged_snapshot_is_unknown_whatever_it_references(self):
         self.manifest(entry("art-9", "ep-0", 1))
@@ -518,6 +580,38 @@ class StatusTests(ProjectCase):
         self.snapshot("ctx-loop", [other("context_snapshot", "ctx-loop")])
         self.run_handoff("run-a", "ctx-loop")
         self.assertEqual(self.status()[0]["runs"]["latest"]["stalenessCheck"], "unknown")
+
+    def test_run_that_produced_the_newest_revision_keeps_its_own_next_action(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-9", "ep-0", 1))
+        self.snapshot("ctx-a", [ref("art-9", 1), ref("art-1", 1)])
+        self.run_handoff("run-rev", "ctx-a", outputs=[output("art-2", 2)], nextAction="请编剧审阅第 1 集修订稿", **DONE)
+        result, lines = self.status()
+        latest = result["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"], latest["stalenessReasons"]), ("newer_revision_is_own_output", [], []))
+        self.assertNotIn("possiblyStale", latest)
+        self.assertEqual(latest["ownOutputs"], [{"ref": "items[2] art-1@r1", "slot": "ep-1", "pinnedRevision": 1, "producedRevision": 2,
+                                                 "output": "outputs[0] art-2@r2"}])
+        self.assertEqual((result["nextAction"]["basis"], lines[0]), ("latest_run", "下一步：请编剧审阅第 1 集修订稿"))
+        text = "\n".join(lines)
+        self.assertIn("更新的 r2 是该运行自己的产出", text)
+        for word in ("可能已失效", "不要直接照做", "没有它所引用 slot 的更新修订", "无法判断"):
+            self.assertNotIn(word, text)
+
+    def test_own_output_does_not_hide_a_newer_revision_or_another_slot(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3), entry("art-9", "ep-0", 1),
+                      entry("art-9b", "ep-0", 2), entry("art-h", "ep-5", 2, "host"))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.snapshot("ctx-two", [ref("art-1", 1), ref("art-9", 1)])
+        for label, snapshot_id, outputs, slots in [("someone cached r3 after this run's r2", "ctx-a", [output("art-2", 2)], ["ep-1"]),
+                                                   ("host-declared output", "ctx-a", [output("art-h", 2)], ["ep-1"]),
+                                                   ("the other slot moved too", "ctx-two", [output("art-3", 3)], ["ep-0"])]:
+            with self.subTest(label):
+                self.run_handoff("run-rev", snapshot_id, outputs=outputs, **DONE)
+                result, lines = self.status()
+                latest = result["runs"]["latest"]
+                self.assertEqual((latest["stalenessCheck"], latest["possiblyStale"], result["nextAction"]["basis"]), ("newer_revision_cached", True, "stale_run"))
+                self.assertEqual([item["slot"] for item in latest["newerRevisions"]], slots)
+                self.assertTrue(lines[0].startswith("下一步：先运行 drama_tools.py impact"), lines[0])
 
     def test_mixed_references_report_the_newer_revision_and_the_unresolved_one(self):
         self.stale_fixture(entry("art-h", "ep-5", 1, "host"), entry("art-7", "ep-7", 1), entry("art-8", "ep-7", 4))

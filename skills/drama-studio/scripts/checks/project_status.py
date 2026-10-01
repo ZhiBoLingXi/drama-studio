@@ -166,17 +166,41 @@ def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
     return _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(found) for found in _dependencies(item["id"], snapshots, judge)])
 
 
-def _judge_run(item: dict, snapshots: dict[str, dict]) -> dict:
+def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split a run's findings into those that still count and the stale pins the run itself superseded.
+
+    A pin of an older revision does not make stale the run that produced the target revision of that slot (or a later
+    one). Only outputs the manifest resolves to a trusted slot at exactly the listed revision count; an output that is
+    host-declared, unresolved or older never clears anything.
+    """
+    produced: dict[str, tuple[int, str]] = {}
+    for index, ref in enumerate(run["outputs"]):
+        identity, _ = _identity(entries, ref["id"]) if ref["kind"] == "remote_artifact" else (None, None)
+        if identity and ref["revision"] == identity[1] and identity[1] > produced.get(identity[0], (0, ""))[0]:
+            produced[identity[0]] = (identity[1], f"outputs[{index}] {ref['id']}@r{identity[1]}")
+    kept, own = [], []
+    for item in found:
+        revision, label = produced.get(item.get("slot"), (0, "")) if item["status"] == "stale" else (0, "")
+        if revision and revision >= item["target"]:
+            own.append(dict(item, status="current", produced=revision, output=label,
+                            reason=f"该运行自身产出了 slot {item['slot']} 的 r{revision}（{label}），快照对旧修订 r{item['pinned']} 的引用不使它失效"))
+        else:
+            kept.append(item)
+    return kept, own
+
+
+def _judge_run(item: dict, loaded: dict[str, dict], snapshots: dict[str, dict], judge, entries: list[dict]) -> dict:
     result = {"runId": item["id"], "path": item["path"], "contextSnapshotId": None}
     if item["problems"]:
         return _verdict(result, [{"ref": None, "status": "unknown", "reason": "运行记录无效：" + problem} for problem in item["problems"]])
     result["contextSnapshotId"] = snapshot_id = item["doc"]["contextSnapshotId"]
-    snapshot, ref = snapshots.get(snapshot_id), f"context_snapshot {snapshot_id}"
-    if snapshot is None:
+    ref = f"context_snapshot {snapshot_id}"
+    if snapshot_id not in snapshots:
         return _verdict(result, [{"ref": ref, "status": "unknown", "reason": "所依赖的快照不在 .drama/snapshots/ 中"}])
-    if snapshot["status"] == "current":
-        return _verdict(result, [])
-    return _verdict(result, [{"ref": ref, "status": snapshot["status"], "reason": f"所依赖的快照为 {snapshot['status']}"}, *snapshot["reasons"]])
+    kept, own = _own_outputs(_dependencies(snapshot_id, loaded, judge), item["doc"], entries)
+    worst = "stale" if any(found["status"] == "stale" for found in kept) else "unknown"
+    lead = [{"ref": ref, "status": worst, "reason": f"所依赖的快照为 {snapshots[snapshot_id]['status']}"}] if kept else []
+    return _verdict(result, lead + [_public(found) for found in kept + own])
 
 
 def _count(items: list[dict]) -> dict:
@@ -199,9 +223,13 @@ def run_impact(project: str, slot: str | None = None, revision: int | None = Non
                              "请用它的 get_story_artifact 响应重新缓存（receipt cache），或显式给出 --slot 与 --revision")
         (slot, revision), resolved = identity, f"--artifact {artifact}"
     loaded = {item["id"]: item for item in _snapshots(drama)}
-    snapshots = [_judge_snapshot(item, loaded, lambda ref: (*judge_ref(ref, entries, slot, revision), slot, revision)) for item in loaded.values()]
+
+    def judge(ref: dict) -> tuple[str, str | None, str, int]:
+        return (*judge_ref(ref, entries, slot, revision), slot, revision)
+
+    snapshots = [_judge_snapshot(item, loaded, judge) for item in loaded.values()]
     by_id = {item["snapshotId"]: item for item in snapshots}
-    runs = [_judge_run(item, by_id) for item in _records(drama, "runs", "run-handoff", "runId")]
+    runs = [_judge_run(item, loaded, by_id, judge, entries) for item in _records(drama, "runs", "run-handoff", "runId")]
     return {"ok": True, "command": "impact", "project": str(drama.parent), "target": {"slot": slot, "revision": revision, "resolvedFrom": resolved},
             "snapshots": snapshots, "runs": runs, "summary": {"snapshots": _count(snapshots), "runs": _count(runs)},
             "note": NOTE, "read_only": True, "remote_verified": False}
@@ -232,20 +260,24 @@ def _against_newest(ref: dict, entries: list[dict]) -> tuple[str, str | None, st
     return ("unknown", doubt, slot, newest) if status == "current" and doubt else (status, why, slot, newest)
 
 
-def _staleness(snapshot_id: str, snapshots: dict[str, dict], entries: list[dict], manifest_error: str | None, project: Path) -> dict:
+def _staleness(run: dict, snapshots: dict[str, dict], entries: list[dict], manifest_error: str | None, project: Path) -> dict:
     """Compare what a run's snapshot pins with the newest trusted revision of each slot in the local cache manifest.
 
-    Uses _dependencies and judge_ref, so the rules are impact's. It only ever claims what the local cache shows.
+    Uses _dependencies, judge_ref and _own_outputs, so the rules are impact's. It only ever claims what the local cache shows.
     """
-    found = ([{"ref": None, "status": "unknown", "reason": manifest_error}] if manifest_error
-             else _dependencies(snapshot_id, snapshots, lambda ref: _against_newest(ref, entries)))
+    found, own = ([{"ref": None, "status": "unknown", "reason": manifest_error}], []) if manifest_error else _own_outputs(
+        _dependencies(run["contextSnapshotId"], snapshots, lambda ref: _against_newest(ref, entries)), run, entries)
+    produced = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "producedRevision": item["produced"],
+                 "output": item["output"]} for item in own]
     newer = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
               "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot {shlex.quote(item['slot'])} --revision {item['target']}"}
              for item in found if item["status"] == "stale"]
     reasons = [f"{item['ref']}：{item['reason']}" if item["ref"] else item["reason"] for item in found if item["status"] == "unknown"]
     if newer:
-        return {"stalenessCheck": "newer_revision_cached", "possiblyStale": True, "newerRevisions": newer, "stalenessReasons": reasons}
-    return {"stalenessCheck": "unknown" if reasons else "no_newer_revision_cached", "newerRevisions": [], "stalenessReasons": reasons}
+        return {"stalenessCheck": "newer_revision_cached", "possiblyStale": True, "newerRevisions": newer, "stalenessReasons": reasons,
+                "ownOutputs": produced}
+    check = "unknown" if reasons else "newer_revision_is_own_output" if produced else "no_newer_revision_cached"
+    return {"stalenessCheck": check, "newerRevisions": [], "stalenessReasons": reasons, "ownOutputs": produced}
 
 
 def _run_summary(item: dict, staleness: dict) -> dict:
@@ -302,8 +334,7 @@ def run_status(project: str) -> dict:
     records = _records(drama, "runs", "run-handoff", "runId")
     newest_first = sorted((item for item in records if not item["problems"]),
                           key=lambda item: (item["file"].stat().st_mtime_ns, item["id"]), reverse=True)
-    runs = [_run_summary(item, _staleness(item["doc"]["contextSnapshotId"], loaded, entries, manifest_error, drama.parent))
-            for item in newest_first]
+    runs = [_run_summary(item, _staleness(item["doc"], loaded, entries, manifest_error, drama.parent)) for item in newest_first]
     invalid += [{"kind": "snapshot", "path": item["path"], "errors": item["problems"]} for item in snapshots if not item["intact"]]
     invalid += [{"kind": "run", "path": item["path"], "errors": item["problems"]} for item in records if item["problems"]]
     latest = runs[0] if runs else None
@@ -323,9 +354,11 @@ def _run_lines(label: str, run: dict) -> list[str]:
     lines += [f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else []
     lines += [f"    可能已失效：快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['newestTrustedRevision']}；"
               f"先运行 {item['impactCommand']}" for item in run["newerRevisions"]]
+    lines += [f"    快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}；更新的 r{item['producedRevision']} 是该运行自己的产出"
+              f"（{item['output']}），不因此失效" for item in run["ownOutputs"]]
     if run["stalenessReasons"]:
         lines.append(f"    {'其余引用' if run['newerRevisions'] else ''}无法判断是否失效：{'；'.join(run['stalenessReasons'])}")
-    elif not run["newerRevisions"]:
+    elif not run["newerRevisions"] and not run["ownOutputs"]:
         lines.append("    本地缓存中没有它所引用 slot 的更新修订；这不说明远端没有")
     return lines
 
