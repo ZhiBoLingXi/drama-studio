@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -266,6 +267,130 @@ class ImpactTests(ProjectCase):
         self.assertNotIn("passed", result)
         self.assertEqual(check_contract("context-snapshot", json.loads((self.drama / "snapshots/ctx-a.json").read_text(encoding="utf-8"))), [])
         self.assertEqual(result["project"], str(self.project))
+
+
+class StatusTests(ProjectCase):
+    def record(self, response, operation, request_id, input_name, reconciles=None):
+        return receipt.record_receipt(str(self.project), str(FIXTURES / response), operation, request_id, str(FIXTURES / input_name), reconciles)
+
+    def unknown_save(self):
+        return self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+
+    def status(self):
+        result = project_status.run_status(str(self.project))
+        return result, project_status.render_status(result).splitlines()
+
+    def test_ac4_reports_the_unknown_receipt_and_the_run_and_leads_with_reconciliation(self):
+        self.unknown_save()
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-ep21-c5-1", "ctx-a")
+        result, lines = self.status()
+        self.assertEqual([item["requestId"] for item in result["receipts"]["pending"]], ["d1-save-3"])
+        latest = result["runs"]["latest"]
+        self.assertEqual((latest["runId"], latest["nextAction"], latest["unfinished"], latest["contextSnapshotId"]),
+                         ("run-ep21-c5-1", "请用户决定是否接受 C4 变更提案", ["C4 变更待用户决定"], "ctx-a"))
+        self.assertEqual((latest["status"], latest["workstation"], latest["path"]),
+                         ({"run": "finished", "goal": "partially_met"}, "C5", ".drama/runs/run-ep21-c5-1.json"))
+        self.assertEqual((result["runs"]["count"], result["runs"]["recencyBasis"]), (1, "file_mtime"))
+        self.assertEqual(result["snapshots"], [{"snapshotId": "ctx-a", "path": ".drama/snapshots/ctx-a.json", "intact": True, "completeness": "complete",
+                                                "createdFor": {"taskId": "task-ep2-draft", "workstation": "C5", "role": "author"}, "problems": []}])
+        self.assertEqual((result["nextAction"]["basis"], result["nextAction"]["from"]), ("unknown_receipt", ".drama/receipts/d1-save-3.json"))
+        self.assertTrue(lines[0].startswith("下一步：对账"), lines[0])
+        for needle in ("d1-save-3", "ep-03-outline", "--reconciles d1-save-3", "不要换新 requestId"):
+            self.assertIn(needle, lines[0])
+        text = "\n".join(lines)
+        for needle in ("请用户决定是否接受 C4 变更提案", "C4 变更待用户决定", "run-ep21-c5-1", "ctx-a", "list_story_artifacts", "file_mtime"):
+            self.assertIn(needle, text)
+        self.assertEqual((result["ok"], result["command"], result["read_only"], result["remote_verified"], result["adoption_verified"]),
+                         (True, "status", True, False, False))
+        self.assertNotIn("passed", result)
+
+    def test_next_action_priority_is_receipts_then_invalid_records_then_latest_run_then_a_hint(self):
+        result, lines = self.status()
+        self.assertEqual((result["nextAction"]["basis"], result["runs"]["latest"], result["runs"]["count"]), ("no_runs", None, 0))
+        self.assertTrue(lines[0].startswith("下一步：尚无运行记录"), lines[0])
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-1", "ctx-a")
+        result, lines = self.status()
+        self.assertEqual((result["nextAction"]["basis"], result["nextAction"]["from"]), ("latest_run", ".drama/runs/run-1.json"))
+        self.assertEqual(lines[0], "下一步：请用户决定是否接受 C4 变更提案")
+        (self.drama / "runs/run-broken.json").write_text("{", encoding="utf-8")
+        result, lines = self.status()
+        self.assertEqual((result["nextAction"]["basis"], result["nextAction"]["from"]), ("invalid_record", ".drama/runs/run-broken.json"))
+        self.assertTrue(lines[0].startswith("下一步：处理无效或损坏的记录"), lines[0])
+        self.assertEqual([(item["kind"], item["path"]) for item in result["invalid"]], [("run", ".drama/runs/run-broken.json")])
+        self.assertEqual(result["runs"]["latest"]["runId"], "run-1")
+        self.unknown_save()
+        result, lines = self.status()
+        self.assertEqual(result["nextAction"]["basis"], "unknown_receipt")
+        self.assertTrue(lines[0].startswith("下一步：对账"), lines[0])
+        self.assertIn("run-broken.json", "\n".join(lines))
+
+    def test_reconciled_and_read_only_unknowns_do_not_lead(self):
+        self.unknown_save()
+        self.record("07-reconcile-get.response.json", "get_story_artifact", "d1-reconcile-3", "07-reconcile-get.input.json", reconciles="d1-save-3")
+        lost = Path(self.temp.name) / "read-lost.input.json"
+        lost.write_text(json.dumps({"project_id": "2f70c1e9fad74f35ae27f", "artifact_id": ART1}), encoding="utf-8")
+        receipt.record_receipt(str(self.project), str(Path(self.temp.name) / "missing.json"), "read_story_artifact", "read-lost", str(lost))
+        result, lines = self.status()
+        self.assertEqual((result["receipts"]["pending"], result["receipts"]["resolved_verified"]), ([], ["d1-save-3"]))
+        self.assertEqual([item["requestId"] for item in result["receipts"]["read_only_unknown"]], ["read-lost"])
+        self.assertEqual(result["nextAction"]["basis"], "no_runs")
+        self.assertIn("read-lost", "\n".join(lines))
+
+    def test_invalid_receipts_and_damaged_snapshots_are_invalid_records(self):
+        (self.drama / "receipts").mkdir()
+        (self.drama / "receipts/broken.json").write_text("{", encoding="utf-8")
+        edited = self.snapshot("ctx-edited", [])
+        edited.write_bytes(edited.read_bytes() + b" ")
+        self.snapshot("ctx-no-sidecar", [], sidecar=False)
+        self.snapshot("ctx-ok", [ref("art-9", 1)], completeness="incomplete",
+                      omitted=[{"ref": {"kind": "remote_artifact", "id": "art-8", "revision": 1}, "required": True, "reason": "missing"}])
+        self.run_handoff("run-1", "ctx-ok")
+        result, lines = self.status()
+        self.assertEqual([(item["kind"], item["path"]) for item in result["invalid"]],
+                         [("receipt", ".drama/receipts/broken.json"), ("snapshot", ".drama/snapshots/ctx-edited.json"),
+                          ("snapshot", ".drama/snapshots/ctx-no-sidecar.json")])
+        by_id = {item["snapshotId"]: item for item in result["snapshots"]}
+        self.assertEqual({key: (item["intact"], item["completeness"]) for key, item in by_id.items()},
+                         {"ctx-edited": (False, "complete"), "ctx-no-sidecar": (False, "complete"), "ctx-ok": (True, "incomplete")})
+        self.assertIn(".sha256", by_id["ctx-edited"]["problems"][0])
+        self.assertEqual((result["nextAction"]["basis"], result["nextAction"]["from"]), ("invalid_record", ".drama/receipts/broken.json"))
+        text = "\n".join(lines)
+        for needle in ("ctx-edited：有问题", "ctx-ok：完好", "incomplete", "共 3 项"):
+            self.assertIn(needle, text)
+
+    def test_snapshot_integrity_covers_contract_file_name_and_unreadable_files(self):
+        self.snapshot("ctx-over-budget", [dict(ref("art-9", 1), chars=99999)])
+        self.write_snapshot("ctx-renamed", json.loads(self.snapshot("ctx-original", []).read_text(encoding="utf-8")))
+        (self.drama / "snapshots/ctx-broken.json").write_text("{", encoding="utf-8")
+        by_id = {item["snapshotId"]: item for item in self.status()[0]["snapshots"]}
+        self.assertTrue(by_id["ctx-original"]["intact"])
+        for key, needle, completeness in [("ctx-over-budget", "contract-check", "complete"), ("ctx-renamed", "snapshotId", "complete"),
+                                          ("ctx-broken", "ctx-broken.json", None)]:
+            with self.subTest(key):
+                self.assertEqual((by_id[key]["intact"], by_id[key]["completeness"]), (False, completeness))
+                self.assertIn(needle, " ".join(by_id[key]["problems"]))
+
+    def test_latest_run_is_by_file_mtime_and_every_open_run_is_listed(self):
+        self.snapshot("ctx-a", [])
+        stamps = {"run-z-oldest": 1_000, "run-a-newest": 5_000, "run-m-interrupted": 3_000, "run-k-closed": 4_000, "run-b-planned": 2_000}
+        self.run_handoff("run-z-oldest", "ctx-a", unfinished=[], nextAction="最早的一步")
+        self.run_handoff("run-a-newest", "ctx-a", unfinished=[], nextAction="继续写第 22 集")
+        self.run_handoff("run-m-interrupted", "ctx-a", unfinished=[], status={"run": "interrupted", "goal": "not_assessed"}, nextAction="从第 3 场续写")
+        self.run_handoff("run-k-closed", "ctx-a", unfinished=["复核结尾"], nextAction="复核")
+        self.run_handoff("run-b-planned", "ctx-a", unfinished=[], status={"run": "planned", "goal": "not_assessed"}, nextAction="开始运行")
+        for run_id, stamp in stamps.items():
+            os.utime(self.drama / f"runs/{run_id}.json", (stamp, stamp))
+        result, lines = self.status()
+        self.assertEqual((result["runs"]["count"], result["runs"]["latest"]["runId"]), (5, "run-a-newest"))
+        self.assertEqual([run["runId"] for run in result["runs"]["open"]], ["run-k-closed", "run-m-interrupted", "run-b-planned"])
+        self.assertEqual(lines[0], "下一步：继续写第 22 集")
+        text = "\n".join(lines)
+        for needle in ("run-m-interrupted", "从第 3 场续写", "复核结尾", "run-b-planned"):
+            self.assertIn(needle, text)
+        self.assertNotIn("run-z-oldest", text)
+        self.assertTrue(result["runs"]["latest"]["modifiedAt"].startswith("1970-01-0"))
 
 
 if __name__ == "__main__":

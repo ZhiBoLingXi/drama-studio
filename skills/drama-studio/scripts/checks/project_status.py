@@ -1,21 +1,26 @@
-"""Mark stale execution dependencies from a project's local records.
+"""Rebuild the next step and mark stale execution dependencies from a project's local records.
 
-`impact` only reads `<project>/.drama/` (cache manifest, snapshots, runs): no writes, no lock files, no network,
-no model, no chat history. Passing proves only what those files record. `stale` means a snapshot pins an older
-revision of the target slot through a manifest entry whose slot a get record or a save receipt vouches for;
-`current` means no recorded execution dependency points at an older revision of that slot. Content-level implicit
-dependencies are never assessed, anything uncertain is `unknown`, and nothing here proves remote state or adoption.
+`status` and `impact` only read `<project>/.drama/` (receipts, cache manifest, snapshots, runs): no writes, no lock
+files, no network, no model, no chat history. Passing proves only what those files record. `status` repeats what the
+records say is next; it does not judge whether that step is right. `stale` means a snapshot pins an older revision of
+the target slot through a manifest entry whose slot a get record or a save receipt vouches for; `current` means no
+recorded execution dependency points at an older revision of that slot. Content-level implicit dependencies are never
+assessed, anything uncertain is `unknown`, and nothing here proves remote state or adoption.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
 
 from .contract_check import check_contract
-from .receipt import MANIFEST, area, contained, drama_dir, slot_rank
+from .receipt import MANIFEST, area, contained, drama_dir, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
+OPEN_RUNS = ("planned", "running", "interrupted")
+BASIS = {"unknown_receipt": "有结果未知、尚未对账的保存回执", "invalid_record": "有无效或损坏的本地记录",
+         "latest_run": "最近一次运行记录的 nextAction", "no_runs": ".drama/runs/ 中没有有效的运行记录"}
 WIDEN = "扩大阅读：本地记录无法判定，请重读该 slot 的最新修订和这份记录实际装入的材料，再决定是否重跑；不要当作未受影响。"
 
 
@@ -167,3 +172,94 @@ def run_impact(project: str, slot: str | None = None, revision: int | None = Non
     return {"ok": True, "command": "impact", "project": str(drama.parent), "target": {"slot": slot, "revision": revision, "resolvedFrom": resolved},
             "snapshots": snapshots, "runs": runs, "summary": {"snapshots": _count(snapshots), "runs": _count(runs)},
             "note": NOTE, "read_only": True, "remote_verified": False}
+
+
+def _run_summary(item: dict) -> dict:
+    doc = item["doc"]
+    modified = datetime.fromtimestamp(item["file"].stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+    return {"runId": doc["runId"], "path": item["path"], "taskId": doc["taskId"], "workstation": doc["workstation"],
+            "contextSnapshotId": doc["contextSnapshotId"], "status": doc["status"], "unfinished": doc["unfinished"],
+            "nextAction": doc["nextAction"], "modifiedAt": modified}
+
+
+def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> dict:
+    """Unreconciled unknown saves first, then invalid records, then the latest run's own nextAction, then a hint."""
+    if receipts["pending"]:
+        first, total = receipts["pending"][0], len(receipts["pending"])
+        text = (f"对账结果未知的保存回执 {first['requestId']}（slot {first['slot']}）：先用 list_story_artifacts 查该 slot 的新修订，"
+                f"再用 get_story_artifact 核对 record.requestId，然后 receipt record … --reconciles {first['requestId']}；"
+                "对账前不要换新 requestId 重试" + (f"（共 {total} 份未决回执）" if total > 1 else ""))
+        return {"basis": "unknown_receipt", "text": text, "from": f".drama/receipts/{first['requestId']}.json"}
+    if invalid:
+        first = invalid[0]
+        return {"basis": "invalid_record", "from": first["path"],
+                "text": f"处理无效或损坏的记录 {first['path']}：{first['errors'][0]}（共 {len(invalid)} 项）；修复或移走之前不要把它们当作恢复依据"}
+    if latest is not None:
+        return {"basis": "latest_run", "text": latest["nextAction"], "from": latest["path"]}
+    return {"basis": "no_runs", "from": None,
+            "text": "尚无运行记录：先读取审批记录与本地绑定，确认当前任务后再开始工位运行，并把 run-handoff 写到 .drama/runs/<runId>.json"}
+
+
+def run_status(project: str) -> dict:
+    """Report unreconciled receipts, runs and snapshot integrity, and the next step they imply. Read-only."""
+    drama = drama_dir(project)
+    receipts = pending(project)
+    invalid = [{"kind": "receipt", "path": Path(item["path"]).relative_to(drama.parent).as_posix(), "errors": item["errors"]}
+               for item in receipts["invalid"]]
+    snapshots = []
+    for item in _snapshots(drama):
+        doc = item["doc"] if isinstance(item["doc"], dict) else {}
+        snapshots.append({"snapshotId": item["id"], "path": item["path"], "intact": not item["problems"],
+                          "completeness": doc.get("completeness") if doc.get("completeness") in ("complete", "incomplete") else None,
+                          "createdFor": doc.get("createdFor") if isinstance(doc.get("createdFor"), dict) else None, "problems": item["problems"]})
+    records = _records(drama, "runs", "run-handoff", "runId")
+    newest_first = sorted((item for item in records if not item["problems"]),
+                          key=lambda item: (item["file"].stat().st_mtime_ns, item["id"]), reverse=True)
+    runs = [_run_summary(item) for item in newest_first]
+    invalid += [{"kind": "snapshot", "path": item["path"], "errors": item["problems"]} for item in snapshots if not item["intact"]]
+    invalid += [{"kind": "run", "path": item["path"], "errors": item["problems"]} for item in records if item["problems"]]
+    latest = runs[0] if runs else None
+    return {"ok": True, "command": "status", "project": str(drama.parent), "nextAction": _next_action(receipts, invalid, latest),
+            "receipts": {key: receipts[key] for key in ("pending", "read_only_unknown", "unreconcilable_unknown", "resolved_verified", "resolved_host_judged")},
+            "runs": {"count": len(records), "recencyBasis": "file_mtime", "latest": latest,
+                     "open": [run for run in runs if run["status"]["run"] in OPEN_RUNS or run["unfinished"]]},
+            "snapshots": snapshots, "invalid": invalid,
+            "note": "只读取 .drama/ 下的本地记录，不读聊天记录；不证明远端状态、采用或质量。最近运行按文件修改时间判定，复制或检出后可能不准。",
+            "read_only": True, "remote_verified": False, "adoption_verified": False}
+
+
+def _run_lines(label: str, run: dict) -> list[str]:
+    lines = [f"- {label}：{run['runId']}（{run['workstation']}，{run['status']['run']}/{run['status']['goal']}，任务 {run['taskId']}，"
+             f"快照 {run['contextSnapshotId']}，修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
+    return lines + ([f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else [])
+
+
+def render_status(result: dict) -> str:
+    """Human-readable status; the first line is the next action."""
+    receipts, runs, action = result["receipts"], result["runs"], result["nextAction"]
+    lines = ["下一步：" + action["text"],
+             f"依据：{BASIS[action['basis']]}" + (f"（{action['from']}）" if action["from"] else "") + "。" + result["note"], "",
+             f"未决回执（{len(receipts['pending'])}）"]
+    for item in receipts["pending"]:
+        lines.append(f"- {item['requestId']}：{item['operation']}，slot {item['slot']}，expectedRevision {item['expectedRevision']}；不可重试，先对账")
+        for step in item["steps"]:
+            call = step.get("command") or f"{step['tool']} {json.dumps(step['args'], ensure_ascii=False)}"
+            lines.append("    " + call + (f"；核对 {step['check']}" if "check" in step else ""))
+    others = receipts["read_only_unknown"] + receipts["unreconcilable_unknown"]
+    if others:
+        lines.append(f"其他结果未知的调用（{len(others)}，不是待对账的保存）")
+        lines += [f"- {item['requestId']}：{item['operation']}；{item['note']}" for item in others]
+    lines += ["", f"运行（{runs['count']} 份；最近一次按文件修改时间判定，recencyBasis: {runs['recencyBasis']}）"]
+    if runs["latest"]:
+        lines += _run_lines("最近", runs["latest"])
+    for run in runs["open"]:
+        if run is not runs["latest"]:
+            lines += _run_lines("未结束", run)
+    lines += ["", f"快照（{len(result['snapshots'])}）"]
+    for item in result["snapshots"]:
+        lines.append(f"- {item['snapshotId']}：{'完好' if item['intact'] else '有问题'}，completeness: {item['completeness']}")
+        lines += [f"    {problem}" for problem in item["problems"]]
+    if result["invalid"]:
+        lines += ["", f"无效或损坏的记录（{len(result['invalid'])}）"]
+        lines += [f"- [{item['kind']}] {item['path']}：{'；'.join(item['errors'])}" for item in result["invalid"]]
+    return "\n".join(lines)
