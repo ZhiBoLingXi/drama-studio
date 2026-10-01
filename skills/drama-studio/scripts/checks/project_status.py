@@ -21,6 +21,7 @@ from .contract_check import check_contract
 from .receipt import MANIFEST, area, contained, drama_dir, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
+LINE_BREAKS = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"  # what str.splitlines splits on
 MAX_DEPTH = 50  # context_snapshot references followed before giving up as unknown
 OPEN_RUNS = ("planned", "running", "interrupted")
 BASIS = {"unknown_receipt": "有结果未知、尚未对账的保存回执", "invalid_record": "有无效或损坏的本地记录",
@@ -259,9 +260,12 @@ def run_impact(project: str, slot: str | None = None, revision: int | str | None
     seen = any(entry.get("slot") == slot for entry in entries)
     warnings = [] if seen else [f"manifest 中没有任何条目属于 slot {slot}：可能是拼写错误，也可能该 slot 从未缓存。结论只覆盖记录在案的引用，"
                                 "全部为 current 不说明这个 slot 的修订没有影响"]
+    newest = _newest(entries, slot)[0] or None
+    if newest and revision < newest:
+        warnings.append(f"目标修订 r{revision} 低于 slot {slot} 已缓存的最新可信修订 r{newest}：结论只针对 r{revision}，"
+                        f"引用 r{revision} 及更高修订的记录在这里不会标为 stale；要看最新修订的影响，改用 --revision {newest}")
     return {"ok": True, "command": "impact", "project": str(drama.parent),
-            "target": {"slot": slot, "revision": revision, "resolvedFrom": resolved, "slotInManifest": seen,
-                       "newestTrustedRevision": _newest(entries, slot)[0] or None},
+            "target": {"slot": slot, "revision": revision, "resolvedFrom": resolved, "slotInManifest": seen, "newestTrustedRevision": newest},
             "snapshots": snapshots, "runs": runs, "summary": {"snapshots": _count(snapshots), "runs": _count(runs)},
             "warnings": warnings, "note": NOTE, "read_only": True, "remote_verified": False}
 
@@ -312,6 +316,15 @@ def _staleness(run: dict, snapshots: dict[str, dict], entries: list[dict], manif
     return {"stalenessCheck": check, "newerRevisions": [], "stalenessReasons": reasons, "ownOutputs": produced}
 
 
+def _breaks(text: str) -> bool:
+    return any(char in LINE_BREAKS for char in text)
+
+
+def _shown(slot: str) -> str:
+    """A slot as the text view may print it: escaped when it holds a line break, so one line never alters it."""
+    return json.dumps(slot) if _breaks(slot) else slot
+
+
 def _run_summary(item: dict, staleness: dict) -> dict:
     doc = item["doc"]
     modified = datetime.fromtimestamp(item["file"].stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
@@ -335,8 +348,12 @@ def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> di
                 "text": f"处理无效或损坏的记录 {first['path']}：{first['errors'][0]}（共 {len(invalid)} 项）；{first['advice']}"}
     if latest is not None and latest.get("possiblyStale"):
         first, more = latest["newerRevisions"][0], len(latest["newerRevisions"]) - 1
-        text = (f"先运行 {first['impactCommand']} 确认失效范围，再决定是否重新装包、重跑：最近运行 {latest['runId']} 的快照引用了 "
-                f"slot {first['slot']} 的 r{first['pinnedRevision']}，本地缓存已有可信的 r{first['staleAgainstRevision']}"
+        slot = _shown(first["slot"])
+        # a command holding a line break cannot be printed on one line without changing it: point at the exact JSON value instead
+        start = (f"先对 slot {slot} 的 r{first['staleAgainstRevision']} 运行 impact（命令含换行类字符，写不成安全的单行命令："
+                 "完整命令见 status --json 的 nextAction.impactCommand）" if _breaks(first["impactCommand"]) else f"先运行 {first['impactCommand']} ")
+        text = (f"{start}确认失效范围，再决定是否重新装包、重跑：最近运行 {latest['runId']} 的快照引用了 "
+                f"slot {slot} 的 r{first['pinnedRevision']}，本地缓存已有可信的 r{first['staleAgainstRevision']}"
                 + (f"（另有 {more} 个 slot 也有更新修订）" if more else ""))
         return {"basis": "stale_run", "text": text, "from": latest["path"], "impactCommand": first["impactCommand"],
                 "recordedNextAction": latest["nextAction"]}
@@ -387,9 +404,10 @@ def _run_lines(label: str, run: dict) -> list[str]:
     lines = [f"- {label}：{run['runId']}（{run['workstation']}，{run['status']['run']}/{run['status']['goal']}，任务 {run['taskId']}，"
              f"快照 {run['contextSnapshotId']}，修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
     lines += [f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else []
-    lines += [f"    可能已失效：快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['staleAgainstRevision']}；"
-              f"先运行 {item['impactCommand']}" for item in run["newerRevisions"]]
-    lines += [f"    快照引用 slot {item['slot']} 的 r{item['pinnedRevision']}；运行记录声称更新的 r{item['producedRevision']} 是它自己的产出"
+    lines += [f"    可能已失效：快照引用 slot {_shown(item['slot'])} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['staleAgainstRevision']}；"
+              + ("命令含换行类字符，见 status --json 的 newerRevisions[].impactCommand" if _breaks(item["impactCommand"]) else f"先运行 {item['impactCommand']}")
+              for item in run["newerRevisions"]]
+    lines += [f"    快照引用 slot {_shown(item['slot'])} 的 r{item['pinnedRevision']}；运行记录声称更新的 r{item['producedRevision']} 是它自己的产出"
               f"（{item['output']}），不因此失效" for item in run["ownOutputs"]]
     if run["stalenessReasons"]:
         lines.append(f"    {'其余引用' if run['newerRevisions'] else ''}无法判断是否失效：{'；'.join(run['stalenessReasons'])}")

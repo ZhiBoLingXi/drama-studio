@@ -465,6 +465,19 @@ class ImpactTests(ProjectCase):
         ahead = self.impact(slot="ep-1", revision=9)[0]
         self.assertEqual((ahead["target"]["revision"], ahead["target"]["newestTrustedRevision"], ahead["warnings"]), (9, 2, []))
 
+    def test_target_below_the_newest_cached_revision_is_flagged_without_changing_verdicts(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-3", "ep-1", 3), entry("art-h", "ep-1", 9, "host"))
+        self.snapshot("ctx-r1", [ref("art-1", 1)])
+        self.snapshot("ctx-r2", [ref("art-2", 2)])
+        result, snapshots, _ = self.impact(slot="ep-1", revision=2)
+        self.assertEqual({key: item["status"] for key, item in snapshots.items()}, {"ctx-r1": "stale", "ctx-r2": "current"})
+        self.assertEqual((result["target"]["newestTrustedRevision"], len(result["warnings"])), (3, 1))
+        for needle in ("r2", "r3", "--revision 3"):
+            self.assertIn(needle, result["warnings"][0])
+        self.assertEqual(self.impact(artifact="art-2")[0]["warnings"], result["warnings"])
+        for revision in (3, 4):
+            self.assertEqual(self.impact(slot="ep-1", revision=revision)[0]["warnings"], [])
+
     def test_revision_is_validated_as_text_and_reported_as_an_integer(self):
         self.ac1_fixture()
         for good in ("2", 2, "02"):
@@ -830,6 +843,29 @@ class StatusTests(ProjectCase):
                 self.assertEqual((run.returncode, run.stderr), (0, ""))
                 result = json.loads(run.stdout)
                 self.assertEqual((result["target"]["slot"], result["target"]["revision"], result["runs"][0]["status"]), (slot, 2, "stale"))
+
+    def test_slot_with_a_line_break_is_never_altered_in_the_text_view(self):
+        for slot in ("ep\n1", "ep\u20281", "ep\r\n1", "ep\u20291"):
+            with self.subTest(slot=repr(slot)):
+                self.manifest(entry("art-1", slot, 1), entry("art-2", slot, 2))
+                self.snapshot("ctx-a", [ref("art-1", 1)])
+                self.run_handoff("run-a", "ctx-a")
+                result, lines = self.status()
+                self.assertEqual(result["nextAction"]["basis"], "stale_run")
+                command = result["nextAction"]["impactCommand"]
+                self.assertEqual(result["runs"]["latest"]["newerRevisions"][0]["slot"], slot)
+                run = self.cli(*shlex.split(command)[1:])  # the JSON command is exact and still runs
+                self.assertEqual((run.returncode, json.loads(run.stdout)["target"]["slot"]), (0, slot))
+                text = "\n".join(lines)
+                self.assertNotIn("drama_tools.py impact", text)  # no one-line command could name this slot safely
+                self.assertNotIn("ep 1", text)
+                shown = json.dumps(slot)
+                self.assertTrue(lines[0].startswith(f"下一步：先对 slot {shown} 的 r2 运行 impact"), lines[0])
+                self.assertIn("status --json", lines[0])
+                self.assertIn("impactCommand", lines[0])
+                self.assertTrue(lines[2].startswith("依据："), lines[2])
+                self.assertEqual(sum(shown in line for line in lines), 2)
+                self.assertEqual(len(lines), len(project_status.render_status(json.loads(json.dumps(result))).splitlines()))
 
     def test_multi_line_values_do_not_break_the_first_line(self):
         self.snapshot("ctx-a", [])
