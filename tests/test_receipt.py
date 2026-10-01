@@ -1240,6 +1240,17 @@ class DocsTests(unittest.TestCase):
                        "unreconcilable_unknown", "prepare_story_context", "列表为空", "非 confirmed 的重发", "修订号大于"):
             self.assertIn(needle, section, needle)
 
+    def test_docs_describe_slot_correction_and_never_advise_editing_the_manifest(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        method = (ROOT / "skills/drama-studio/references/mali-story.md").read_text(encoding="utf-8").split("## 候选保存与对账", 1)[1].split("\n## ", 1)[0]
+        for label, text in (("README", readme), ("mali-story.md", method)):
+            for needle in ("最强来源", "`record` > `receipt` > `host`", "纠正", "不改不删", "相同或更弱", "episodeRef"):
+                self.assertIn(needle, text, f"{label}: {needle}")
+            for advice in ("手工从", "去掉错误条目", "改不了那条条目", "删除条目", "删掉"):
+                self.assertNotIn(advice, text, f"{label}: {advice}")
+        for needle in ("最强来源的条目之间互相矛盾", "不再算作", "按纠正后的 slot", "宿主声明不能纠正"):
+            self.assertIn(needle, readme, needle)
+
     def test_workstation_steps_link_the_method(self):
         lines = (ROOT / "skills/drama-studio/references/workstations/README.md").read_text(encoding="utf-8").splitlines()
         steps = {line[:2]: line for line in lines if line[:2] in ("3.", "5.")}
