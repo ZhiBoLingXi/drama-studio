@@ -222,6 +222,109 @@ class ImpactTests(ProjectCase):
         self.snapshot("ctx-a", [ref("art-1", 1)])
         self.assertEqual(self.impact(slot="ep-1", revision=2)[1]["ctx-a"]["status"], "stale")
 
+    CORRECTED = {"record after host": [("ep-9", "host"), ("ep-1", "record")], "record before host": [("ep-1", "record"), ("ep-9", "host")],
+                 "record after an entry without slotSource": [("ep-9", None), ("ep-1", "record")],
+                 "record after an unexpected slotSource": [("ep-9", "trusted-by-me"), ("ep-1", "record")],
+                 "receipt after host": [("ep-9", "host"), ("ep-1", "receipt")],
+                 "record after receipt and host": [("ep-9", "host"), ("ep-9", "receipt"), ("ep-1", "record")],
+                 "record settles two host entries that disagree": [("ep-9", "host"), ("ep-8", "host"), ("ep-1", "record")]}
+
+    def test_slot_resolves_from_the_strongest_source_and_a_corrected_entry_is_not_a_conflict(self):
+        for label, entries in self.CORRECTED.items():
+            with self.subTest(label):
+                self.manifest(*(entry("art-fix", slot, 1, source) for slot, source in entries), entry("art-2", "ep-1", 2))
+                self.snapshot("ctx-a", [ref("art-fix", 1)])
+                reference = {"kind": "remote_artifact", "id": "art-fix", "revision": 1}
+                self.assertEqual(project_status.judge_ref(reference, project_status._entries(self.drama), "ep-1", 2)[0], "stale")
+                result, snapshots, _ = self.impact(artifact="art-fix")
+                self.assertEqual(result["target"], {"slot": "ep-1", "revision": 1, "resolvedFrom": "--artifact art-fix",
+                                                    "slotInManifest": True, "newestTrustedRevision": 2})
+                self.assertEqual((snapshots["ctx-a"]["status"], snapshots["ctx-a"]["reasons"]), ("current", []))
+                result, snapshots, _ = self.impact(slot="ep-1", revision=2)
+                self.assertEqual(snapshots["ctx-a"]["reasons"], [{"ref": "items[1] art-fix@r1", "status": "stale",
+                                                                  "reason": "引用了 slot ep-1 的旧修订 r1，目标修订为 r2"}])
+                result, snapshots, _ = self.impact(slot="ep-9", revision=5)  # the slot only the corrected entry named
+                self.assertEqual(snapshots["ctx-a"]["status"], "current")
+                self.assertEqual((result["target"]["slotInManifest"], result["target"]["newestTrustedRevision"], len(result["warnings"])), (False, None, 1))
+
+    def test_contradicting_strongest_entries_stay_unknown_and_revisions_are_never_corrected(self):
+        cases = {"two record entries": [entry("art-x", "ep-1", 1), entry("art-x", "ep-4", 1)],
+                 "two record entries over a host entry": [entry("art-x", "ep-1", 1, "host"), entry("art-x", "ep-1", 1), entry("art-x", "ep-4", 1)],
+                 "two receipt entries": [entry("art-x", "ep-1", 1, "receipt"), entry("art-x", "ep-4", 1, "receipt")],
+                 "two host entries": [entry("art-x", "ep-1", 1, "host"), entry("art-x", "ep-4", 1, "host")],
+                 "host entry and one without slotSource": [entry("art-x", "ep-1", 1, "host"), entry("art-x", "ep-4", 1, None)],
+                 "a stronger entry with another revision": [entry("art-x", "ep-1", 1, "host"), entry("art-x", "ep-1", 2)],
+                 "strongest source is only the host": [entry("art-x", "ep-1", 1, None), entry("art-x", "ep-1", 1, "host")]}
+        for label, entries in cases.items():
+            with self.subTest(label):
+                self.manifest(*entries, entry("art-2", "ep-1", 2))
+                self.snapshot("ctx-a", [ref("art-x", 1)])
+                for target in ({"slot": "ep-1", "revision": 2}, {"slot": "ep-4", "revision": 2}):
+                    item = self.impact(**target)[1]["ctx-a"]
+                    self.assertEqual((item["status"], len(item["reasons"])), ("unknown", 1))
+                    self.assertIn("扩大阅读", item["suggestion"])
+                with self.assertRaises(ValueError):
+                    self.impact(artifact="art-x")
+
+    def test_corrected_entry_no_longer_claims_the_slot_it_named(self):
+        ep1 = [entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2)]
+        for label, entries in self.CORRECTED.items():
+            with self.subTest(label):  # art-fix r2 really belongs to ep-1; the weaker entries named ep-9 (or ep-8)
+                fixed = [entry("art-fix", slot, 2, source) for slot, source in entries]
+                run, latest, status, _ = self.strict(entry("art-9", "ep-9", 1), entry("art-9b", "ep-9", 2), *fixed,
+                                                     outputs=("art-9b", 2), pins=("art-9", 1))
+                self.assertEqual(self.impact(slot="ep-9", revision=2)[2]["run-rev"]["reasons"], [{
+                    "ref": "items[1] art-9@r1", "status": "current",
+                    "reason": "运行记录声称产出了 slot ep-9 的 r2（outputs[0] art-9b@r2），快照对旧修订 r1 的引用不使它失效"}])
+                self.assertEqual((latest["stalenessCheck"], latest["stalenessReasons"], status["nextAction"]["basis"]),
+                                 ("newer_revision_is_own_output", [], "latest_run"))
+        with self.subTest("uncorrected, the same host entry still leaves the run unknown"):
+            self.assertDoubt(self.strict(*ep1, entry("art-fix", "ep-1", 2, "host"), outputs=("art-2", 2)), "art-fix", "宿主声明")
+            run = self.strict(*ep1, entry("art-fix", "ep-1", 2, "host"), entry("art-fix", "ep-7", 2), outputs=("art-2", 2))[0]
+            self.assertEqual((run["status"], run["reasons"][0]["status"]), ("current", "current"))
+        with self.subTest("the corrected artifact counts in the slot the record names"):
+            fixed = [entry("art-fix", "ep-9", 2, "host"), entry("art-fix", "ep-1", 2)]
+            run = self.strict(*ep1[:1], *fixed, outputs=("art-fix", 2))[0]
+            self.assertEqual((run["status"], run["reasons"][0]["status"]), ("current", "current"))
+            self.assertDoubt(self.strict(*ep1, *fixed, outputs=("art-2", 2)), "r2", "art-fix", "多个")  # two trusted artifacts at ep-1 r2
+        with self.subTest("contradicting record entries claim their own slots, not the one a weaker entry named"):
+            run = self.strict(*ep1, entry("art-x", "ep-1", 2, "host"), entry("art-x", "ep-4", 2), entry("art-x", "ep-5", 2), outputs=("art-2", 2))[0]
+            self.assertEqual((run["status"], run["reasons"][0]["status"]), ("current", "current"))
+            self.assertDoubt(self.strict(*ep1, entry("art-x", "ep-7", 2, "host"), entry("art-x", "ep-1", 2), entry("art-x", "ep-5", 2),
+                                         outputs=("art-2", 2)), "art-x")
+
+    def test_corrected_entry_raises_no_doubt_about_a_newer_revision_in_the_slot_it_named(self):
+        fixed = [entry("art-fix", "ep-1", 4, "host"), entry("art-fix", "ep-7", 4)]
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), *fixed)
+        self.snapshot("ctx-a", [ref("art-2", 2)])
+        self.run_handoff("run-a", "ctx-a")
+        latest = project_status.run_status(str(self.project))["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"], latest["stalenessReasons"]), ("no_newer_revision_cached", [], []))
+        result = self.impact(slot="ep-1", revision=2)[0]
+        self.assertEqual((result["target"]["newestTrustedRevision"], result["warnings"]), (2, []))  # art-fix is not a trusted r4 of ep-1
+        self.assertEqual(self.impact(slot="ep-7", revision=4)[0]["target"]["newestTrustedRevision"], 4)
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), fixed[0])  # without the correction the doubt is still raised
+        latest = project_status.run_status(str(self.project))["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], len(latest["stalenessReasons"])), ("unknown", 1))
+
+    def test_ac2_wrong_host_declared_slot_is_judged_once_the_get_response_corrects_it(self):
+        chunks = [str(FIXTURES / name) for name in CHUNKS]
+        cached = receipt.cache(str(self.project), chunks, slot="ep-99-outline", kind="episode_outline", episode_ref="ep-03")
+        self.assertEqual((cached["passed"], cached["entry"]["slotSource"], cached["entry"]["slot"]), (True, "host", "ep-99-outline"))
+        self.snapshot("ctx-ep3", [ref(ART1, 1)])
+        self.assertEqual(self.impact(slot="ep-03-outline", revision=2)[1]["ctx-ep3"]["status"], "unknown")
+        with self.assertRaisesRegex(ValueError, "get_story_artifact"):
+            self.impact(artifact=ART1)
+        corrected = receipt.cache(str(self.project), chunks + [str(FIXTURES / "03-get.response.json")])
+        self.assertEqual((corrected["passed"], corrected["manifestAppended"], corrected["entry"]["slot"]), (True, True, "ep-03-outline"))
+        result, snapshots, _ = self.impact(artifact=ART1)
+        self.assertEqual(result["target"], {"slot": "ep-03-outline", "revision": 1, "resolvedFrom": f"--artifact {ART1}",
+                                            "slotInManifest": True, "newestTrustedRevision": 1})
+        self.assertEqual((snapshots["ctx-ep3"]["status"], result["warnings"], result["remote_verified"]), ("current", [], False))
+        self.assertEqual(self.impact(slot="ep-03-outline", revision=2)[1]["ctx-ep3"]["status"], "stale")
+        wrong = self.impact(slot="ep-99-outline", revision=2)
+        self.assertEqual((wrong[1]["ctx-ep3"]["status"], wrong[0]["target"]["slotInManifest"]), ("current", False))
+
     def test_only_packed_remote_artifacts_count_as_dependencies(self):
         self.manifest(entry("art-1", "ep-1", 1))
         card = {"ref": {"kind": "knowledge_card", "id": "art-1", "revision": 1}, "partition": "knowledge", "required": False,

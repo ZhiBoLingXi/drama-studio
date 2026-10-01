@@ -18,7 +18,7 @@ from pathlib import Path
 import shlex
 
 from .contract_check import check_contract
-from .receipt import MANIFEST, area, contained, drama_dir, pending, slot_rank
+from .receipt import MANIFEST, area, contained, drama_dir, effective_entries, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
 LINE_BREAKS = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"  # what str.splitlines splits on
@@ -90,13 +90,17 @@ def _entries(drama: Path) -> list[dict]:
 
 
 def _identity(entries: list[dict], artifact_id) -> tuple[tuple[str, int] | None, str | None]:
-    """Return ((slot, revision), None) when the manifest pins one trusted slot and revision for the artifact, else (None, why)."""
+    """Return ((slot, revision), None) when the manifest pins one trusted slot and revision for the artifact, else (None, why).
+
+    The slot is the one its strongest-source entries state: a weaker entry naming another slot was corrected by them.
+    """
     found = [entry for entry in entries if entry.get("artifactId") == artifact_id]
     if not found:
         return None, "manifest 中查不到该 artifactId，无法得知它属于哪个 slot"
-    if len({(repr(entry.get("slot")), repr(entry.get("revision"))) for entry in found}) > 1:
+    strongest = effective_entries(found)
+    if len({repr(entry.get("revision")) for entry in found}) > 1 or len({repr(entry.get("slot")) for entry in strongest}) > 1:
         return None, "manifest 中该 artifactId 对应多个不同的 slot 或 revision"
-    slot, revision = found[0].get("slot"), found[0].get("revision")
+    slot, revision = strongest[0].get("slot"), found[0].get("revision")
     if not isinstance(slot, str) or not slot or type(revision) is not int or revision < 1:
         return None, "manifest 条目没有有效的 slot 或不小于 1 的整数 revision"
     if max(map(slot_rank, found)) == 0:  # host, or an entry written before slotSource existed
@@ -176,17 +180,22 @@ def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
     return _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(found) for found in _dependencies(item["id"], snapshots, judge)])
 
 
+def _claims(entries: list[dict], slot: str) -> list[dict]:
+    """Entries that name `slot` and still speak for their artifact revision: one a stronger source corrected does not."""
+    return [entry for entry in entries if entry.get("slot") == slot and entry in effective_entries(
+        [other for other in entries if (other.get("artifactId"), repr(other.get("revision"))) == (entry.get("artifactId"), repr(entry.get("revision")))])]
+
+
 def _slot_evidence(entries: list[dict], slot: str) -> tuple[dict[int, list], list[tuple]]:
     """What the manifest holds for a slot: trusted {revision: [artifactId]} and the claimants that cannot be trusted.
 
     A claimant is an artifact with an entry naming this slot whose identity does not resolve (host-declared, no or
     unexpected slotSource, conflicting entries); it comes back as (artifactId, why, every revision its entries state).
+    An entry that a stronger source corrected to another slot is not a claim on this one.
     """
     trusted: dict[int, list] = {}
     claimants: dict[str, tuple] = {}
-    for entry in entries:
-        if entry.get("slot") != slot:
-            continue
+    for entry in _claims(entries, slot):
         artifact = entry.get("artifactId")
         identity, why = _identity(entries, artifact)
         if identity is None:
@@ -293,7 +302,7 @@ def run_impact(project: str, slot: str | None = None, revision: int | str | None
     snapshots = [_judge_snapshot(item, loaded, judge) for item in loaded.values()]
     by_id = {item["snapshotId"]: item for item in snapshots}
     runs = [_judge_run(item, loaded, by_id, judge, entries) for item in _records(drama, "runs", "run-handoff", "runId")]
-    seen = any(entry.get("slot") == slot for entry in entries)
+    seen = bool(_claims(entries, slot))
     warnings = [] if seen else [f"manifest 中没有任何条目属于 slot {slot}：可能是拼写错误，也可能该 slot 从未缓存。结论只覆盖记录在案的引用，"
                                 "全部为 current 不说明这个 slot 的修订没有影响"]
     newest = _newest(entries, slot)[0] or None
@@ -309,9 +318,7 @@ def run_impact(project: str, slot: str | None = None, revision: int | str | None
 def _newest(entries: list[dict], slot: str) -> tuple[int, str | None]:
     """Newest trusted revision the manifest holds for a slot, and a doubt when an untrusted entry may be newer still."""
     newest, untrusted = 0, []
-    for entry in entries:
-        if entry.get("slot") != slot:
-            continue
+    for entry in _claims(entries, slot):
         identity, _ = _identity(entries, entry.get("artifactId"))
         if identity is None:
             untrusted.append(entry)
