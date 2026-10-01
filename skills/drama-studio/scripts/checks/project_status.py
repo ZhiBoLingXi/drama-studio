@@ -280,7 +280,7 @@ def _staleness(run: dict, snapshots: dict[str, dict], entries: list[dict], manif
     produced = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "producedRevision": item["produced"],
                  "output": item["output"]} for item in own]
     newer = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
-              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot {shlex.quote(item['slot'])} --revision {item['target']}"}
+              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot={shlex.quote(item['slot'])} --revision {item['target']}"}
              for item in found if item["status"] == "stale"]
     reasons = [f"{item['ref']}：{item['reason']}" if item["ref"] else item["reason"] for item in found if item["status"] == "unknown"]
     if newer:
@@ -373,6 +373,12 @@ def _run_lines(label: str, run: dict) -> list[str]:
     return lines
 
 
+def _one_line(text: str) -> str:
+    """Recorded values may span lines; the text view keeps one logical line per printed line."""
+    parts = text.splitlines()
+    return " ".join([parts[0].rstrip(), *(part.strip() for part in parts[1:] if part.strip())]) if parts else ""
+
+
 def render_status(result: dict) -> str:
     """Human-readable status; the first line is the next action."""
     receipts, runs, action = result["receipts"], result["runs"], result["nextAction"]
@@ -380,7 +386,8 @@ def render_status(result: dict) -> str:
     if action["basis"] == "stale_run":
         pinned = runs["latest"]["newerRevisions"][0]["pinnedRevision"]
         lines.append(f"该运行按旧修订 r{pinned} 的上下文记录的下一步（先看 impact 结果，不要直接照做）：{action['recordedNextAction']}")
-    lines += [f"依据：{BASIS[action['basis']]}" + (f"（{action['from']}）" if action["from"] else "") + "。" + result["note"], "",
+    doubt = "最近运行是否失效无法判断，见下。" if runs["latest"] and runs["latest"]["stalenessCheck"] == "unknown" else ""
+    lines += [f"依据：{BASIS[action['basis']]}" + (f"（{action['from']}）" if action["from"] else "") + "。" + doubt + result["note"], "",
              f"未决回执（{len(receipts['pending'])}）"]
     for item in receipts["pending"]:
         known = "".join(f"，{label} {item[key]}" for label, key in (("slot", "slot"), ("expectedRevision", "expectedRevision")) if item[key] is not None)
@@ -405,4 +412,4 @@ def render_status(result: dict) -> str:
     if result["invalid"]:
         lines += ["", f"无效或损坏的记录（{len(result['invalid'])}）"]
         lines += [f"- [{item['kind']}] {item['path']}：{'；'.join(item['errors'])}" for item in result["invalid"]]
-    return "\n".join(lines)
+    return "\n".join(map(_one_line, lines))

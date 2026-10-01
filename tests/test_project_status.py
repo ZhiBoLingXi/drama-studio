@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -505,7 +506,7 @@ class StatusTests(ProjectCase):
     def test_latest_run_pinning_an_older_revision_leads_with_the_impact_command(self):
         self.stale_fixture()
         result, lines = self.status()
-        command = f"drama_tools.py impact {self.project} --slot ep-1 --revision 2"
+        command = f"drama_tools.py impact {self.project} --slot=ep-1 --revision 2"
         latest = result["runs"]["latest"]
         self.assertEqual((latest["stalenessCheck"], latest["possiblyStale"]), ("newer_revision_cached", True))
         self.assertEqual(latest["newerRevisions"], [{"ref": "items[2] art-1@r1", "slot": "ep-1", "pinnedRevision": 1,
@@ -531,7 +532,7 @@ class StatusTests(ProjectCase):
         result, lines = self.status()
         self.assertEqual(result["nextAction"]["basis"], "unknown_receipt")
         self.assertIn("可能已失效", "\n".join(lines))
-        self.assertIn("--slot ep-1 --revision 2", "\n".join(lines))
+        self.assertIn("--slot=ep-1 --revision 2", "\n".join(lines))
 
     def test_no_newer_cached_revision_claims_only_what_the_local_cache_shows(self):
         self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), entry("art-9", "ep-0", 1))
@@ -660,8 +661,53 @@ class StatusTests(ProjectCase):
         spaced = self.project.with_name("my drama")
         self.project.rename(spaced)
         command = project_status.run_status(str(spaced))["runs"]["latest"]["newerRevisions"][0]["impactCommand"]
-        self.assertEqual(command, f"drama_tools.py impact '{spaced}' --slot 'ep 1' --revision 2")
+        self.assertEqual(command, f"drama_tools.py impact '{spaced}' --slot='ep 1' --revision 2")
         spaced.rename(self.project)
+
+    def test_printed_impact_command_runs_as_printed_even_for_awkward_slots(self):
+        for slot in ("-ep-1", "--slot", "ep 1's", "集-1"):
+            with self.subTest(slot=slot):
+                self.manifest(entry("art-1", slot, 1), entry("art-2", slot, 2))
+                self.snapshot("ctx-a", [ref("art-1", 1)])
+                self.run_handoff("run-a", "ctx-a")
+                command = self.status()[0]["nextAction"]["impactCommand"]
+                run = self.cli(*shlex.split(command)[1:])
+                self.assertEqual((run.returncode, run.stderr), (0, ""))
+                result = json.loads(run.stdout)
+                self.assertEqual((result["target"]["slot"], result["target"]["revision"], result["runs"][0]["status"]), (slot, 2, "stale"))
+
+    def test_multi_line_values_do_not_break_the_first_line(self):
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-a", "ctx-a", nextAction="续写第 4 集\n然后保存候选\r\n\n再请编剧审阅", unfinished=["结尾钩子\n未定", "第二项"])
+        result, lines = self.status()
+        self.assertEqual(lines[0], "下一步：续写第 4 集 然后保存候选 再请编剧审阅")
+        self.assertTrue(lines[1].startswith("依据："), lines[1])
+        self.assertEqual(result["nextAction"]["text"], "续写第 4 集\n然后保存候选\r\n\n再请编剧审阅")
+        self.assertEqual(result["runs"]["latest"]["unfinished"], ["结尾钩子\n未定", "第二项"])
+        text = "\n".join(lines)
+        self.assertIn("    下一步：续写第 4 集 然后保存候选 再请编剧审阅", lines)
+        self.assertIn("    未完成：结尾钩子 未定；第二项", lines)
+        self.assertEqual(len(lines), len(project_status.render_status(json.loads(json.dumps(result))).splitlines()))
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        lines = self.status()[1]
+        self.assertTrue(lines[0].startswith("下一步：先运行 "), lines[0])
+        self.assertTrue(lines[1].endswith("：续写第 4 集 然后保存候选 再请编剧审阅"), lines[1])
+        self.assertTrue(lines[2].startswith("依据："), lines[2])
+        self.assertNotIn("\r", text)
+
+    def test_unknown_staleness_of_the_latest_run_is_hinted_on_the_basis_line(self):
+        self.manifest(entry("art-1", "ep-1", 1, "host"))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.run_handoff("run-a", "ctx-a")
+        lines = self.status()[1]
+        self.assertTrue(lines[1].startswith("依据：最近一次运行记录的 nextAction（.drama/runs/run-a.json）。最近运行是否失效无法判断，见下。"), lines[1])
+        self.unknown_save()
+        lines = self.status()[1]
+        self.assertTrue(lines[0].startswith("下一步：对账"), lines[0])
+        self.assertIn("最近运行是否失效无法判断，见下。", lines[1])
+        self.manifest(entry("art-1", "ep-1", 1))
+        self.assertNotIn("无法判断", "\n".join(self.status()[1]))
 
     def test_missing_slot_revision_or_completeness_is_not_printed_as_none(self):
         bare = Path(self.temp.name) / "bare.input.json"
@@ -756,7 +802,7 @@ class CliTests(ProjectCase):
         run = self.cli("status", self.project)
         self.assertEqual((run.returncode, run.stderr), (0, ""))
         lines = run.stdout.splitlines()
-        self.assertTrue(lines[0].startswith(f"下一步：先运行 drama_tools.py impact {self.project} --slot ep-1 --revision 2"), lines[0])
+        self.assertTrue(lines[0].startswith(f"下一步：先运行 drama_tools.py impact {self.project} --slot=ep-1 --revision 2"), lines[0])
         self.assertIn("请用户决定是否接受 C4 变更提案", lines[1])
         self.assertEqual(json.loads(self.cli("status", self.project, "--json").stdout)["nextAction"]["basis"], "stale_run")
 
