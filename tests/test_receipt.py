@@ -1023,6 +1023,67 @@ class CacheTests(ProjectCase):
             before = self.manifest.read_bytes()
             self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.WRONG), before, "'ep-99-outline'", "'host'", "get_story_artifact")
 
+    def test_refusal_says_what_actually_vouches_for_the_cached_values(self):
+        with self.subTest("a receipt-backed entry's kind is the host's word"):
+            self.save()
+            self.assertEqual(self.cache(*CHUNKS, **self.DRAFT)["entry"]["slotSource"], "receipt")
+            before = self.manifest.read_bytes()
+            for label, call in [("receipt-backed call", lambda: self.cache(*CHUNKS, **self.META)),
+                                ("host call", lambda: (shutil.rmtree(self.receipts), self.cache(*CHUNKS, **self.META))[1])]:
+                result = call()
+                self.assertRefusedUnchanged(result, before, "kind 'episode_draft'", "save receipt vouches for the slot", "kind and episodeRef were given by the host",
+                                            "get_story_artifact")
+                self.assertNotIn("come from slotSource 'receipt'", result["error"], label)
+            self.reset()
+        with self.subTest("a receipt-backed entry's slot does come from the receipt"):
+            self.save()
+            self.cache(*CHUNKS, **self.META)
+            before = self.manifest.read_bytes()
+            shutil.rmtree(self.receipts)
+            self.assertRefusedUnchanged(self.cache(*CHUNKS, **self.WRONG), before, "come from slotSource 'receipt'", "this call's source is 'host'")
+            self.reset()
+        for label, source, needle in [("no slotSource", None, "has no slotSource (counts as host)"),
+                                      ("unknown slotSource", "trusted-by-me", "unknown slotSource 'trusted-by-me' (counts as host)")]:
+            with self.subTest(label):
+                self.cache(*CHUNKS, **self.META)
+                manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+                manifest["entries"][0].pop("slotSource")
+                manifest["entries"][0].update({} if source is None else {"slotSource": source})
+                self.manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                before = self.manifest.read_bytes()
+                result = self.cache(*CHUNKS, **self.WRONG)
+                self.assertRefusedUnchanged(result, before, needle, "this call's source is 'host'")
+                self.assertNotIn("slotSource 'host'", result["error"])
+                fixed = self.cache(*CHUNKS, "03-get.response.json")
+                self.assertTrue(fixed["passed"])
+                self.assertEqual(fixed["warnings"], [])  # same metadata: nothing was corrected
+                self.reset()
+
+    def test_record_contradicting_a_save_receipt_about_the_slot_is_called_out_with_the_request_id(self):
+        def other_slot(value):
+            value["structuredContent"]["data"]["record"]["slot"] = "ep-99-outline"
+        request = Path(self.temp.name) / "ep99.input.json"
+        request.write_text(json.dumps(dict(fixture("02-save.input.json"), slot="ep-99-outline"), ensure_ascii=False), encoding="utf-8")
+        saved = self.record(self.variant("02-save.response.json", other_slot, "ep99-save.json"), "save_story_artifact", "d1-save-2", request)
+        self.assertEqual((saved["passed"], saved["receipt"]["localRef"]["id"]), (True, "slot:ep-99-outline"))
+        self.assertEqual(self.cache(*CHUNKS, **self.WRONG)["entry"]["slotSource"], "receipt")
+        earlier = self.earlier()
+        result = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertEqual((result["passed"], result["manifestAppended"], result["entry"]["slot"]), (True, True, "ep-03-outline"))
+        self.assertTrue(self.manifest.read_bytes().startswith(earlier))
+        self.assertEqual(len(result["warnings"]), 2, result["warnings"])
+        self.assertIn("corrects metadata", result["warnings"][0])
+        for needle in ("disagree", "d1-save-2", "'ep-99-outline'", "'ep-03-outline'", "get_story_artifact record", "save receipt"):
+            self.assertIn(needle, result["warnings"][1], needle)
+        self.reset()
+        self.save()  # the receipt agrees on the slot; only the host-given kind is corrected
+        self.cache(*CHUNKS, **self.DRAFT)
+        result = self.cache(*CHUNKS, "03-get.response.json")
+        self.assertEqual([("corrects metadata" in warning, "disagree" in warning) for warning in result["warnings"]], [(True, False)])
+        self.reset()
+        self.cache(*CHUNKS, **self.WRONG)  # host against record is an ordinary correction
+        self.assertEqual(len(self.cache(*CHUNKS, "03-get.response.json")["warnings"]), 1)
+
     def test_contradicting_strongest_entries_are_never_settled_by_an_equal_or_weaker_call(self):
         self.cache(*CHUNKS, "03-get.response.json")
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))

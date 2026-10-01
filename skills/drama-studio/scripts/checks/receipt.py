@@ -595,6 +595,16 @@ def slot_rank(entry: dict) -> int:
     return SLOT_SOURCES.index(source) if source in SLOT_SOURCES else 0
 
 
+def _vouched(item: dict, fields: list[str]) -> str:
+    """Say what stands behind the differing `fields` of a manifest entry, for a refusal or a correction warning."""
+    source = item.get("slotSource")
+    if source not in SLOT_SOURCES:
+        return "The manifest entry has " + ("no slotSource" if source is None else f"an unknown slotSource {source!r}") + " (counts as host)"
+    if source == "receipt" and fields != ["slot"]:
+        return "In the manifest entry a save receipt vouches for the slot (slotSource 'receipt'), while kind and episodeRef were given by the host"
+    return f"The manifest values come from slotSource {source!r}"
+
+
 def effective_entries(entries: list[dict]) -> list[dict]:
     """Of the manifest entries for one artifact revision, those from its strongest slot source (record > receipt > host).
 
@@ -692,23 +702,33 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
                 raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
         same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
+        corrected = disputed = False
         for item in effective_entries(same):
             fields = [key for key in SLOT_FIELDS if item.get(key) != entry[key]]
             if not fields:
                 continue
             differing = "; ".join(f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)" for key in fields)
-            held = f"The manifest values come from slotSource {SLOT_SOURCES[slot_rank(item)]!r} and this call's from {entry['slotSource']!r}"
+            held = f"{_vouched(item, fields)}; this call's source is {entry['slotSource']!r}"
             if slot_rank(entry) <= slot_rank(item):  # an equal or weaker source never overrides what is cached
-                return _refuse(f"{rel} is already cached with different metadata: {differing}. {held}; only a stronger source corrects "
+                return _refuse(f"{rel} is already cached with different metadata: {differing}. {held}. Only a stronger source corrects "
                                "cached metadata (record > receipt > host)"
-                               + ("" if slot_rank(item) == 2 else ": re-cache with the get_story_artifact response to correct it"))
+                               + ("" if item.get("slotSource") == "record" else "; re-cache with the get_story_artifact response to correct it"))
             if entry["slotSource"] == "receipt" and fields != ["slot"]:  # kind and episodeRef of such a call are still the host's word
-                return _refuse(f"{rel} is already cached with different metadata: {differing}. {held}, but a save receipt vouches only "
+                return _refuse(f"{rel} is already cached with different metadata: {differing}. {held}, and a save receipt vouches only "
                                "for the slot: re-cache with the get_story_artifact response to correct kind or episodeRef")
-            if not any("corrects metadata" in warning for warning in warnings):
-                warnings.append(f"this call's slotSource {entry['slotSource']!r} corrects metadata cached from slotSource "
-                                f"{SLOT_SOURCES[slot_rank(item)]!r}: {differing}. The earlier manifest entry is kept unchanged and readers "
-                                "use the strongest source; snapshots packed before this were checked against the old values")
+            if not corrected:
+                warnings.append(f"this call's slotSource {entry['slotSource']!r} corrects metadata cached earlier: {differing}. {held}. "
+                                "The earlier manifest entry is kept unchanged and readers use the strongest source; snapshots packed "
+                                "before this were checked against the old values")
+            if "slot" in fields and item.get("slotSource") == "receipt" and not disputed:  # both slots were derived from saved server responses
+                saved = _saved_slots(drama, chunks[0]["projectId"] if chunks else record.get("projectId"), artifact, revision).get(item.get("slot"))
+                disputed = True
+                warnings.append(f"two saved server responses disagree about this artifact revision's slot: the get_story_artifact record says "
+                                f"{entry['slot']!r}, while a confirmed save receipt "
+                                + (f"({saved}) " if saved else "(no longer among the valid local receipts) ")
+                                + f"vouched for {item.get('slot')!r}. The record is followed; inspect that receipt and both saved "
+                                  "responses before relying on either")
+            corrected = True
         status = "written"
         if path.exists() or not publish_new(path, content):
             if path.read_bytes() != content:
