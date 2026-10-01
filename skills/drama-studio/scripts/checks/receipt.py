@@ -608,8 +608,9 @@ def _vouched(item: dict, fields: list[str]) -> str:
 def effective_entries(entries: list[dict]) -> list[dict]:
     """Of the manifest entries for one artifact revision, those from its strongest slot source (record > receipt > host).
 
-    Every reader takes slot, kind and episodeRef from these alone: a weaker entry that differs has been corrected by
-    them, whatever the order, and only disagreement among them is a conflict.
+    These alone are authoritative: a weaker entry that differs has been corrected by them, whatever the order, and
+    only disagreement among them is a conflict. receipt cache compares slot, kind and episodeRef against them;
+    context-pack, impact and status read only the slot from them.
     """
     top = max(map(slot_rank, entries), default=0)
     return [entry for entry in entries if slot_rank(entry) == top]

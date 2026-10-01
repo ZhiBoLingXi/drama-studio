@@ -1333,8 +1333,16 @@ class DocsTests(unittest.TestCase):
                 self.assertIn(needle, text, f"{label}: {needle}")
             for advice in ("手工从", "去掉错误条目", "改不了那条条目", "删除条目", "删掉"):
                 self.assertNotIn(advice, text, f"{label}: {advice}")
-        for needle in ("最强来源的条目之间互相矛盾", "不再算作", "按纠正后的 slot", "宿主声明不能纠正"):
+        for needle in ("最强来源的条目之间互相矛盾", "不再算作", "按纠正后的 slot", "宿主声明不能纠正", "三项与来源最强的条目比较",
+                       "只从来源最强的条目读 `slot`", "来源相同或更弱的 `receipt cache` 调用被拒绝", "照旧算数", "requestId", "不提示拼写错误"):
             self.assertIn(needle, readme, needle)
+        for needle in ("宿主只通过 `receipt` 工具写 manifest", "不手工修改"):
+            self.assertIn(needle, method, needle)
+        self.assertNotIn("不由人或宿主改动", method)
+        self.assertNotIn("都从来源最强的条目取", readme)
+        docstring = " ".join(receipt.effective_entries.__doc__.split())
+        for needle in ("receipt cache compares slot, kind and episodeRef", "context-pack, impact and status read only the slot"):
+            self.assertIn(needle, docstring)
 
     def test_workstation_steps_link_the_method(self):
         lines = (ROOT / "skills/drama-studio/references/workstations/README.md").read_text(encoding="utf-8").splitlines()
