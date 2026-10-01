@@ -623,8 +623,9 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified).
 
     The entry's slotSource says who vouches for the slot: the get record, a local confirmed save receipt, or only the host.
-    A call from a stronger source than every entry for the path appends an entry that corrects their slot, kind and
-    episodeRef; an equal or weaker source that differs from the strongest entries is refused.
+    A call from a stronger source than every entry for the path appends an entry that corrects them: a get record
+    corrects slot, kind and episodeRef, a save receipt only the slot it vouches for. An equal or weaker source that
+    differs from the strongest entries is refused.
     """
     drama = drama_dir(project)
     chunks, records = [], {}
@@ -692,19 +693,22 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
                 raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
         same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
         for item in effective_entries(same):
-            differing = "; ".join(f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)" for key in SLOT_FIELDS if item.get(key) != entry[key])
-            if not differing:
+            fields = [key for key in SLOT_FIELDS if item.get(key) != entry[key]]
+            if not fields:
                 continue
-            held = SLOT_SOURCES[slot_rank(item)]
+            differing = "; ".join(f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)" for key in fields)
+            held = f"The manifest values come from slotSource {SLOT_SOURCES[slot_rank(item)]!r} and this call's from {entry['slotSource']!r}"
             if slot_rank(entry) <= slot_rank(item):  # an equal or weaker source never overrides what is cached
-                return _refuse(f"{rel} is already cached with different metadata: {differing}. The manifest values come from "
-                               f"slotSource {held!r} and this call's from {entry['slotSource']!r}; only a stronger source corrects "
+                return _refuse(f"{rel} is already cached with different metadata: {differing}. {held}; only a stronger source corrects "
                                "cached metadata (record > receipt > host)"
-                               + ("" if held == "record" else ": re-cache with the get_story_artifact response to correct it"))
-            warnings.append(f"this call's slotSource {entry['slotSource']!r} corrects metadata cached from slotSource {held!r}: {differing}. "
-                            "The earlier manifest entry is kept unchanged and readers use the strongest source; snapshots packed "
-                            "before this were checked against the old values")
-            break
+                               + ("" if slot_rank(item) == 2 else ": re-cache with the get_story_artifact response to correct it"))
+            if entry["slotSource"] == "receipt" and fields != ["slot"]:  # kind and episodeRef of such a call are still the host's word
+                return _refuse(f"{rel} is already cached with different metadata: {differing}. {held}, but a save receipt vouches only "
+                               "for the slot: re-cache with the get_story_artifact response to correct kind or episodeRef")
+            if not any("corrects metadata" in warning for warning in warnings):
+                warnings.append(f"this call's slotSource {entry['slotSource']!r} corrects metadata cached from slotSource "
+                                f"{SLOT_SOURCES[slot_rank(item)]!r}: {differing}. The earlier manifest entry is kept unchanged and readers "
+                                "use the strongest source; snapshots packed before this were checked against the old values")
         status = "written"
         if path.exists() or not publish_new(path, content):
             if path.read_bytes() != content:

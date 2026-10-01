@@ -969,6 +969,30 @@ class CacheTests(ProjectCase):
             self.assertCorrected(self.DRAFT, "receipt", get, "record")
             self.assertEqual([(entry["slotSource"], entry["kind"]) for entry in self.entries()], [("receipt", "episode_draft"), ("record", "episode_outline")])
 
+    def test_receipt_backed_call_corrects_only_the_slot_and_the_record_corrects_what_it_said(self):
+        ref99 = dict(self.META, episode_ref="ep-99")
+        both = lambda wrong: dict(wrong, slot="ep-99-outline")  # noqa: E731
+        cases = [("kind, host entry wrong", self.DRAFT, self.META, "kind 'episode_draft'"), ("kind, this call wrong", self.META, self.DRAFT, "'episode_draft' (this call)"),
+                 ("episodeRef, host entry wrong", ref99, self.META, "episodeRef 'ep-99'"), ("episodeRef, this call wrong", self.META, ref99, "'ep-99' (this call)"),
+                 ("kind and slot", both(self.DRAFT), self.META, "slot 'ep-99-outline'"), ("episodeRef and slot", both(ref99), self.META, "slot 'ep-99-outline'")]
+        for label, hosted, backed, needle in cases:
+            with self.subTest(label):
+                self.assertEqual(self.cache(*CHUNKS, **hosted)["entry"]["slotSource"], "host")
+                before = self.manifest.read_bytes()
+                self.save()
+                self.assertRefusedUnchanged(self.cache(*CHUNKS, **backed), before, needle, "'host'", "'receipt'", "vouches only for the slot",
+                                            "get_story_artifact", "kind or episodeRef")
+                fixed = self.cache(*CHUNKS, "03-get.response.json")  # the record still corrects all three
+                self.assertEqual((fixed["passed"], fixed["manifestAppended"], {key: fixed["entry"][key] for key in self.FIXED}), (True, True, self.FIXED))
+                self.assertTrue(self.manifest.read_bytes().startswith(before[:before.rindex(b"\n  ]")]))
+                self.reset()
+        for label, wrong, field in [("kind", self.DRAFT, "kind"), ("episodeRef", ref99, "episodeRef")]:
+            with self.subTest(f"record corrects a receipt-backed entry's {label}"):
+                self.save()
+                result = self.assertCorrected(wrong, "receipt", lambda: self.cache(*CHUNKS, "03-get.response.json"), "record")
+                self.assertTrue(any(field in warning and "'receipt'" in warning for warning in result["warnings"]))
+                self.reset()
+
     def test_equal_or_weaker_source_with_different_metadata_is_refused_and_names_the_existing_source(self):
         def other_slot(value):
             value["structuredContent"]["data"]["record"]["slot"] = "ep-99-outline"
@@ -1244,7 +1268,7 @@ class DocsTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         method = (ROOT / "skills/drama-studio/references/mali-story.md").read_text(encoding="utf-8").split("## 候选保存与对账", 1)[1].split("\n## ", 1)[0]
         for label, text in (("README", readme), ("mali-story.md", method)):
-            for needle in ("最强来源", "`record` > `receipt` > `host`", "纠正", "不改不删", "相同或更弱", "episodeRef"):
+            for needle in ("最强来源", "`record` > `receipt` > `host`", "纠正", "不改不删", "相同或更弱", "episodeRef", "保存回执只担保 slot"):
                 self.assertIn(needle, text, f"{label}: {needle}")
             for advice in ("手工从", "去掉错误条目", "改不了那条条目", "删除条目", "删掉"):
                 self.assertNotIn(advice, text, f"{label}: {advice}")
