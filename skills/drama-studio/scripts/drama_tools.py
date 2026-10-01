@@ -15,6 +15,7 @@ from checks.context_pack import run_context_pack
 from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
 from checks.knowledge_store import run_knowledge_search, run_knowledge_show, run_knowledge_validate
+from checks.project_status import render_status, run_impact, run_status
 from checks.reference_check import run_reference_check
 from checks.receipt import EXPECTED as RECEIPT_OPERATIONS, KINDS as ARTIFACT_KINDS, run_receipt
 
@@ -104,6 +105,14 @@ def main() -> int:
     show = receipt_commands.add_parser("show", help="Print one receipt and its contract-check result")
     show.add_argument("project")
     show.add_argument("request_id")
+    status = commands.add_parser("status", help="Next step from local receipts, runs and snapshots; read-only, reads no chat history, proves nothing remote")
+    status.add_argument("project")
+    status.add_argument("--json", action="store_true", help="Print JSON instead of text whose first line is the next action")
+    impact = commands.add_parser("impact", help="Mark snapshots and runs stale/unknown/current for a slot revision; read-only, implicit content dependencies not assessed")
+    impact.add_argument("project")
+    impact.add_argument("--slot", help="Target slot; needs --revision")
+    impact.add_argument("--revision", help="The slot's new revision (integer >= 1)")
+    impact.add_argument("--artifact", help="artifactId of the new revision, resolved through the cache manifest; excludes --slot/--revision")
     args = parser.parse_args()
     try:
         if args.command == "doctor":
@@ -132,6 +141,13 @@ def main() -> int:
                                       dry_run=args.dry_run, allow_unverified=args.allow_unverified)
         elif args.command == "receipt":
             result = run_receipt(args)
+        elif args.command == "status":
+            result = run_status(args.project)
+            if not args.json:
+                print(render_status(result))
+                return 0
+        elif args.command == "impact":
+            result = run_impact(args.project, args.slot, args.revision, args.artifact)
         else:
             result = run_dup_check(args.new, args.source, ks=args.k, threshold=args.threshold)
         print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -37,6 +37,8 @@ EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("reco
 TOOL_RESULT = "mali-tool-result/v1"
 RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact")
 WRITES = ("save_story_artifact",)  # unknowns reconcilable by requestId; prepare_story_context has no lookup
+SLOT_CHECK = "record.slot matched --input slot (S)"  # receipt note; without it a save receipt does not vouch for a slot
+SLOT_SOURCES = ("host", "receipt", "record")  # weakest first; a manifest entry without slotSource counts as host
 
 
 class Unparseable(ValueError):
@@ -388,6 +390,16 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         raise ValueError(f"--input declares request_id {declared!r}, not {request_id!r}")
     parsed, evidence = _load_response(response_path, operation)
     outcome, retry = outcome_of(parsed)
+    slot_checked = False
+    if operation == "save_story_artifact" and outcome == "confirmed":  # the receipt's slot is later trusted by receipt cache
+        saved = parsed["data"]["record"].get("slot") if isinstance(parsed["data"].get("record"), dict) else None
+        if isinstance(saved, str) and saved != _field(request, "slot"):
+            raise ValueError(f"--input says slot {_field(request, 'slot')!r} but the confirmed save response's record.slot is {saved!r}: "
+                             "this input is not the request the response answers. Nothing written")
+        slot_checked = isinstance(saved, str)
+        if not slot_checked:
+            base["warnings"].append("the save response carries no record.slot, so this receipt's slot is only the --input's claim: it will "
+                                    "not vouch for a cached slot (receipt cache records slotSource host unless a get_story_artifact response is given)")
     remote = _remote(operation, parsed, request)
     if outcome != "confirmed":
         remote.update(artifactId=None, revision=None)
@@ -400,7 +412,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         if slot is not None:
             doc["localRef"] = {"kind": "remote_artifact", "id": f"slot:{slot}", "revision": None}
         notes.update(kind=_field(request, "kind"), episodeRef=_field(request, "episode_ref", "episodeRef"),
-                     expectedRevision=_field(request, "expected_revision", "expectedRevision"))
+                     expectedRevision=_field(request, "expected_revision", "expectedRevision"), **({"slotCheck": SLOT_CHECK} if slot_checked else {}))
     if reconciles is not None:
         doc["localRef"] = {"kind": "remote_receipt", "id": reconciles, "revision": None}
         reason, check = _reconcile_check(operation, reconciles, target, doc, parsed, request)
@@ -577,9 +589,30 @@ def _join(chunks: list[dict]) -> tuple[str | None, str | None]:
     return text, None
 
 
+def slot_rank(entry: dict) -> int:
+    source = entry.get("slotSource")
+    return SLOT_SOURCES.index(source) if source in SLOT_SOURCES else 0
+
+
+def _saved_slots(drama: Path, project_id: str, artifact: str, revision: int) -> dict[str, str]:
+    """slot -> requestId of every valid confirmed local save receipt for exactly this artifact revision.
+
+    Only receipts whose notes say the slot was matched against the response's record.slot count; one written from a
+    response without a slot, or before that check existed, records only what the host's input claimed.
+    """
+    return {_slot(doc): doc["requestId"] for _, doc in _receipts(drama)
+            if isinstance(doc, dict) and not check_contract("remote-receipt", doc)
+            and doc["operation"] == "save_story_artifact" and doc["outcome"] == "confirmed" and _slot(doc)
+            and _notes(doc).get("slotCheck") == SLOT_CHECK
+            and (doc["remote"]["projectId"], doc["remote"].get("artifactId"), doc["remote"].get("revision")) == (project_id, artifact, revision)}
+
+
 def cache(project: str, response_paths: list[str], slot: str | None = None, kind: str | None = None,
           episode_ref: str | None = None) -> dict:
-    """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified)."""
+    """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified).
+
+    The entry's slotSource says who vouches for the slot: the get record, a local confirmed save receipt, or only the host.
+    """
     drama = drama_dir(project)
     chunks, records = [], {}
     for name in response_paths:
@@ -618,10 +651,15 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
         if record is not None and (record.get("id"), record.get("revision"), record.get("body")) != (artifact, revision, text):
             return _refuse("the get_story_artifact record is not the same artifact revision and text as the read chunks")
         operation = "read_story_artifact"
+        if record is None:  # read responses carry no slot: --slot is the host's word unless a save receipt backs it
+            saved = _saved_slots(drama, chunks[0]["projectId"], artifact, revision)
+            clash = sorted(f"{name!r} (receipt {request_id})" for name, request_id in saved.items() if name != slot)
+            if clash:
+                return _refuse(f"--slot {slot!r} disagrees with the local confirmed save receipt for {artifact}: slot {', '.join(clash)}")
+            source = "receipt" if saved else "host"
     else:
         text, artifact, revision, server = record["body"], record["id"], record["revision"], None
         operation = "get_story_artifact"
-        warnings.append("get_story_artifact carries no full-text fingerprint: cached as verified=false; read the artifact with read_story_artifact to nextOffset null to verify")
     content = text.encode("utf-8")
     digest = "sha256:" + hashlib.sha256(content).hexdigest()
     verified = server is not None and digest == server
@@ -632,7 +670,7 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
         contained(file, drama)
     entry = {"path": rel, "artifactId": artifact, "slot": slot, "kind": kind, "episodeRef": episode_ref,
              "revision": revision, "sha256": digest, "serverFingerprint": server, "verified": verified,
-             "operation": operation, "readAt": _now()}
+             "operation": operation, "readAt": _now(), "slotSource": "record" if record is not None else source}
     with manifest_lock(folder):
         manifest = {"schemaVersion": MANIFEST, "entries": []}
         if manifest_path.exists():
@@ -644,20 +682,38 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
             clash = [f"{key} {item.get(key)!r} (manifest) vs {entry[key]!r} (this call)"
                      for key in ("slot", "kind", "episodeRef") if item.get(key) != entry[key]]
             if clash:
-                return _refuse(f"{rel} is already cached with different metadata: " + "; ".join(clash))
+                problem = f"{rel} is already cached with different metadata: " + "; ".join(clash)
+                if record is not None and item.get("slot") != slot and max(map(slot_rank, same)) == 0:
+                    problem += (f". The existing slot {item.get('slot')!r} was only declared by the host; the get_story_artifact record says {slot!r}. "
+                                "The manifest is append-only and this tool cannot correct or supersede that entry, so impact keeps "
+                                "reporting references to this artifact as unknown. To resolve it a person has to remove the wrong "
+                                f"entry from {manifest_path.name} by hand and then re-run receipt cache with the get_story_artifact response")
+                return _refuse(problem)
         status = "written"
         if path.exists() or not publish_new(path, content):
             if path.read_bytes() != content:
                 return _refuse(f"{path} already exists with different bytes")
             status = "unchanged"
-        existing = next((item for item in same if item.get("verified") == verified), None)
         if not verified:  # never shadow a verified read with a later unverified entry for the same bytes
-            existing = next((item for item in same if item.get("verified") is True and item.get("sha256") == digest), existing)
+            read = next((item for item in same if item.get("verified") is True and item.get("sha256") == digest), None)
+            if read is not None:
+                # the same bytes were verified by that read: restate it with this call's slot source rather than claim a new read
+                entry.update(serverFingerprint=read.get("serverFingerprint"), verified=True, operation=read.get("operation"),
+                             readAt=read.get("readAt"))
+        # append-only: an entry is reused unless this call brings a stronger slot source for the same path
+        existing = max((item for item in same if item.get("verified") == entry["verified"] and slot_rank(item) >= slot_rank(entry)),
+                       key=slot_rank, default=None)
         if existing is None:
             manifest["entries"].append(entry)
             atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": existing or entry,
-            "manifestAppended": existing is None, "verified": verified, "warnings": warnings,
+    returned = existing or entry
+    if not returned.get("verified"):
+        warnings.append("get_story_artifact carries no full-text fingerprint: cached as verified=false; read the artifact with read_story_artifact to nextOffset null to verify")
+    if max(map(slot_rank, [*same, returned])) == 0:  # the strongest source recorded for this path, as impact reads it
+        warnings.append("slot is the host's declaration (slotSource: host), so impact reports references to this artifact as unknown; "
+                        "re-cache with the get_story_artifact response to record the slot")
+    return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": returned,
+            "manifestAppended": existing is None, "verified": returned.get("verified") is True, "warnings": warnings,
             "remote_verified": False, "adoption_verified": False}
 
 
