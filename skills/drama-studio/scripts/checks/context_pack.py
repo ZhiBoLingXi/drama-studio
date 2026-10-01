@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 
 from .contract_check import check_contract
+from .receipt import effective_entries
 
 MANIFEST_VERSION = "drama-studio/cache-manifest/v0"
 PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns"]
@@ -57,10 +58,11 @@ def _read_cache(root: Path, cache: Path, entries: list, ref: dict, where: str, a
                and entry.get("artifactId") == ref["id"] and type(entry.get("revision")) is int and entry["revision"] == ref["revision"]]
     if not matches:
         return "missing", None
-    if len({(entry.get("path"), entry.get("sha256"), entry.get("slot")) for entry in matches}) > 1:
+    slots = {entry.get("slot") for entry in effective_entries(matches)}  # a stronger slot source corrects a weaker entry's slot
+    if len({(entry.get("path"), entry.get("sha256")) for entry in matches}) > 1 or len(slots) > 1:
         errors.append(f"{where}: cache manifest has conflicting entries for this artifact revision")
         return "error", None
-    entry = matches[-1]
+    entry = dict(matches[-1], slot=slots.pop())
     for field in ("path", "slot", "sha256"):
         if not isinstance(entry.get(field), str) or not entry[field]:
             raise ValueError(f"{where}: cache manifest entry has no {field}")

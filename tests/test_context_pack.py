@@ -183,6 +183,91 @@ class ContextPackTests(unittest.TestCase):
         self.assertTrue(any("art-ep02@r2" in e and "changed after caching" in e for e in result["errors"]), result["errors"])
         self.assertEqual(self.snapshots(), [])
 
+    def cached(self, artifact, slot, source, revision=1, text=PLAN, verified=True, **changes):
+        """Write the cache file and return a manifest entry for it; source None leaves slotSource out, as older entries do."""
+        data = text.encode("utf-8")
+        (self.project / ".drama/cache" / f"{artifact}@r{revision}.md").write_bytes(data)
+        entry = {"path": f".drama/cache/{artifact}@r{revision}.md", "artifactId": artifact, "slot": slot, "kind": "episode_draft",
+                 "episodeRef": None, "revision": revision, "sha256": sha(data), "serverFingerprint": sha(data) if verified else None,
+                 "verified": verified, "operation": "read_story_artifact", "readAt": "2026-10-01T08:00:00Z", **changes}
+        return entry if source is None else dict(entry, slotSource=source)
+
+    def manifest(self, *entries):
+        """Append entries to the project's manifest; return a function that restores the manifest as it was."""
+        path = self.project / ".drama/cache/manifest.json"
+        before = path.read_bytes()
+        manifest = json.loads(before.decode("utf-8"))
+        manifest["entries"] += entries
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return lambda: path.write_bytes(before)
+
+    def test_slot_is_taken_from_the_strongest_source_and_the_mixed_revision_rule_follows_it(self):
+        wrong, right = "episode-9-draft", "episode-2-draft"
+        cases = {"record after host": [(wrong, "host"), (right, "record")], "record before host": [(right, "record"), (wrong, "host")],
+                 "record after an entry without slotSource": [(wrong, None), (right, "record")],
+                 "receipt after host": [(wrong, "host"), (right, "receipt")], "record after receipt and host": [(wrong, "host"), (wrong, "receipt"), (right, "record")],
+                 "record settles two host entries that disagree": [(wrong, "host"), ("episode-7-draft", "host"), (right, "record")]}
+        for label, entries in cases.items():
+            with self.subTest(label):
+                restore = self.manifest(*(self.cached("art-fix", slot, source) for slot, source in entries), self.cached("art-ep09", wrong, "record"))
+                code, result = self.pack([cache_ref("art-fix", 1)], "author", 20000, None, "--dry-run")
+                self.assertEqual((code, result["omitted_count"], result["remote_verified"]), (0, 0, False), result)
+                code, result = self.pack([cache_ref("art-ep02", 2), cache_ref("art-fix", 1)], "author", 20000, None, "--dry-run")
+                self.assertEqual(code, 2)
+                self.assertEqual(len(result["errors"]), 1, result["errors"])
+                for needle in ("selection.items[1]", f"slot {right!r}", "art-ep02@r2", "one package cannot mix revisions of a slot"):
+                    self.assertIn(needle, result["errors"][0])
+                code, result = self.pack([cache_ref("art-ep09", 1), cache_ref("art-fix", 1)], "author", 20000, None, "--dry-run")
+                self.assertEqual(code, 0, result)  # the slot the weaker entry named is free for the artifact that really holds it
+                restore()
+
+    def test_only_the_strongest_source_entries_can_conflict_on_slot(self):
+        cases = {"two record entries": [("episode-2-draft", "record"), ("episode-9-draft", "record")],
+                 "two record entries and a host entry": [("episode-2-draft", "host"), ("episode-2-draft", "record"), ("episode-9-draft", "record")],
+                 "two receipt entries": [("episode-2-draft", "receipt"), ("episode-9-draft", "receipt")],
+                 "two host entries": [("episode-2-draft", "host"), ("episode-9-draft", "host")],
+                 "host entry and one without slotSource": [("episode-2-draft", "host"), ("episode-9-draft", None)],
+                 "host entry and an unexpected slotSource": [("episode-2-draft", "host"), ("episode-9-draft", "trusted-by-me")]}
+        for label, entries in cases.items():
+            with self.subTest(label):
+                restore = self.manifest(*(self.cached("art-fix", slot, source) for slot, source in entries))
+                for flags in ((), ("--dry-run",)):
+                    code, result = self.pack([cache_ref("art-fix", 1)], "author", 20000, None, *flags)
+                    self.assertEqual(code, 2)
+                    self.assertEqual(len(result["errors"]), 1, result["errors"])
+                    for needle in ("selection.items[0]", "art-fix@r1", "conflicting entries for this artifact revision"):
+                        self.assertIn(needle, result["errors"][0])
+                self.assertEqual(self.snapshots(), [])
+                restore()
+
+    def test_path_and_sha256_must_agree_across_every_entry_whatever_its_source(self):
+        good = self.cached("art-fix", "episode-2-draft", "record")
+        for label, weaker in [("sha256", dict(self.cached("art-fix", "episode-2-draft", "host"), sha256=sha(b"other"))),
+                              ("path", dict(self.cached("art-fix", "episode-2-draft", "host"), path=".drama/cache/art-ep01@r1.md"))]:
+            for entries in ([weaker, good], [good, weaker]):
+                with self.subTest(label, last=entries[-1].get("slotSource")):
+                    restore = self.manifest(*entries)
+                    code, result = self.pack([cache_ref("art-fix", 1)])
+                    self.assertEqual(code, 2)
+                    self.assertTrue(any("conflicting entries" in e for e in result["errors"]), result["errors"])
+                    restore()
+
+    def test_verified_is_still_read_from_the_last_matching_entry(self):
+        host = self.cached("art-fix", "episode-9-draft", "host")
+        unverified = self.cached("art-fix", "episode-2-draft", "record", verified=False)
+        restore = self.manifest(host, unverified)  # not what receipt cache writes: it carries the verified read into the correcting entry
+        code, result = self.pack([cache_ref("art-fix", 1)])
+        self.assertEqual(code, 2)
+        self.assertTrue(any("--allow-unverified" in e for e in result["errors"]), result["errors"])
+        code, result = self.pack([cache_ref("art-ep02", 2), cache_ref("art-fix", 1)], "author", 20000, None, "--allow-unverified", "--dry-run")
+        self.assertEqual(code, 2)
+        self.assertTrue(any("slot 'episode-2-draft'" in e for e in result["errors"]), result["errors"])
+        restore()
+        self.manifest(unverified, host)
+        code, result = self.pack([cache_ref("art-fix", 1)])
+        self.assertEqual(code, 0, result)
+        self.assertNotIn("unknowns", self.written(result))
+
     def test_card_revisions_cannot_mix(self):
         code, result = self.pack(self.default_items() + [card_ref("kc-cost", revision=2)])
         self.assertEqual(code, 2)
