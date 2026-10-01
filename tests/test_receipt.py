@@ -152,6 +152,7 @@ class RecordTests(ProjectCase):
         self.assertEqual(written["remote"], {"projectId": "2f70c1e9fad74f35ae27f", "artifactId": ART1, "revision": 1, "inputSnapshotId": SNAPSHOT})
         self.assertEqual(written["localRef"], {"kind": "remote_artifact", "id": "slot:ep-03-outline", "revision": None})
         self.assertEqual(json.loads(written["notes"])["kind"], "episode_outline")
+        self.assertEqual(json.loads(written["notes"])["slotCheck"], "record.slot matched --input slot (S)")
         self.assertEqual(written["inputFingerprint"], receipt.input_fingerprint(fixture("02-save.input.json")))
 
     def test_bare_response_records_the_same_remote_identity(self):
@@ -817,13 +818,41 @@ class CacheTests(ProjectCase):
                  "other artifact": dict(good, remote=dict(good["remote"], artifactId="c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d")),
                  "other revision": dict(good, remote=dict(good["remote"], revision=2)),
                  "other project": dict(good, remote=dict(good["remote"], projectId="other-project")),
-                 "not confirmed": dict(good, outcome="rejected_other")}
+                 "not confirmed": dict(good, outcome="rejected_other"),
+                 "written before the slot check existed": dict(good, notes=json.dumps({k: v for k, v in json.loads(good["notes"]).items() if k != "slotCheck"})),
+                 "no notes at all": {k: v for k, v in good.items() if k != "notes"}}
         for index, (label, doc) in enumerate(cases.items()):
             with self.subTest(label):
                 path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
                 result = self.cache(*CHUNKS, **self.META)
                 self.assertEqual((result["passed"], result["entry"]["slotSource"]), (True, "host"))
                 self.assertEqual(len(self.entries()), 1)
+
+    def test_save_response_without_record_slot_yields_a_receipt_that_does_not_vouch(self):
+        def no_slot(value):
+            del value["structuredContent"]["data"]["record"]["slot"]
+        result = self.save(self.variant("02-save.response.json", no_slot, "no-slot.json"))
+        self.assertEqual((result["passed"], result["receipt"]["outcome"]), (True, "confirmed"))
+        self.assertEqual(result["receipt"]["localRef"]["id"], "slot:ep-03-outline")  # still the input's claim
+        self.assertNotIn("slotCheck", json.loads(result["receipt"]["notes"]))
+        self.assertTrue(any("record.slot" in warning for warning in result["warnings"]))
+        cached = self.cache(*CHUNKS, **self.META)
+        self.assertEqual(cached["entry"]["slotSource"], "host")
+        self.assertEqual(self.cache(*CHUNKS, **dict(self.META, slot="ep-04-outline"))["passed"], False)  # metadata clash, not a receipt clash
+        self.assertEqual(self.cache(*CHUNKS, "03-get.response.json")["entry"]["slotSource"], "record")
+
+    def test_unknown_and_resent_saves_carry_no_slot_check(self):
+        unknown = self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        self.assertNotIn("slotCheck", json.loads(unknown["receipt"]["notes"]))
+        resent = self.record("10-resend-save.response.json", "save_story_artifact", "d1-save-3.resend-1", "05-unknown.input.json", reconciles="d1-save-3")
+        self.assertEqual(json.loads(resent["receipt"]["notes"])["slotCheck"], "record.slot matched --input slot (S)")
+
+    def test_host_warning_follows_the_strongest_source_recorded_for_the_path(self):
+        self.cache("03-get.response.json")  # unverified, slot from the record
+        result = self.cache(*CHUNKS, **self.META)  # verified read appended with a host-declared slot
+        self.assertEqual((result["manifestAppended"], result["entry"]["slotSource"], result["entry"]["verified"]), (True, "host", True))
+        self.assertEqual(result["warnings"], [])
+        self.assertEqual([entry["slotSource"] for entry in self.entries()], ["record", "host"])
 
     def test_stronger_slot_source_is_appended_and_earlier_entries_never_change(self):
         self.assertTrue(self.cache(*CHUNKS, **self.META)["manifestAppended"])

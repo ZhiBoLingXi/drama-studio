@@ -37,6 +37,7 @@ EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("reco
 TOOL_RESULT = "mali-tool-result/v1"
 RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact")
 WRITES = ("save_story_artifact",)  # unknowns reconcilable by requestId; prepare_story_context has no lookup
+SLOT_CHECK = "record.slot matched --input slot (S)"  # receipt note; without it a save receipt does not vouch for a slot
 SLOT_SOURCES = ("host", "receipt", "record")  # weakest first; a manifest entry without slotSource counts as host
 
 
@@ -389,11 +390,16 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         raise ValueError(f"--input declares request_id {declared!r}, not {request_id!r}")
     parsed, evidence = _load_response(response_path, operation)
     outcome, retry = outcome_of(parsed)
+    slot_checked = False
     if operation == "save_story_artifact" and outcome == "confirmed":  # the receipt's slot is later trusted by receipt cache
         saved = parsed["data"]["record"].get("slot") if isinstance(parsed["data"].get("record"), dict) else None
         if isinstance(saved, str) and saved != _field(request, "slot"):
             raise ValueError(f"--input says slot {_field(request, 'slot')!r} but the confirmed save response's record.slot is {saved!r}: "
                              "this input is not the request the response answers. Nothing written")
+        slot_checked = isinstance(saved, str)
+        if not slot_checked:
+            base["warnings"].append("the save response carries no record.slot, so this receipt's slot is only the --input's claim: it will "
+                                    "not vouch for a cached slot (receipt cache records slotSource host unless a get_story_artifact response is given)")
     remote = _remote(operation, parsed, request)
     if outcome != "confirmed":
         remote.update(artifactId=None, revision=None)
@@ -406,7 +412,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
         if slot is not None:
             doc["localRef"] = {"kind": "remote_artifact", "id": f"slot:{slot}", "revision": None}
         notes.update(kind=_field(request, "kind"), episodeRef=_field(request, "episode_ref", "episodeRef"),
-                     expectedRevision=_field(request, "expected_revision", "expectedRevision"))
+                     expectedRevision=_field(request, "expected_revision", "expectedRevision"), **({"slotCheck": SLOT_CHECK} if slot_checked else {}))
     if reconciles is not None:
         doc["localRef"] = {"kind": "remote_receipt", "id": reconciles, "revision": None}
         reason, check = _reconcile_check(operation, reconciles, target, doc, parsed, request)
@@ -589,10 +595,15 @@ def slot_rank(entry: dict) -> int:
 
 
 def _saved_slots(drama: Path, project_id: str, artifact: str, revision: int) -> dict[str, str]:
-    """slot -> requestId of every valid confirmed local save receipt for exactly this artifact revision."""
+    """slot -> requestId of every valid confirmed local save receipt for exactly this artifact revision.
+
+    Only receipts whose notes say the slot was matched against the response's record.slot count; one written from a
+    response without a slot, or before that check existed, records only what the host's input claimed.
+    """
     return {_slot(doc): doc["requestId"] for _, doc in _receipts(drama)
             if isinstance(doc, dict) and not check_contract("remote-receipt", doc)
             and doc["operation"] == "save_story_artifact" and doc["outcome"] == "confirmed" and _slot(doc)
+            and _notes(doc).get("slotCheck") == SLOT_CHECK
             and (doc["remote"]["projectId"], doc["remote"].get("artifactId"), doc["remote"].get("revision")) == (project_id, artifact, revision)}
 
 
@@ -698,7 +709,7 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     returned = existing or entry
     if not returned.get("verified"):
         warnings.append("get_story_artifact carries no full-text fingerprint: cached as verified=false; read the artifact with read_story_artifact to nextOffset null to verify")
-    if slot_rank(returned) == 0:
+    if max(map(slot_rank, [*same, returned])) == 0:  # the strongest source recorded for this path, as impact reads it
         warnings.append("slot is the host's declaration (slotSource: host), so impact reports references to this artifact as unknown; "
                         "re-cache with the get_story_artifact response to record the slot")
     return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": returned,
