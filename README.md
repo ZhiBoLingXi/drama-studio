@@ -143,6 +143,21 @@ python3 -B skills/drama-studio/scripts/drama_tools.py receipt show ../my-drama d
 
 同一 requestId 输入不同、缓存分块不完整或全文哈希与服务端 `fingerprint` 不符时退出码 2，已有文件不变；响应缺失记 `unknown` 且不允许重试。回执和缓存都不是采用证据。方法见 [候选保存与对账](skills/drama-studio/references/mali-story.md#候选保存与对账)。
 
+`status` 与 `impact` 只读项目的 `.drama/`（回执、缓存 manifest、快照、运行记录），用于换会话或前文修订后恢复现场；不读聊天记录、不联网、不写任何文件（不建目录，不留锁文件）：
+
+```sh
+python3 -B skills/drama-studio/scripts/drama_tools.py status ../my-drama
+python3 -B skills/drama-studio/scripts/drama_tools.py status ../my-drama --json
+python3 -B skills/drama-studio/scripts/drama_tools.py impact ../my-drama --slot ep-03-outline --revision 2
+python3 -B skills/drama-studio/scripts/drama_tools.py impact ../my-drama --artifact c41d2b7a-8e5f-4a3b-b6d9-0f1e2a3b4c5d
+```
+
+- `status` 默认输出中文文本，第一行是下一步动作；`--json` 输出同一内容的 JSON。下一步按固定顺序取：结果未知且未对账的保存回执（沿用 `receipt pending`）→ 无效或损坏的记录 → 最近一次运行的 `nextAction` → 没有运行记录时的提示。它同时列出所有未结束（`planned`／`running`／`interrupted`）或 `unfinished` 非空的运行，以及每个快照的完整性：契约校验、文件名与 `snapshotId` 是否一致、`.sha256` 旁车与文件字节是否一致、`completeness`。运行记录没有时间字段，“最近”按文件修改时间判定（输出 `recencyBasis: file_mtime`），复制或检出后可能不准。只读调用的未知结果（`read_only_unknown`、`unreconcilable_unknown`）会列出，但不排在第一行。
+- `impact` 输出 JSON，把每个快照和运行标为 `stale`、`unknown` 或 `current`。mali-story 每个修订的 artifactId 都不同，新旧一律按 slot 判断：快照 `items` 中引用了目标 slot 较旧修订的为 `stale`，依赖该快照的运行（`contextSnapshotId`）随之为 `stale`，并写明是哪条引用。`--artifact` 经 manifest 解析出 slot 与 revision，与 `--slot`／`--revision` 互斥。
+- 不确定一律标 `unknown`，附原因和“扩大阅读”建议：artifactId 不在 manifest、slot 只是宿主声明、同一 artifactId 有互相冲突的条目、引用缺 revision 或与 manifest 不一致、快照损坏、运行找不到所依赖的快照。`current` 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具不自动重跑，也不改写正文。
+- slot 的可信度记在 manifest 条目的可选字段 `slotSource`：`receipt cache` 带 `get_story_artifact` 响应时为 `record`；只给分块、但本地有该 artifactId 的 confirmed 保存回执且 slot 一致时为 `receipt`（与 `--slot` 不一致则拒绝写入，退出码 2）；否则为 `host`。`host` 或没有该字段的条目在 `impact` 中按 `unknown` 处理；用 get 响应重新缓存会追加一条 `record` 条目，manifest 只追加，旧条目不改不删。
+- 退出码 0 表示分析完成，结论读输出里的状态；退出码 1 是输入或执行错误，例如项目没有 `.drama/`、`impact` 的目标参数不成组、`--artifact` 解析不出可信的 slot。两个命令的 JSON 输出都带 `read_only: true`、`remote_verified: false`，不证明远端状态或采用。
+
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 
 ## 成果与状态

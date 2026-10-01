@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -588,6 +589,30 @@ class InvariantTests(unittest.TestCase):
         writers = {"open", "write", "write_text", "write_bytes", "mkdir", "makedirs", "unlink", "rmdir", "rename", "replace", "touch",
                    "link", "symlink_to", "atomic_write", "publish_new", "manifest_lock", "cache", "record_receipt"}
         self.assertEqual((called | names) & writers, set())
+
+
+class DocsTests(unittest.TestCase):
+    def test_recovery_order_starts_with_status_and_keeps_the_earlier_steps(self):
+        text = (ROOT / "skills/drama-studio/references/recovery.md").read_text(encoding="utf-8")
+        self.assertEqual(re.findall(r"^## .+$", text, re.M), ["## 本地与远端", "## 恢复顺序", "## 交付"])
+        section = text.split("\n## 恢复顺序\n", 1)[1].split("\n## ", 1)[0]
+        steps = [line for line in section.splitlines() if re.match(r"\d+\. ", line)]
+        self.assertEqual([step.split(".")[0] for step in steps], ["1", "2", "3", "4", "5"])
+        for needle in ("scripts/drama_tools.py status <项目目录>", "第一行", "不读聊天记录", "退出码 1"):
+            self.assertIn(needle, steps[0])
+        for needle in ("[两次审批](approval-flow.md)", "不重建同名项目", "只报告缓存状态及其日期", "响应未知的提交", "阅读测试进行到哪一步",
+                       "不能猜造 ID", "drama_tools.py impact <项目目录> --slot", "--artifact", "stale", "unknown", "扩大阅读", "隐含依赖",
+                       "不自动重跑", "反馈修订接续时", "宿主切换先停止原宿主写入"):
+            self.assertIn(needle, section, needle)
+
+    def test_readme_documents_status_and_impact_with_examples(self):
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        for example in ("drama_tools.py status ../my-drama\n", "drama_tools.py status ../my-drama --json\n",
+                        "drama_tools.py impact ../my-drama --slot ep-03-outline --revision 2\n", "drama_tools.py impact ../my-drama --artifact "):
+            self.assertIn(example, text)
+        for needle in ("slotSource", "`record`", "`receipt`", "`host`", "`stale`", "`unknown`", "`current`", "扩大阅读", "隐含依赖未评估",
+                       "recencyBasis: file_mtime", "read_only: true", "remote_verified: false", "第一行是下一步动作", "不写任何文件"):
+            self.assertIn(needle, text, needle)
 
 
 if __name__ == "__main__":
