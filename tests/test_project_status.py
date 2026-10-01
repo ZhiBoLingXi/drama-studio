@@ -236,10 +236,11 @@ class ImpactTests(ProjectCase):
         for kind, ref_id in [("local_file", ".drama/cache/art-1@r1.md"), ("remote_snapshot", "wsnap-77"), ("remote_brief", "brief-1"),
                              ("remote_receipt", "d1-save-2")]:
             self.snapshot(f"ctx-{kind}", [ref("art-9", 1), other(kind, ref_id)])
-        self.snapshot("ctx-ignored", [ref("art-9", 1), dict(other("knowledge_card", "kc-1", 1), partition="knowledge"),
-                                      other("local_file", "task:another-task")])
+        self.snapshot("ctx-ignored", [ref("art-9", 1), dict(other("knowledge_card", "kc-1", 1), partition="knowledge")])
+        self.snapshot("ctx-task-lookalike", [ref("art-9", 1), other("local_file", "task:another-task")])  # not in the task partition
         _, snapshots, _ = self.impact(slot="ep-1", revision=2)
-        self.assertEqual(snapshots["ctx-ignored"]["status"], "current")
+        self.assertEqual((snapshots["ctx-ignored"]["status"], snapshots["ctx-task-lookalike"]["status"]), ("current", "unknown"))
+        self.assertEqual(snapshots["ctx-task-lookalike"]["reasons"][0]["reason"], "该引用类型的依赖未评估")
         for kind in ("local_file", "remote_snapshot", "remote_brief", "remote_receipt"):
             with self.subTest(kind):
                 item = snapshots[f"ctx-{kind}"]
@@ -376,6 +377,43 @@ class ImpactTests(ProjectCase):
         run = self.impact(slot="ep-1", revision=2)[2]["run-rev"]
         self.assertEqual((run["status"], [reason["status"] for reason in run["reasons"]]), ("unknown", ["unknown", "unknown", "current"]))
         self.assertIn("扩大阅读", run["suggestion"])
+
+    def test_very_deep_snapshot_chain_is_unknown_not_a_crash(self):
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2))
+        self.snapshot("ctx-0000", [ref("art-1", 1)])
+        for depth in range(1, 1200):
+            self.snapshot(f"ctx-{depth:04d}", [other("context_snapshot", f"ctx-{depth - 1:04d}")])
+        self.run_handoff("run-deep", "ctx-1199")
+        run = self.cli("impact", self.project, "--slot", "ep-1", "--revision", "2")
+        self.assertEqual((run.returncode, run.stderr), (0, ""))
+        result = json.loads(run.stdout)
+        snapshots = {item["snapshotId"]: item for item in result["snapshots"]}
+        self.assertEqual((snapshots["ctx-0000"]["status"], snapshots["ctx-0005"]["status"]), ("stale", "stale"))
+        self.assertEqual((snapshots["ctx-1199"]["status"], result["runs"][0]["status"]), ("unknown", "unknown"))
+        self.assertIn("层", snapshots["ctx-1199"]["reasons"][0]["reason"])
+        self.assertEqual(result["summary"]["snapshots"]["current"], 0)
+        run = self.cli("status", self.project, "--json")
+        self.assertEqual((run.returncode, run.stderr), (0, ""))
+        latest = json.loads(run.stdout)["runs"]["latest"]
+        self.assertEqual(latest["stalenessCheck"], "unknown")
+        self.assertNotIn("possiblyStale", latest)
+
+    def test_revisions_below_one_are_invalid_everywhere(self):
+        self.manifest(entry("art-0", "ep-1", 0), entry("art-neg", "ep-2", -1), entry("art-1", "ep-1", 1), entry("art-2", "ep-2", 2))
+        self.snapshot("ctx-zero", [ref("art-0", 0)])
+        self.snapshot("ctx-neg", [ref("art-neg", -1)])
+        self.run_handoff("run-zero", "ctx-zero")
+        _, snapshots, _ = self.impact(slot="ep-1", revision=1)
+        self.assertEqual({key: item["status"] for key, item in snapshots.items()}, {"ctx-zero": "unknown", "ctx-neg": "unknown"})
+        self.assertEqual(project_status.judge_ref({"kind": "remote_artifact", "id": "art-1", "revision": 0}, [entry("art-1", "ep-1", 1)], "ep-1", 2)[0], "unknown")
+        with self.assertRaises(ValueError):
+            self.impact(artifact="art-0")
+        status = project_status.run_status(str(self.project))
+        latest = status["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"], status["nextAction"]["basis"]), ("unknown", [], "latest_run"))
+        text = project_status.render_status(status)
+        for word in ("的 r0", "可能已失效", "--revision"):  # the label may echo the reference as written; nothing treats r0 as a revision
+            self.assertNotIn(word, text)
 
     def test_damaged_snapshot_is_unknown_whatever_it_references(self):
         self.manifest(entry("art-9", "ep-0", 1))

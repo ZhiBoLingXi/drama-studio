@@ -21,6 +21,7 @@ from .contract_check import check_contract
 from .receipt import MANIFEST, area, contained, drama_dir, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
+MAX_DEPTH = 50  # context_snapshot references followed before giving up as unknown
 OPEN_RUNS = ("planned", "running", "interrupted")
 BASIS = {"unknown_receipt": "有结果未知、尚未对账的保存回执", "invalid_record": "有无效或损坏的本地记录",
          "stale_run": "最近一次运行的快照引用了旧修订，本地缓存已有更新的可信修订",
@@ -95,8 +96,8 @@ def _identity(entries: list[dict], artifact_id) -> tuple[tuple[str, int] | None,
     if len({(repr(entry.get("slot")), repr(entry.get("revision"))) for entry in found}) > 1:
         return None, "manifest 中该 artifactId 对应多个不同的 slot 或 revision"
     slot, revision = found[0].get("slot"), found[0].get("revision")
-    if not isinstance(slot, str) or not slot or type(revision) is not int:
-        return None, "manifest 条目没有有效的 slot 或整数 revision"
+    if not isinstance(slot, str) or not slot or type(revision) is not int or revision < 1:
+        return None, "manifest 条目没有有效的 slot 或不小于 1 的整数 revision"
     if max(map(slot_rank, found)) == 0:  # host, or an entry written before slotSource existed
         return None, "manifest 条目的 slot 只是宿主声明（slotSource 为 host 或缺该字段）；用 get_story_artifact 响应重新缓存后才能判定"
     return (slot, revision), None
@@ -110,8 +111,8 @@ def judge_ref(ref, entries: list[dict], slot: str, revision: int) -> tuple[str, 
     if identity is None:
         return "unknown", why
     pinned = ref.get("revision")
-    if type(pinned) is not int:
-        return "unknown", "引用缺少整数 revision，无法判断新旧"
+    if type(pinned) is not int or pinned < 1:
+        return "unknown", "引用缺少不小于 1 的整数 revision，无法判断新旧"
     if pinned != identity[1]:
         return "unknown", f"引用的 revision {pinned} 与 manifest 记录的 r{identity[1]} 不一致"
     if identity[0] == slot and pinned < revision:
@@ -128,7 +129,8 @@ def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tu
     """Every dependency of a snapshot that is not clearly current, following context_snapshot references.
 
     `judge(ref)` classifies one remote_artifact reference as (status, reason, slot, target revision). The task file
-    and knowledge cards are not slot dependencies; every other reference kind is unknown, never silently current.
+    (the local_file in the task partition, as context-pack writes it) and knowledge cards are not slot dependencies;
+    every other reference kind is unknown, never silently current, and so is a chain deeper than MAX_DEPTH.
     """
     item = snapshots.get(snapshot_id)
     if item is None:
@@ -139,7 +141,7 @@ def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tu
     for index, packed in enumerate(item["doc"]["items"]):  # omitted entries never entered the context, so they are not dependencies
         ref = packed["ref"]
         label = _ref_label(index, ref)
-        if ref["kind"] == "knowledge_card" or (ref["kind"] == "local_file" and ref["id"].startswith("task:")):
+        if ref["kind"] == "knowledge_card" or (ref["kind"] == "local_file" and packed["partition"] == "task"):
             continue
         if ref["kind"] == "remote_artifact":
             status, why, slot, target = judge(ref)
@@ -149,6 +151,8 @@ def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tu
             found.append({"ref": label, "status": "unknown", "reason": "该引用类型的依赖未评估"})
         elif ref["id"] in (*trail, snapshot_id):
             found.append({"ref": label, "status": "unknown", "reason": "快照之间的引用成环，无法判定"})
+        elif len(trail) >= MAX_DEPTH:
+            found.append({"ref": label, "status": "unknown", "reason": f"快照引用嵌套超过 {MAX_DEPTH} 层，未继续展开"})
         else:
             found += [dict(inner, ref=f"{label} > {inner['ref']}" if inner["ref"] else label)
                       for inner in _dependencies(ref["id"], snapshots, judge, (*trail, snapshot_id))]
