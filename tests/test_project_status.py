@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -422,6 +423,50 @@ class ImpactTests(ProjectCase):
         self.assertEqual(latest["newerRevisions"][0]["staleAgainstRevision"], 2)
         run, latest, _, _ = self.strict(*trusted, entry("art-h", "ep-1", 4, "host"))  # stale wins over the doubt a claimant adds
         self.assertEqual((run["status"], latest["stalenessCheck"]), ("stale", "newer_revision_cached"))
+
+    def test_huge_revisions_are_judged_quickly_with_the_same_verdicts_and_wording(self):
+        huge = 999_999_999_999
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3))
+        self.snapshot("ctx-a", [ref("art-1", 1)])
+        self.run_handoff("run-rev", "ctx-a", outputs=[output("art-3", 3)], nextAction="请编剧审阅", **DONE)
+        self.run_handoff("run-reader", "ctx-a", outputs=[], **DONE)
+        os.utime(self.drama / "runs/run-reader.json", (1_000, 1_000))
+
+        def timed(*args):
+            started = time.monotonic()
+            run = self.cli(*args)
+            self.assertLess(time.monotonic() - started, 5, args)
+            self.assertEqual((run.returncode, run.stderr), (0, ""))
+            return json.loads(run.stdout)
+
+        def reasons(result, run_id):
+            run = next(item for item in result["runs"] if item["runId"] == run_id)
+            return run["status"], [reason["reason"] for reason in run["reasons"]]
+
+        small, big = timed("impact", self.project, "--slot", "ep-1", "--revision", "4"), timed("impact", self.project, "--slot", "ep-1", "--revision", huge)
+        self.assertEqual(big["target"]["revision"], huge)
+        self.assertEqual(reasons(small, "run-reader"), ("stale", ["所依赖的快照为 stale", "引用了 slot ep-1 的旧修订 r1，目标修订为 r4"]))
+        self.assertEqual(reasons(big, "run-reader"), ("stale", ["所依赖的快照为 stale", f"引用了 slot ep-1 的旧修订 r1，目标修订为 r{huge}"]))
+        prefix = "运行记录声称产出了 slot ep-1 的 r3（outputs[0] art-3@r3），但证据不完整，无法确认它覆盖了 r1 之后的全部修订：r2 未缓存，无法确认是否为该运行产出；"
+        self.assertEqual(reasons(small, "run-rev"), ("unknown", ["所依赖的快照中有无法判定的引用", prefix + "r4 未缓存，无法确认是否为该运行产出"]))
+        self.assertEqual(reasons(big, "run-rev"), ("unknown", ["所依赖的快照中有无法判定的引用", prefix + f"r4 至 r{huge} 未缓存，无法确认是否为该运行产出"]))
+
+        # a trusted entry at a huge revision: someone else's is stale, the run's own leaves a gap it cannot account for
+        self.manifest(entry("art-1", "ep-1", 1), entry("art-3", "ep-1", 3), entry("art-big", "ep-1", huge), entry("art-h", "ep-1", 7, "host"))
+        status = timed("status", self.project, "--json")
+        latest = status["runs"]["latest"]
+        self.assertEqual((latest["runId"], latest["stalenessCheck"], latest["newerRevisions"][0]["staleAgainstRevision"]), ("run-rev", "newer_revision_cached", huge))
+        self.assertEqual(reasons(timed("impact", self.project, "--artifact", "art-big"), "run-rev")[0], "stale")
+        self.run_handoff("run-rev", "ctx-a", outputs=[output("art-3", 3), output("art-big", huge)], nextAction="请编剧审阅", **DONE)
+        status = timed("status", self.project, "--json")
+        latest = status["runs"]["latest"]
+        self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"], latest["ownOutputs"]), ("unknown", [], []))
+        self.assertIn("：r2 未缓存，无法确认是否为该运行产出；r4 至 r6 未缓存，无法确认是否为该运行产出；r7 只有不可信的缓存条目，无法确认是否为该运行产出；"
+                      f"r8 至 r{huge - 1} 未缓存，无法确认是否为该运行产出；manifest 中 art-h 声称属于该 slot", latest["stalenessReasons"][0])
+        self.assertEqual(reasons(timed("impact", self.project, "--artifact", "art-big"), "run-rev")[0], "unknown")
+        started = time.monotonic()
+        self.assertIn("无法判断是否失效", self.cli("status", self.project).stdout)
+        self.assertLess(time.monotonic() - started, 5)
 
     def test_own_output_rule_is_not_applied_to_planned_or_failed_runs(self):
         self.revision_fixture()

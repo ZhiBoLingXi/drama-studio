@@ -218,16 +218,22 @@ def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[lis
             continue
         slot, pinned, mine = item["slot"], item["pinned"], produced.get(item["slot"], {})
         trusted, claimants = _slot_evidence(entries, slot)
-        span = range(pinned + 1, item["target"] + 1)
-        foreign = [revision for revision in span if revision in trusted and revision not in mine]
-        claimed = [revision for revision in span if revision in mine]
+        low, high = pinned + 1, item["target"]  # the span is never walked integer by integer: a target can be huge
+        foreign = sorted(revision for revision in trusted if low <= revision <= high and revision not in mine)
+        claimed = sorted(revision for revision in mine if low <= revision <= high)
         if foreign or not claimed:  # stale as it would be without the rule, against the highest revision that is not its own output
-            kept.append(dict(item, against=foreign[-1] if foreign else item["target"]))
+            kept.append(dict(item, against=foreign[-1] if foreign else high))
             continue
         stated = {revision for _, _, revisions in claimants for revision in revisions if type(revision) is int}
-        doubts = [f"r{revision} " + ("只有不可信的缓存条目" if revision in stated else "未缓存") + "，无法确认是否为该运行产出"
-                  for revision in span if revision not in trusted]
-        doubts += [f"r{revision} 有多个不同的可信 artifactId（{'、'.join(map(str, trusted[revision]))}）" for revision in span if len(trusted.get(revision, [])) > 1]
+        doubts, cursor = [], low
+        for revision in sorted(revision for revision in stated | set(trusted) if low <= revision <= high) + [high + 1]:
+            if cursor < revision:  # a run of revisions nothing in the manifest states
+                doubts.append((f"r{cursor}" if cursor == revision - 1 else f"r{cursor} 至 r{revision - 1}") + " 未缓存，无法确认是否为该运行产出")
+            if revision <= high and revision not in trusted:
+                doubts.append(f"r{revision} 只有不可信的缓存条目，无法确认是否为该运行产出")
+            cursor = revision + 1
+        doubts += [f"r{revision} 有多个不同的可信 artifactId（{'、'.join(map(str, trusted[revision]))}）"
+                   for revision in sorted(trusted) if low <= revision <= high and len(trusted[revision]) > 1]
         doubts += [f"manifest 中 {artifact} 声称属于该 slot，但{why}" for artifact, why, revisions in claimants
                    if not all(type(revision) is int and revision <= pinned for revision in revisions)]
         named = f"slot {slot} 的 {'、'.join(f'r{revision}' for revision in claimed)}（{'、'.join(mine[revision] for revision in claimed)}）"
