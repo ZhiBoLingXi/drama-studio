@@ -287,9 +287,33 @@ class ImpactTests(ProjectCase):
             run = self.strict(*ep1[:1], *fixed, outputs=("art-fix", 2))[0]
             self.assertEqual((run["status"], run["reasons"][0]["status"]), ("current", "current"))
             self.assertDoubt(self.strict(*ep1, *fixed, outputs=("art-2", 2)), "r2", "art-fix", "多个")  # two trusted artifacts at ep-1 r2
-        with self.subTest("contradicting record entries claim their own slots, not the one a weaker entry named"):
-            run = self.strict(*ep1, entry("art-x", "ep-1", 2, "host"), entry("art-x", "ep-4", 2), entry("art-x", "ep-5", 2), outputs=("art-2", 2))[0]
-            self.assertEqual((run["status"], run["reasons"][0]["status"]), ("current", "current"))
+
+    UNRESOLVED = {"the strongest entries contradict each other": [entry("art-x", "ep-1", 4, "host"), entry("art-x", "ep-4", 4), entry("art-x", "ep-5", 4)],
+                  "contradicting receipt entries over a host entry": [entry("art-x", "ep-1", 4, None), entry("art-x", "ep-4", 4, "receipt"),
+                                                                      entry("art-x", "ep-5", 4, "receipt")],
+                  "one artifactId carries two revisions": [entry("art-x", "ep-1", 4, "host"), entry("art-x", "ep-7", 4), entry("art-x", "ep-7", 5)],
+                  "two revisions, the weaker entry alone at its own": [entry("art-x", "ep-1", 4, "host"), entry("art-x", "ep-7", 5)],
+                  "the stronger entry has no usable slot": [entry("art-x", "ep-1", 4, "host"), entry("art-x", "", 4)]}
+
+    def test_weaker_entry_keeps_its_claim_while_the_artifact_identity_is_unresolved(self):
+        ep1 = [entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2)]
+        for label, unresolved in self.UNRESOLVED.items():
+            with self.subTest(label):  # contradicting evidence never removes a doubt: the host entry still claims ep-1 at r4
+                self.assertIsNone(project_status._identity(unresolved, "art-x")[0])
+                self.assertDoubt(self.strict(*ep1, *unresolved, outputs=("art-2", 2)), "art-x")
+                trusted, claimants = project_status._slot_evidence([*ep1, *unresolved], "ep-1")
+                self.assertEqual((sorted(trusted), [artifact for artifact, _, _ in claimants]), ([1, 2], ["art-x"]))
+                self.snapshot("ctx-a", [ref("art-2", 2)])  # pins the newest trusted revision; art-x may be a newer one
+                self.run_handoff("run-rev", "ctx-a", nextAction="请编剧审阅", **DONE)
+                latest = project_status.run_status(str(self.project))["runs"]["latest"]
+                self.assertEqual((latest["stalenessCheck"], latest["newerRevisions"], len(latest["stalenessReasons"])), ("unknown", [], 1))
+                self.assertIn("art-x", latest["stalenessReasons"][0])
+                result = self.impact(slot="ep-1", revision=2)[0]
+                self.assertEqual((result["target"]["slotInManifest"], result["target"]["newestTrustedRevision"]), (True, 2))
+                self.manifest(*unresolved)
+                only = self.impact(slot="ep-1", revision=2)[0]
+                self.assertEqual((only["target"]["slotInManifest"], only["warnings"]), (True, []))
+        with self.subTest("a contradicting artifact still claims the slots its strongest entries name"):
             self.assertDoubt(self.strict(*ep1, entry("art-x", "ep-7", 2, "host"), entry("art-x", "ep-1", 2), entry("art-x", "ep-5", 2),
                                          outputs=("art-2", 2)), "art-x")
 

@@ -181,15 +181,24 @@ def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
 
 
 def _claims(entries: list[dict], slot: str) -> list[dict]:
-    """Entries naming `slot` whose artifact revision still names it through its strongest source.
+    """Entries naming `slot`, in manifest order, except those whose artifact resolves to one trusted other slot.
 
-    An entry that a stronger source corrected to another slot is no claim on this one.
+    Only a clean correction removes a claim: while the artifact's identity is unresolved (contradicting strongest
+    entries, differing revisions, no usable slot), every entry keeps the claim it states, so doubt never disappears
+    because the evidence contradicts itself.
     """
-    def named(entry: dict) -> bool:
-        key = (entry.get("artifactId"), repr(entry.get("revision")))
-        same = [other for other in entries if (other.get("artifactId"), repr(other.get("revision"))) == key]
-        return any(strongest.get("slot") == slot for strongest in effective_entries(same))
-    return [entry for entry in entries if entry.get("slot") == slot and named(entry)]
+    groups: dict[str, list[dict]] = {}
+    for entry in entries:
+        groups.setdefault(repr(entry.get("artifactId")), []).append(entry)
+    resolved: dict[str, tuple | None] = {}
+
+    def claims(entry: dict) -> bool:
+        artifact = entry.get("artifactId")
+        key = repr(artifact)
+        if key not in resolved:  # a str id equals only itself, so its group is all _identity would look at
+            resolved[key] = _identity(groups[key] if isinstance(artifact, str) else entries, artifact)[0]
+        return resolved[key] is None or resolved[key][0] == slot
+    return [entry for entry in entries if entry.get("slot") == slot and claims(entry)]
 
 
 def _slot_evidence(entries: list[dict], slot: str) -> tuple[dict[int, list], list[tuple]]:
@@ -197,7 +206,7 @@ def _slot_evidence(entries: list[dict], slot: str) -> tuple[dict[int, list], lis
 
     A claimant is an artifact with an entry naming this slot whose identity does not resolve (host-declared, no or
     unexpected slotSource, conflicting entries); it comes back as (artifactId, why, every revision its entries state).
-    An entry that a stronger source corrected to another slot is not a claim on this one.
+    An entry whose artifact a stronger source settled in another slot is not a claim on this one.
     """
     trusted: dict[int, list] = {}
     claimants: dict[str, tuple] = {}
