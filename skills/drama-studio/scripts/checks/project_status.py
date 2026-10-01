@@ -181,9 +181,15 @@ def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
 
 
 def _claims(entries: list[dict], slot: str) -> list[dict]:
-    """Entries that name `slot` and still speak for their artifact revision: one a stronger source corrected does not."""
-    return [entry for entry in entries if entry.get("slot") == slot and entry in effective_entries(
-        [other for other in entries if (other.get("artifactId"), repr(other.get("revision"))) == (entry.get("artifactId"), repr(entry.get("revision")))])]
+    """Entries naming `slot` whose artifact revision still names it through its strongest source.
+
+    An entry that a stronger source corrected to another slot is no claim on this one.
+    """
+    def named(entry: dict) -> bool:
+        key = (entry.get("artifactId"), repr(entry.get("revision")))
+        same = [other for other in entries if (other.get("artifactId"), repr(other.get("revision"))) == key]
+        return any(strongest.get("slot") == slot for strongest in effective_entries(same))
+    return [entry for entry in entries if entry.get("slot") == slot and named(entry)]
 
 
 def _slot_evidence(entries: list[dict], slot: str) -> tuple[dict[int, list], list[tuple]]:

@@ -293,6 +293,14 @@ class ImpactTests(ProjectCase):
             self.assertDoubt(self.strict(*ep1, entry("art-x", "ep-7", 2, "host"), entry("art-x", "ep-1", 2), entry("art-x", "ep-5", 2),
                                          outputs=("art-2", 2)), "art-x")
 
+    def test_weaker_entry_that_agrees_with_the_strongest_keeps_its_place_among_the_slot_claims(self):
+        entries = [entry("art-b", "ep-1", 2, "host"), entry("art-a", "ep-1", 2), entry("art-b", "ep-1", 2), entry("art-h", "ep-1", 3, None),
+                   entry("art-g", "ep-1", 3, "host"), entry("art-h", "ep-1", 3, "host")]
+        trusted, claimants = project_status._slot_evidence(entries, "ep-1")  # the order entries first name the slot, as before #20
+        self.assertEqual((trusted, [artifact for artifact, _, _ in claimants]), ({2: ["art-b", "art-a"]}, ["art-h", "art-g"]))
+        view = self.strict(entry("art-1", "ep-1", 1), *entries[:3], outputs=("art-a", 2))
+        self.assertDoubt(view, "r2 有多个不同的可信 artifactId（art-b、art-a）")
+
     def test_corrected_entry_raises_no_doubt_about_a_newer_revision_in_the_slot_it_named(self):
         fixed = [entry("art-fix", "ep-1", 4, "host"), entry("art-fix", "ep-7", 4)]
         self.manifest(entry("art-1", "ep-1", 1), entry("art-2", "ep-1", 2), *fixed)
