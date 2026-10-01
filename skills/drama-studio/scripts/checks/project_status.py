@@ -253,7 +253,7 @@ def render_status(result: dict) -> str:
     if runs["latest"]:
         lines += _run_lines("最近", runs["latest"])
     for run in runs["open"]:
-        if run is not runs["latest"]:
+        if run["runId"] != runs["latest"]["runId"]:
             lines += _run_lines("未结束", run)
     lines += ["", f"快照（{len(result['snapshots'])}）"]
     for item in result["snapshots"]:

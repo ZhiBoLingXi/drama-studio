@@ -393,5 +393,84 @@ class StatusTests(ProjectCase):
         self.assertTrue(result["runs"]["latest"]["modifiedAt"].startswith("1970-01-0"))
 
 
+class CliTests(ProjectCase):
+    def cli(self, *args):
+        return subprocess.run([sys.executable, "-B", str(TOOL), *map(str, args)], capture_output=True, text=True)
+
+    def ac4_fixture(self):
+        receipt.record_receipt(str(self.project), str(FIXTURES / "05-unknown.response.json"), "save_story_artifact", "d1-save-3",
+                               str(FIXTURES / "05-unknown.input.json"))
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-ep21-c5-1", "ctx-a")
+
+    def test_help_lists_status_and_impact(self):
+        listing = self.cli("--help").stdout
+        self.assertLess(listing.index("receipt"), listing.index("status"))
+        self.assertIn("impact", listing)
+        self.assertIn("--json", self.cli("status", "--help").stdout)
+        for flag in ("--slot", "--revision", "--artifact"):
+            self.assertIn(flag, self.cli("impact", "--help").stdout)
+
+    def test_ac4_status_prints_the_reconcile_action_on_the_first_line(self):
+        self.ac4_fixture()
+        run = self.cli("status", self.project)
+        self.assertEqual((run.returncode, run.stderr), (0, ""))
+        lines = run.stdout.splitlines()
+        self.assertTrue(lines[0].startswith("下一步：对账"), lines[0])
+        self.assertIn("d1-save-3", lines[0])
+        self.assertFalse(run.stdout.lstrip().startswith("{"))
+        for needle in ("请用户决定是否接受 C4 变更提案", "C4 变更待用户决定", "ctx-a：完好"):
+            self.assertIn(needle, run.stdout)
+
+    def test_status_json_is_parseable_and_matches_the_text_view(self):
+        self.ac4_fixture()
+        run = self.cli("status", self.project, "--json")
+        self.assertEqual((run.returncode, run.stderr), (0, ""))
+        result = json.loads(run.stdout)
+        self.assertEqual(result, project_status.run_status(str(self.project)))
+        self.assertEqual(self.cli("status", self.project).stdout, project_status.render_status(result) + "\n")
+        self.assertEqual((result["receipts"]["pending"][0]["requestId"], result["runs"]["latest"]["nextAction"]),
+                         ("d1-save-3", "请用户决定是否接受 C4 变更提案"))
+
+    def test_impact_prints_json_and_exits_0_whatever_the_verdicts(self):
+        self.ac1_fixture()
+        self.snapshot("ctx-unknown", [ref("art-404", 1)])
+        self.run_handoff("run-a", "ctx-a")
+        for target in (("--slot", "ep-1", "--revision", "2"), ("--artifact", "art-2")):
+            with self.subTest(target=target):
+                run = self.cli("impact", self.project, *target)
+                self.assertEqual((run.returncode, run.stderr), (0, ""))
+                result = json.loads(run.stdout)
+                self.assertEqual({item["snapshotId"]: item["status"] for item in result["snapshots"]},
+                                 {"ctx-a": "stale", "ctx-b": "current", "ctx-unknown": "unknown"})
+                self.assertEqual([(item["runId"], item["status"]) for item in result["runs"]], [("run-a", "stale")])
+                self.assertEqual((result["read_only"], result["remote_verified"]), (True, False))
+
+    def test_impact_input_errors_exit_1(self):
+        self.ac1_fixture()
+        for target in ((), ("--slot", "ep-1"), ("--revision", "2"), ("--slot", "ep-1", "--revision", "2", "--artifact", "art-2"),
+                       ("--artifact", "art-404"), ("--slot", "ep-1", "--revision", "0")):
+            with self.subTest(target=target):
+                run = self.cli("impact", self.project, *target)
+                self.assertEqual((run.returncode, run.stdout), (1, ""))
+                self.assertFalse(json.loads(run.stderr)["ok"])
+                self.assertNotIn("Traceback", run.stderr)
+
+    def test_project_without_drama_exits_1_and_explains(self):
+        bare = Path(self.temp.name) / "not-a-project"
+        bare.mkdir()
+        for path in (bare, Path(self.temp.name) / "absent"):
+            for command in (("status",), ("status", "--json"), ("impact", "--slot", "ep-1", "--revision", "2"), ("impact", "--artifact", "art-2")):
+                with self.subTest(path=path.name, command=command):
+                    run = self.cli(command[0], path, *command[1:])
+                    self.assertEqual((run.returncode, run.stdout), (1, ""))
+                    error = json.loads(run.stderr)
+                    self.assertFalse(error["ok"])
+                    self.assertIn(".drama", error["error"])
+                    self.assertIn("init-project", error["error"])
+        self.assertEqual(list(bare.iterdir()), [])
+        self.assertFalse((Path(self.temp.name) / "absent").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
