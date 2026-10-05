@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "drama-studio/remote-receipt/v0",
+  "operation": "save_story_artifact",
+  "requestId": "d1-probe-save-1",
+  "inputFingerprint": "sha256:746d73b860429cfdb57d89cbba1c35681c96dc27770eb26319d585d37f505f4a",
+  "remote": {
+    "projectId": "4e6556ac97654bf781977",
+    "artifactId": "5da998a0-b9c6-47ae-9635-ee08410bc0fc",
+    "revision": 1,
+    "inputSnapshotId": "sha256:9be0b1334077ad7e1332d825fd08104054c31f4aa4ddf273c1234f5f2521d390"
+  },
+  "outcome": "confirmed",
+  "retryAllowed": false,
+  "observedAt": "2026-10-05T17:29:28+08:00",
+  "evidence": "saved response 02-save.response.json: mali-tool-result/v1; ok; HTTP 200",
+  "localRef": {
+    "kind": "remote_artifact",
+    "id": "slot:d1-probe-1",
+    "revision": null
+  },
+  "notes": "{\"kind\": \"research\", \"episodeRef\": null, \"expectedRevision\": 0, \"slotCheck\": \"record.slot matched --input slot (S)\"}"
+}

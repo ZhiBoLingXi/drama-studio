@@ -1,0 +1,1 @@
+{"project_id":"4e6556ac97654bf781977","slot":"d1-probe-1","kind":"research","expected_revision":0,"body":"D1 生产 MCP 探测候选（drama-studio#3，2026-10-05）。同 requestId 异内容冲突探测，不得采用。","producer":"external_ai","input_snapshot_id":"sha256:9be0b1334077ad7e1332d825fd08104054c31f4aa4ddf273c1234f5f2521d390","request_id":"d1-probe-save-1"}

@@ -1,0 +1,1 @@
+{"status":409,"headers":{"content-type":"application/json;charset=utf-8","x-request-id":"23f2dd6b-cec8-49dc-85bb-539dc96842e8"},"body":{"data":null,"error":{"code":"VERSION_CONFLICT","message":"Candidate slot revision is stale.","retryable":false}}}

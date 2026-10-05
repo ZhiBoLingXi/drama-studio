@@ -52,7 +52,7 @@
 
 工位产出保存为 mali-story 候选时按本节执行。MCP 由宿主调用，响应原样存成 JSON 文件；`scripts/drama_tools.py receipt` 只读这些文件，不联网、不调用 MCP，不能证明响应真实。保存不等于采用：回执 `confirmed` 只说明服务端收下了候选。本地缓存和 save／get／list／read 回执都不是采用证据，采用只认 mali-story 的正式采用结果。
 
-**producer**：当前 `save_story_artifact` 的 `producer` 只接受 `codex` 与 `human`（#3／#15 决定）。Codex 宿主写 `codex`，用户本人提交的文字写 `human`。其他宿主不得借用这两个值，也不保存，直到 mali-story 增加代表 AI 宿主的取值（用户 2026-09-30 决定；跟踪 issue 尚未建立）；此前保留本地稿，注明“未同步到 mali-story”。
+**producer**：`save_story_artifact` 的 `producer` 接受 `codex`、`human`、`external_ai`（mali-story v0.19.0 起，见 [mali-story#2332](https://github.com/ZhiBoLingXi/mali-story/issues/2332)）。只有宿主是 Codex 时写 `codex`；Claude Code、WorkBuddy、ChatGPT 等其他 AI 宿主一律写 `external_ai`；用户本人写的文字写 `human`。不得借用别的值。宿主与模型名记在本地 `run-handoff`，不写进 `producer`。连接的是 v0.19.0 之前的部署、工具里没有 `external_ai` 时，非 Codex 宿主不保存，保留本地稿并注明“未同步到 mali-story”。
 
 **工位产出 → 候选字段**：
 
