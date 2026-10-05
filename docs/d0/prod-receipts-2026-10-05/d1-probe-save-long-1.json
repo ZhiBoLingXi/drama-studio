@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "drama-studio/remote-receipt/v0",
+  "operation": "save_story_artifact",
+  "requestId": "d1-probe-save-long-1",
+  "inputFingerprint": "sha256:358dfee0b723a2616ba70b1c1d360ae6f171d99fe8bd163d09c687a5d997df43",
+  "remote": {
+    "projectId": "4e6556ac97654bf781977",
+    "artifactId": null,
+    "revision": null,
+    "inputSnapshotId": "sha256:9be0b1334077ad7e1332d825fd08104054c31f4aa4ddf273c1234f5f2521d390"
+  },
+  "outcome": "unknown",
+  "retryAllowed": false,
+  "observedAt": "2026-10-05T17:29:28+08:00",
+  "evidence": "response file missing: 08-save-long.response.json",
+  "localRef": {
+    "kind": "remote_artifact",
+    "id": "slot:d1-probe-long",
+    "revision": null
+  },
+  "notes": "{\"kind\": \"research\", \"episodeRef\": null, \"expectedRevision\": 0}"
+}

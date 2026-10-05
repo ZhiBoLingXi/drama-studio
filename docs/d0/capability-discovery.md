@@ -51,6 +51,42 @@
 
 本节只证明部署与路由已上线，不证明候选保存在生产可用：生产写入探测（保存、读取、重放、冲突）由 #3 执行，并依赖 mali-story#2332 提供如实的 `producer` 值 `external_ai`。
 
+## 2026-10-05 · 生产 MCP 工具层（v0.19.0，#3）
+
+宿主：Claude Code，用户级连接 `https://story-api.maliai.art/mcp`。v0.19.0（含 `external_ai`，mali-story#2334）部署后需要在 `/mcp` 重新连接，工具列表才从 6 个刷新为完整列表；一次重连后已运行的会话仍可能沿用旧列表。
+
+测试项目「山门最后一张欠条｜十集试点」`4e6556ac97654bf781977`，slot 以 `d1-probe` 开头，候选正文标明“非创作内容，不得采用”。原始返回与入参见 [tests/fixtures/mcp/](../../tests/fixtures/mcp/)（`submittedByUserId` 已替换为 `<redacted-user-id>`，无凭据）；回执由 `drama_tools.py receipt record` 生成，见 [prod-receipts-2026-10-05](prod-receipts-2026-10-05/)。
+
+| 步骤 | 工具 | 调用成功 | 业务结果符合预期 | 观察 | 回执 |
+| --- | --- | --- | --- | --- | --- |
+| 01 读写作上下文 | `get_writing_context` | 200 | 是 | 返回 `snapshotId`；`approvedBrief` 为 null，`missingSources: ["approved_brief"]`，`blocks` 为空 | `d1-probe-ctx-1` confirmed |
+| 02 保存 | `save_story_artifact` | 200 | 是 | revision 1，`producer: external_ai`，绑定 01 的快照 | `d1-probe-save-1` confirmed |
+| 03 读取 | `get_story_artifact` | 200 | 是 | 全文与保存一致；无全文指纹 | `d1-probe-get-1` confirmed |
+| 04 列举（按 slot） | `list_story_artifacts` | 200 | 是 | 行不带 `requestId`，带 `characterCount` | `d1-probe-list-1` confirmed |
+| 05 同 requestId 重放 | `save_story_artifact` | 200 | 是 | 同一候选 id，`idempotent: true` | 与 02 同键同指纹，工具输出 `replay`，不新增文件 |
+| 06 同 requestId 异内容 | `save_story_artifact` | 409 | 是 | `VERSION_CONFLICT`：Request ID already identifies different candidate content | 本地工具先行拒绝（同键异指纹，退出码 2），不写回执 |
+| 07 过期 expectedRevision | `save_story_artifact` | 409 | 是 | `VERSION_CONFLICT`：Candidate slot revision is stale | `d1-probe-save-stale-1` rejected_conflict |
+| 08 长候选保存（P1） | `save_story_artifact` | 未知 | — | 调用时 MCP 会话过期，无响应 | `d1-probe-save-long-1` unknown |
+| 08 对账 | `list_story_artifacts` | 200 | 是 | slot `d1-probe-long` 为空：保存未落库 | — |
+| 08 同请求重发 | `save_story_artifact` | 200 | 是 | `idempotent: false`，新候选 `282a6bf6…`，确认首次未落库 | `d1-probe-save-long-1.resend-1` confirmed，`pending` 归入 `resolved_verified` |
+| 08 分块读取 | `read_story_artifact` | 200 ×2 | 是 | 4135 码点（含 🎬）：0–4000、4000–4135，末块 `nextOffset: null`；拼接全文 sha256 等于 `fingerprint` | `receipt cache` 写入，manifest `verified: true` |
+
+**MCP 与本地 REST 的差异：**
+
+| 项 | 本地 REST（2026-09-30） | 生产 MCP |
+| --- | --- | --- |
+| 工具名／路由 | `POST/GET /api/v1/projects/:projectId/story-artifacts`、`…/:artifactId`、`…/:artifactId/text`、`GET …/writing-context` | `save_story_artifact`、`get_story_artifact`、`list_story_artifacts`、`read_story_artifact`、`get_writing_context` |
+| 参数命名 | 路径参数 + camelCase 请求体（`expectedRevision`、`inputSnapshotId`、`requestId`、`episodeRef`） | snake_case（`project_id`、`expected_revision`、`input_snapshot_id`、`request_id`、`episode_ref`、`artifact_id`、`cursor_id`）；**例外**：`read_story_artifact` 用 camelCase（`projectId`、`artifactId`） |
+| `producer` | 请求体字段 | 必填，`codex｜human｜external_ai`；Claude Code 写 `external_ai` |
+| 成功返回包装 | `{requestId, data, error}` | `mali-tool-result/v1`：`{schemaVersion, ok, data, recovery, transport.status}` |
+| 失败返回包装 | `{requestId, data: null, error}` + HTTP 状态 | Claude Code 收到的是不带 `mali-tool-result/v1` 的分发信封 `{status, headers, body: {data: null, error: {code, message, retryable}}}` |
+| 分块读取 | `GET …/text?offset&limit` | 同字段；Claude Code 在 JSON 前另显示一条资源链接（`mali-story://projects/…/chunks/<offset>`） |
+| 冲突错误码 | 409 `VERSION_CONFLICT` | 同 |
+
+`receipt` 的解析器能处理上述两种返回形状（`tests/test_receipt.py` 的 `RealFixtureTests` 用这些真实夹具回归）。
+
+**发现的缺口（另行跟踪，不阻塞 #3）：** 只给分块响应加 `--slot` 缓存时，若该候选的保存是经对账重发确认的，`slotSource` 仍为 `host`：重发回执的 `localRef` 指向被对账的回执而不是 slot，`receipt cache` 认不出它能担保 slot。目前的做法是把重发（或 get）响应一起传给 `receipt cache`，`slotSource` 即为 `record`。
+
 ## 2026-09-30 · 本地部署（非生产）
 
 mali-story main `c6aebcf3`，独立库 `mali_story_d1`（先迁移 mali-common，再迁移 script-server 共 122 个），API `http://localhost:3011`，Web `http://localhost:3010`。测试项目为本地新建的「山门最后一张欠条｜十集试点（本地 D1）」，与生产同名项目无关。

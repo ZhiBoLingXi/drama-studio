@@ -1395,5 +1395,108 @@ class DocsTests(unittest.TestCase):
             self.assertIn(command, text)
 
 
+REAL = ROOT / "tests/fixtures/mcp"
+REAL_PROJECT = "4e6556ac97654bf781977"
+REAL_SNAPSHOT = "sha256:9be0b1334077ad7e1332d825fd08104054c31f4aa4ddf273c1234f5f2521d390"
+REAL_ARTIFACT = "5da998a0-b9c6-47ae-9635-ee08410bc0fc"
+
+
+class RealFixtureTests(unittest.TestCase):
+    """Responses captured from production mali-story v0.19.0 through Claude Code (#3, 2026-10-05).
+
+    Claude Code surfaces a tool's text content: successes arrive as mali-tool-result/v1,
+    errors as the bare dispatch envelope {status, headers, body}.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project = Path(self.tmp.name) / "proj"
+        subprocess.run([sys.executable, "-B", str(TOOL), "init-project", str(self.project), "--title", "真实夹具"],
+                       capture_output=True, text=True, check=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def record(self, step, operation, request_id, response=None):
+        response = response or REAL / f"{step}.response.json"
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "receipt", "record", str(self.project), str(response),
+                              "--operation", operation, "--request-id", request_id, "--input", str(REAL / f"{step}.input.json")],
+                             capture_output=True, text=True)
+        return run.returncode, json.loads(run.stdout or run.stderr)
+
+    def test_fixtures_are_real_and_hold_no_credentials_or_user_ids(self):
+        names = sorted(path.name for path in REAL.glob("*.json"))
+        for step in ("01-writing-context", "02-save", "03-get", "04-list", "05-replay", "06-requestid-conflict", "07-stale-revision"):
+            self.assertIn(f"{step}.input.json", names)
+            self.assertIn(f"{step}.response.json", names)
+        for path in REAL.glob("*.json"):
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("_synthetic", text, path.name)
+            self.assertNotRegex(text, r'(?i)"(access_?token|refresh_?token|cookie|authorization)"|Bearer ', path.name)
+            self.assertNotRegex(text, r'"submittedByUserId":"[0-9a-f-]{36}"', path.name)
+
+    def test_success_shape_is_tool_result_and_error_shape_is_dispatch_envelope(self):
+        ok = receipt.parse_response(json.loads((REAL / "02-save.response.json").read_text(encoding="utf-8")), "save_story_artifact")
+        self.assertEqual((ok["ok"], ok["httpStatus"], ok["shape"]), (True, 200, "mali-tool-result/v1"))
+        self.assertEqual(ok["data"]["record"]["producer"], "external_ai")
+        for step in ("06-requestid-conflict", "07-stale-revision"):
+            bad = receipt.parse_response(json.loads((REAL / f"{step}.response.json").read_text(encoding="utf-8")), "save_story_artifact")
+            self.assertEqual((bad["ok"], bad["httpStatus"], bad["errorCode"]), (False, 409, "VERSION_CONFLICT"), step)
+            self.assertEqual(receipt.outcome_of(bad), ("rejected_conflict", False), step)
+
+    def test_probe_sequence_produces_contract_checked_receipts(self):
+        steps = [("01-writing-context", "get_writing_context", "d1-probe-ctx-1", 0, "written", "confirmed"),
+                 ("02-save", "save_story_artifact", "d1-probe-save-1", 0, "written", "confirmed"),
+                 ("03-get", "get_story_artifact", "d1-probe-get-1", 0, "written", "confirmed"),
+                 ("04-list", "list_story_artifacts", "d1-probe-list-1", 0, "written", "confirmed"),
+                 ("05-replay", "save_story_artifact", "d1-probe-save-1", 0, "replay", "confirmed"),
+                 ("07-stale-revision", "save_story_artifact", "d1-probe-save-stale-1", 0, "written", "rejected_conflict")]
+        for step, operation, request_id, code, status, outcome in steps:
+            rc, out = self.record(step, operation, request_id)
+            self.assertEqual((rc, out["status"], out["receipt"]["outcome"]), (code, status, outcome), step)
+            self.assertEqual(check_contract("remote-receipt", out["receipt"]), [], step)
+        saved = json.loads((self.project / ".drama/receipts/d1-probe-save-1.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["remote"], {"projectId": REAL_PROJECT, "artifactId": REAL_ARTIFACT, "revision": 1,
+                                           "inputSnapshotId": REAL_SNAPSHOT})
+        # Step 06 reuses the request id with other content: the local tool refuses it before any server answer counts.
+        rc, out = self.record("06-requestid-conflict", "save_story_artifact", "d1-probe-save-1")
+        self.assertEqual((rc, out["status"]), (2, "conflict"))
+
+    def test_lost_long_save_is_unknown_and_pending(self):
+        rc, out = self.record("08-save-long", "save_story_artifact", "d1-probe-save-long-1",
+                              response=REAL / "08-save-long.response.json")
+        self.assertEqual((rc, out["receipt"]["outcome"], out["receipt"]["retryAllowed"]), (0, "unknown", False))
+        pending = receipt.pending(str(self.project))["pending"]
+        self.assertEqual([(item["requestId"], item["slot"]) for item in pending], [("d1-probe-save-long-1", "d1-probe-long")])
+
+    def test_identical_resend_reconciles_the_lost_save(self):
+        # The session expired mid-save; listing the slot showed nothing, so the identical request was re-sent.
+        self.record("08-save-long", "save_story_artifact", "d1-probe-save-long-1", response=REAL / "08-save-long.response.json")
+        listing = receipt.parse_response(json.loads((REAL / "08-reconcile-list.response.json").read_text(encoding="utf-8")),
+                                         "list_story_artifacts")
+        self.assertEqual(listing["data"]["records"], [])
+        rc, out = self.record("08-save-long", "save_story_artifact", "d1-probe-save-long-1.resend-1",
+                              response=REAL / "08-save-long.resend.response.json")
+        self.assertEqual(rc, 1)  # without --reconciles a re-send under a new id is an input error (request_id mismatch)
+        self.assertIn("declares request_id", out["error"])
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "receipt", "record", str(self.project),
+                              str(REAL / "08-save-long.resend.response.json"), "--operation", "save_story_artifact",
+                              "--request-id", "d1-probe-save-long-1.resend-1", "--input", str(REAL / "08-save-long.input.json"),
+                              "--reconciles", "d1-probe-save-long-1"], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        state = receipt.pending(str(self.project))
+        self.assertEqual((state["pending"], state["resolved_verified"]), ([], ["d1-probe-save-long-1"]))
+
+    def test_chunked_read_caches_verified_text(self):
+        chunks = [str(REAL / f"08-read-chunk-{n}.response.json") for n in (1, 2)]
+        out = receipt.cache(str(self.project), [*chunks, str(REAL / "08-save-long.resend.response.json")])
+        self.assertEqual((out["passed"], out["verified"], out["entry"]["slotSource"]), (True, True, "record"))
+        cached = (self.project / out["entry"]["path"]).read_text(encoding="utf-8")
+        self.assertEqual(len(cached), 4135)
+        self.assertEqual(out["entry"]["sha256"], out["entry"]["serverFingerprint"])
+        refused = receipt.cache(str(self.project), chunks[:1], slot="d1-probe-long", kind="research")
+        self.assertEqual(refused["status"], "refused")
+
+
 if __name__ == "__main__":
     unittest.main()

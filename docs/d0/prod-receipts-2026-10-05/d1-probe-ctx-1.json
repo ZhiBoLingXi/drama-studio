@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "drama-studio/remote-receipt/v0",
+  "operation": "get_writing_context",
+  "requestId": "d1-probe-ctx-1",
+  "inputFingerprint": "sha256:7bd1de589134f4874453c2090458edceb71d817b648c6deb5730720c458e5231",
+  "remote": {
+    "projectId": "4e6556ac97654bf781977",
+    "artifactId": null,
+    "revision": null,
+    "inputSnapshotId": "sha256:9be0b1334077ad7e1332d825fd08104054c31f4aa4ddf273c1234f5f2521d390"
+  },
+  "outcome": "confirmed",
+  "retryAllowed": false,
+  "observedAt": "2026-10-05T17:29:28+08:00",
+  "evidence": "saved response 01-writing-context.response.json: mali-tool-result/v1; ok; HTTP 200"
+}
