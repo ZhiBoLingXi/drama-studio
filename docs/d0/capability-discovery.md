@@ -35,6 +35,22 @@
 
 为部署候选接口，从 main `c6aebcf3` 发布 v0.18.0（含 mali-common 鉴权修复 `ae0f087`）。GitHub Actions 部署任务未启动：“recent account payments have failed or your spending limit needs to be increased”。**生产仍为 v0.17.11，候选接口未上线。** 账单处理后重跑 run `36668448821`。
 
+## 2026-10-05 · 生产 v0.18.1
+
+账单恢复后，2026-10-01 重跑 run `36668448821`（第 2 次尝试）：任务启动，但在“Build script-server”失败，`bun build` 无法解析 `proxy-agent`。原因是 mali-common `fb4fd8f` 在 `storage/oss.ts` 静态引入 `ali-oss`，其依赖 urllib 有一处惰性的 `require('proxy-agent')`，该可选依赖未安装。构建在传输镜像与迁移之前失败，生产未被改动。v0.18.0 按标签无法部署。
+
+修复：mali-story#2333 给服务端 `bun build` 加 `--external proxy-agent`（urllib 只在显式启用代理时才加载它）。修复拣选到 `release/v0.18.x`（`1156b278`，代码与 main `de0c9d11` 一致），发布 v0.18.1。
+
+| 层 | 调用成功 | 业务结果符合预期 | 证据 |
+| --- | --- | --- | --- |
+| 部署 | 是 | 是 | run `37263555141`，结论 `success`，2026-10-05 04:26–04:32 UTC，构建、传输、迁移、重启全部通过 |
+| 数据库迁移 | 是 | 是 | 迁移日志共 43 条 `Applied`，从 `0085_story_artifact_candidates` 到 `0127_uncapped_shared_creation_budget`，无错误 |
+| 候选路由 | 是 | 是 | `list_api_endpoints(prefix=/api/v1/projects/:projectId/story-artifacts)` 共 7 条，含 `GET`／`POST …/story-artifacts`、`GET …/:artifactId`、`GET …/:artifactId/text`；`prefix=…/writing-context` 返回 `GET /api/v1/projects/:projectId/writing-context` |
+| MCP 候选工具 | 未检查 | 未检查 | 本次会话的连接建立于部署前，工具列表未刷新；由 #3 在重新连接后核对 |
+| 注册／登录 `emailVerified` | 未检查 | 未检查 | 只读抽查不可行：经 MCP 调用 `GET /api/v1/me` 返回 `MCP_ROUTE_NOT_ALLOWED`（2026-09-30 时可用），且不为抽查新注册账号；需人工登录核对 |
+
+本节只证明部署与路由已上线，不证明候选保存在生产可用：生产写入探测（保存、读取、重放、冲突）由 #3 执行，并依赖 mali-story#2332 提供如实的 `producer` 值 `external_ai`。
+
 ## 2026-09-30 · 本地部署（非生产）
 
 mali-story main `c6aebcf3`，独立库 `mali_story_d1`（先迁移 mali-common，再迁移 script-server 共 122 个），API `http://localhost:3011`，Web `http://localhost:3010`。测试项目为本地新建的「山门最后一张欠条｜十集试点（本地 D1）」，与生产同名项目无关。
