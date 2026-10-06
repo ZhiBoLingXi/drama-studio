@@ -1524,12 +1524,15 @@ class DocsTests(unittest.TestCase):
     def test_recovery_demo_states_its_synthetic_source_before_anything_else(self):
         text = (ROOT / "docs/d2/recovery-demo.md").read_text(encoding="utf-8")
         opening = "\n".join(text.splitlines()[:6])
-        for needle in ("合成夹具", "tests/fixtures/mcp-synthetic/", "不是 #9 的真实产物", "待 #9"):
+        for needle in ("合成夹具", "tests/fixtures/mcp-synthetic/", "不是 #9 的真实产物", "#9 真实产物补录"):
             self.assertIn(needle, opening, needle)
-        for heading in ("## 全新会话恢复记录", "## 待 #9 真实产物补录", "## 只读证明"):
+        for heading in ("## 全新会话恢复记录", "## #9 真实产物补录", "## 只读证明"):
             self.assertIn(f"\n{heading}", text)
         self.assertNotIn("/Users/", text)
-        self.assertIn("AC-6 不勾选", text)
+        supplement = text.split("\n## #9 真实产物补录", 1)[1]
+        self.assertNotIn("- [ ]", supplement)  # every real-artifact item is recorded, none left open
+        for needle in ("`stale`", "`current`", "47 个文件", "全新会话恢复"):
+            self.assertIn(needle, supplement, needle)
         self.assertIn("docs/d2/recovery-demo.md", (ROOT / "README.md").read_text(encoding="utf-8"))
 
 
