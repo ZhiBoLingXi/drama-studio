@@ -2,7 +2,7 @@
 
 2026-10-06。试点：《镇渊君》第 45 集。生产项目「镇渊君｜D2 试点」`c1c04a99f1ec4e4d8f963`（mali-story v0.19.0，经 Claude Code MCP，`producer: external_ai`）。本页只列摘要与候选 ID，不含私有正文；正文在生产候选与项目私有目录 `projects/zhenyuan-d2/`（gitignored）。
 
-**状态：** 两份集纲都是候选，**未经主创验收**（#8 的人工验收项）。第 40–44 集本身是 `local_candidate_pending_director_review`，本次所有产物随之是待对齐候选。
+**状态：** 2026-10-06 主创验收通过：采用正式集纲 `ep-045-outline` r1，三条上游提案接受（待上游层落实）。对照集纲只供 #11 比较。第 40–44 集本身是 `local_candidate_pending_director_review`，本次所有产物随之是待对齐候选。
 
 ## 1. 准备步骤：把前文存进 mali-story
 

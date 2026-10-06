@@ -2,7 +2,7 @@
 
 卡片正文与原证据都在项目私有目录 `projects/zhenyuan-d2/knowledge/`（不进仓库、不入包）。本页只列卡片 ID、类型、服务的首轮目标与工位，不含私有正文。
 
-**状态：** 2026-10-06 由 Claude Code（`external_ai`）起草，`processing: pending`。材料取舍与使用权**待主创确认**；确认前不得当作已审定知识。
+**状态：** 2026-10-06 由 Claude Code（`external_ai`）起草；同日主创验收通过，材料取舍与使用权已确认。6 张卡均以 r2 记录为 `processing: curated`，r1（`pending`）保留。
 
 **校验：** `drama_tools.py knowledge validate projects/zhenyuan-d2` 退出码 0（6 张卡，逐卡 contract-check 与文件名一致性通过）；`knowledge show` 对每张卡都能定位到 `knowledge/sources/` 下的原证据文件。
 
