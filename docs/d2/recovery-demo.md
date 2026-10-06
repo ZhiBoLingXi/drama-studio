@@ -1,7 +1,7 @@
 # D2 恢复与失效演示记录（合成夹具）
 
 **本记录用的是合成夹具（`tests/fixtures/mcp-synthetic/`），不是 #9 的真实产物。** 夹具是按 mali-story 源码手写的 MCP 响应，没有连接 mali-story，没有调用模型，也没有真人创作内容。
-用 #9 真实产物重做这次演示的部分待 #9 完成后补录，见文末“待 #9 真实产物补录”。在那之前 #10 的 AC-6 不勾选，issue 保持打开。
+用 #9 真实产物重做的部分已于 2026-10-06 补录，见文末“#9 真实产物补录”。
 
 记录日期：2026-10-01。“步骤与输出”和“只读证明”里的输出与哈希，是在分支 `feat/status-impact-commands` 检出提交 `e136c27` 时重跑全部步骤采集的（此后改动本文件的提交只改文档；工具代码之后还有两个提交 `c651e7a`、`474e657` 改了 `project_status.py`，在 `474e657` 上重放全部步骤，记录的输出逐块一致）。“全新会话恢复记录”一节是此前在提交 `ae3440b` 的输出上做的，没有重做：那时 `status` 打印的命令写作 `--slot ep-03-outline`，现在写作 `--slot=ep-03-outline`，两种写法解析结果相同，输出的其余部分与当时一致。Python 3.11.8。
 
@@ -527,14 +527,29 @@ $T status <proj> --json
 
 在这份合成演示上，两种状态下的第一步都能只凭 `status` 输出开始，没有用到聊天记录。输出没有覆盖第一步之后的操作细节，上面八处缺口如实列出，留给方法文档或后续改进，不算已解决。
 
-## 待 #9 真实产物补录
+## #9 真实产物补录（2026-10-06）
 
-#9（C5 正文 + C6 盲读闭环）完成后，在它的试点项目上重做，并在本节补录：
+试点项目：本地 `projects/zhenyuan-d2/`（gitignored），远端「镇渊君｜D2 试点」`c1c04a99f1ec4e4d8f963`（mali-story v0.19.0）。产物来自 #8、#9 的真实运行（运行记录见 `docs/d2/c4-run.md`、`docs/d2/c5-c6-run.md`，随 #7–#9、#11 的 PR 提交）。
 
-- [ ] 试点项目的来源、远端 projectId、涉及的 slot 与修订（真实 `receipt cache` 得到的 manifest 条目）
-- [ ] 全新会话中运行 `status <试点项目>` 的完整输出，以及据此恢复出的下一步是否与实际一致
-- [ ] 把前集正文修订到新 revision 并缓存后，`impact` 的完整输出：哪些快照与运行为 `stale`，原因引用是否正确
-- [ ] 运行前后 `.drama/` 的 sha256 对比
-- [ ] 与本合成演示不一致的地方
+- [x] **来源与 slot：** manifest 共 14 条，全部 `verified: true`、`slotSource: record`。本次失效检查的对象是 slot `ep-045-draft`：r1 `28063280…`（C5 原稿），r2 `f5ed1305…`（C6 之后的定向修订，`expected_revision: 1` 保存，`idempotent: false`）。
+- [x] **前文修订后的 `impact`：** 这里的“新修订”是真实流程自然产生的 r2，不是为演示人为改动第 44 集。`impact projects/zhenyuan-d2 --slot ep-045-draft --revision 2` 退出码 0：
 
-补录完成前，#10 的 AC-6 不勾选。
+  | 对象 | 结果 | 原因引用 |
+  | --- | --- | --- |
+  | `ctx-e8689f294eb3b084`（C6 首读包） | `stale` | items[1] 引用 `28063280…@r1` |
+  | `ctx-dafd3fdc6aabc828`（C6 次读包） | `stale` | items[1] 引用 `28063280…@r1` |
+  | `ctx-9e74c8eb618b4d85`（#11 A/B 比较包） | `stale` | items[3] 引用 `28063280…@r1` |
+  | `run-zy-ep45-c6-review` | `stale` | 所依赖快照 stale；引用旧修订 r1 |
+  | 其余 4 份快照、5 份运行 | `current` | 不引用该 slot 的旧修订 |
+
+  原因引用逐条正确：三份 stale 快照确实都装了 r1，C4、C5 的包都不含它。
+- [x] **`status` 的第一行**随之变成：“先运行 `drama_tools.py impact … --slot=ep-045-draft --revision 2` 确认失效范围，再决定是否重新装包、重跑”，并提示最近一次运行（C6）按 r1 记录的下一步“先看 impact 结果，不要直接照做”。
+- [x] **只读证明：** 运行 `impact` 与 `status` 前后，对 `.drama/` 下 47 个文件逐个求 sha256 并排序比较，完全一致。
+- [x] **全新会话恢复：** 另起一个独立上下文的子代理，没有聊天记录，只允许运行 `status` 与 `impact`、不读其他文件。它恢复出的下一步与实际一致：先等主创验收 r1、r2 与 C4 提案，再用 r2 重装审读包并重跑 C6，且要把第 42 集放进审读包（它从 C6 运行记录的 `unfinished` 中读到了 f5 的教训）。它没有把旧的“下一步”照做。
+
+### 与合成演示不一致、或真实数据才暴露的地方
+
+1. **“最近运行”按文件修改时间判定，在真实流程中失灵。** 编排时为修正 `host.usage.calls` 一次性重写了多份 run-handoff，四份运行的修改时间完全相同，恢复代理据此指出无法确认 C6 是否发生在 r2 之后。run-handoff 没有时间字段，`status` 只能靠 mtime。建议：run-handoff 增加 `finishedAt`，`status` 优先用它（另行跟踪，未在本 issue 修改）。
+2. **定向修订的输入依赖没有登记。** `run-zy-ep45-c5-revision` 复用了原 C5 快照 `ctx-bc541effe0c54225`，但修订实际还读了 r1 与 C6 的 review-record，这两项不在任何快照里，所以 `impact` 判它为 current。恢复代理对此存疑，判断正确。建议：定向修订单独装包，把 r1（`current_plan` 或 `project_facts`）与审读记录（`local_file`）列为输入。
+3. **有两份 `stale` 快照没有对应运行**（C6 首读包、#11 比较包）。首读包由 C6 运行间接使用，但 `contextSnapshotId` 只能填一个；比较包当时还没有写 run-handoff（之后已补 `run-zy-ep45-knowledge-eval`）。恢复代理如实列为“要问人”。建议：run-handoff 允许登记多个上下文快照。
+4. 合成演示里“未决回执”是第一行；真实流程中 0 份未决，第一行变成失效检查，行为符合设计。
