@@ -5,6 +5,7 @@ reference exists remotely, that a text supports a claim, or that anything was ad
 """
 from __future__ import annotations
 
+from datetime import datetime
 import json
 from pathlib import Path
 import re
@@ -158,7 +159,23 @@ def _rules_run_handoff(doc: dict) -> list[str]:
     usage = doc["host"]["usage"]
     if usage["source"] != "host_reported" and usage.get("tokens") is not None:
         errors.append("host.usage.tokens: only host-reported usage may state tokens")
+    extra = doc.get("additionalSnapshotIds", [])
+    if doc["contextSnapshotId"] in extra or len(set(extra)) != len(extra):
+        errors.append("additionalSnapshotIds: list each further snapshot once, and not the contextSnapshotId itself")
+    if "finishedAt" in doc and finished_at(doc["finishedAt"]) is None:
+        errors.append("finishedAt: not a valid ISO 8601 date-time with a UTC offset")
     return errors
+
+
+def finished_at(value) -> datetime | None:
+    """A run-handoff finishedAt as an aware datetime, or None when it is not a valid ISO 8601 time with an offset."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3}|\.\d{6})?)?(Z|[+-]\d{2}:\d{2})", value):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def _rules_remote_receipt(doc: dict) -> list[str]:

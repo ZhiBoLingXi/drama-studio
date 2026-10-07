@@ -17,13 +17,15 @@ import json
 from pathlib import Path
 import shlex
 
-from .contract_check import check_contract
+from .contract_check import check_contract, finished_at
 from .receipt import MANIFEST, SLOT_SOURCES, area, contained, drama_dir, effective_entries, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
 LINE_BREAKS = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"  # what str.splitlines splits on
 MAX_DEPTH = 50  # context_snapshot references followed before giving up as unknown
 OPEN_RUNS = ("planned", "running", "interrupted")
+MTIME = "file_mtime"  # recencyBasis of a run without finishedAt, as before #26
+RECENCY_MTIME = "最近运行按文件修改时间判定，复制或检出后可能不准。"
 BASIS = {"unknown_receipt": "有结果未知、尚未对账的保存回执", "invalid_record": "有无效或损坏的本地记录",
          "stale_run": "最近一次运行的快照引用了旧修订，本地缓存已有更新的可信修订",
          "latest_run": "最近一次运行记录的 nextAction", "no_runs": ".drama/runs/ 中没有有效的运行记录"}
@@ -270,19 +272,30 @@ def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[lis
     return kept, own
 
 
+def _snapshot_ids(doc: dict) -> list[str]:
+    """contextSnapshotId first, then the optional additionalSnapshotIds (#26), each once."""
+    return list(dict.fromkeys([doc["contextSnapshotId"], *doc.get("additionalSnapshotIds", [])]))
+
+
 def _judge_run(item: dict, loaded: dict[str, dict], snapshots: dict[str, dict], judge, entries: list[dict]) -> dict:
+    """A run is judged on every snapshot it records: contextSnapshotId and each of additionalSnapshotIds; the worst wins."""
     result = {"runId": item["id"], "path": item["path"], "contextSnapshotId": None}
     if item["problems"]:
         return _verdict(result, [{"ref": None, "status": "unknown", "reason": "运行记录无效：" + problem} for problem in item["problems"]])
-    result["contextSnapshotId"] = snapshot_id = item["doc"]["contextSnapshotId"]
-    ref = f"context_snapshot {snapshot_id}"
-    if snapshot_id not in snapshots:
-        return _verdict(result, [{"ref": ref, "status": "unknown", "reason": "所依赖的快照不在 .drama/snapshots/ 中"}])
-    kept, own = _own_outputs(_dependencies(snapshot_id, loaded, judge), item["doc"], entries)
-    worst = "stale" if any(found["status"] == "stale" for found in kept) else "unknown"
-    text = f"所依赖的快照为 {worst}" if snapshots[snapshot_id]["status"] == worst else "所依赖的快照中有无法判定的引用"
-    lead = [{"ref": ref, "status": worst, "reason": text}] if kept else []
-    return _verdict(result, lead + [_public(found) for found in kept + own])
+    result["contextSnapshotId"] = item["doc"]["contextSnapshotId"]
+    if "additionalSnapshotIds" in item["doc"]:
+        result["additionalSnapshotIds"] = list(item["doc"]["additionalSnapshotIds"])
+    reasons = []
+    for snapshot_id in _snapshot_ids(item["doc"]):
+        ref = f"context_snapshot {snapshot_id}"
+        if snapshot_id not in snapshots:
+            reasons.append({"ref": ref, "status": "unknown", "reason": "所依赖的快照不在 .drama/snapshots/ 中"})
+            continue
+        kept, own = _own_outputs(_dependencies(snapshot_id, loaded, judge), item["doc"], entries)
+        worst = "stale" if any(found["status"] == "stale" for found in kept) else "unknown"
+        text = f"所依赖的快照为 {worst}" if snapshots[snapshot_id]["status"] == worst else "所依赖的快照中有无法判定的引用"
+        reasons += ([{"ref": ref, "status": worst, "reason": text}] if kept else []) + [_public(found) for found in kept + own]
+    return _verdict(result, reasons)
 
 
 def _count(items: list[dict]) -> dict:
@@ -365,8 +378,12 @@ def _staleness(run: dict, snapshots: dict[str, dict], entries: list[dict], manif
 
     Uses _dependencies, judge_ref and _own_outputs, so the rules are impact's. It only ever claims what the local cache shows.
     """
-    found, own = ([{"ref": None, "status": "unknown", "reason": manifest_error}], []) if manifest_error else _own_outputs(
-        _dependencies(run["contextSnapshotId"], snapshots, lambda ref: _against_newest(ref, entries)), run, entries)
+    found = []
+    for index, snapshot_id in enumerate([] if manifest_error else _snapshot_ids(run)):  # findings of further snapshots name their snapshot
+        prefix = f"context_snapshot {snapshot_id}" if index else None
+        found += [dict(item, ref=f"{prefix} > {item['ref']}" if item["ref"] else prefix) if prefix else item
+                  for item in _dependencies(snapshot_id, snapshots, lambda ref: _against_newest(ref, entries))]
+    found, own = ([{"ref": None, "status": "unknown", "reason": manifest_error}], []) if manifest_error else _own_outputs(found, run, entries)
     produced = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "producedRevision": item["produced"],
                  "output": item["output"]} for item in own]
     newer = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
@@ -390,12 +407,23 @@ def _shown(slot: str) -> str:
     return json.dumps(slot) if _breaks(slot) else slot
 
 
+def _recency(item: dict) -> tuple[int, str, str]:
+    """(nanoseconds since the epoch, basis, runId): the record's finishedAt when it has one (#26), else the file's mtime."""
+    finished = finished_at(item["doc"].get("finishedAt"))
+    if finished is not None:
+        stamp = finished - datetime(1970, 1, 1, tzinfo=timezone.utc)
+        return (stamp.days * 86_400 + stamp.seconds) * 1_000_000_000 + stamp.microseconds * 1_000, "finishedAt", item["id"]
+    return item["file"].stat().st_mtime_ns, MTIME, item["id"]
+
+
 def _run_summary(item: dict, staleness: dict) -> dict:
     doc = item["doc"]
     modified = datetime.fromtimestamp(item["file"].stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+    extra = {"additionalSnapshotIds": doc["additionalSnapshotIds"]} if "additionalSnapshotIds" in doc else {}
     return {"runId": doc["runId"], "path": item["path"], "taskId": doc["taskId"], "workstation": doc["workstation"],
-            "contextSnapshotId": doc["contextSnapshotId"], "status": doc["status"], "unfinished": doc["unfinished"],
-            "nextAction": doc["nextAction"], "modifiedAt": modified, **staleness}
+            "contextSnapshotId": doc["contextSnapshotId"], **extra, "status": doc["status"], "unfinished": doc["unfinished"],
+            "nextAction": doc["nextAction"], "modifiedAt": modified, "finishedAt": doc.get("finishedAt"),
+            "recencyBasis": _recency(item)[1], **staleness}
 
 
 def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> dict:
@@ -448,26 +476,30 @@ def run_status(project: str) -> dict:
                           "completeness": doc.get("completeness") if doc.get("completeness") in ("complete", "incomplete") else None,
                           "createdFor": doc.get("createdFor") if isinstance(doc.get("createdFor"), dict) else None, "problems": item["problems"]})
     records = _records(drama, "runs", "run-handoff", "runId")
-    newest_first = sorted((item for item in records if not item["problems"]),
-                          key=lambda item: (item["file"].stat().st_mtime_ns, item["id"]), reverse=True)
+    newest_first = sorted((item for item in records if not item["problems"]), key=lambda item: (_recency(item)[0], item["id"]), reverse=True)
     runs = [_run_summary(item, _staleness(item["doc"], loaded, entries, manifest_error, drama.parent)) for item in newest_first]
+    bases = {run["recencyBasis"] for run in runs}
+    basis = runs[0]["recencyBasis"] if runs else MTIME
+    recency = {"finishedAt": "最近运行按运行记录的 finishedAt 判定。"}.get(basis, RECENCY_MTIME) if len(bases) <= 1 else (
+        f"最近运行优先按 finishedAt 判定，缺 finishedAt 的运行按文件修改时间参与比较（最近一份的依据是 {basis}），两种时间混比可能不准。")
     invalid += [{"kind": "snapshot", "path": item["path"], "errors": item["problems"], "advice": ADVICE["snapshot"]}
                 for item in snapshots if not item["intact"]]
     invalid += [{"kind": "run", "path": item["path"], "errors": item["problems"], "advice": ADVICE["run"]} for item in records if item["problems"]]
     latest = runs[0] if runs else None
     return {"ok": True, "command": "status", "project": str(drama.parent), "nextAction": _next_action(receipts, invalid, latest),
             "receipts": {key: receipts[key] for key in ("pending", "read_only_unknown", "unreconcilable_unknown", "resolved_verified", "resolved_host_judged")},
-            "runs": {"count": len(records), "recencyBasis": "file_mtime", "latest": latest,
+            "runs": {"count": len(records), "recencyBasis": basis, "latest": latest,
                      "open": [run for run in runs if run["status"]["run"] in OPEN_RUNS or run["unfinished"]]},
             "snapshots": snapshots, "invalid": invalid,
-            "note": "只读取 .drama/ 下的本地记录，不读聊天记录；不证明远端状态、采用或质量。最近运行按文件修改时间判定，复制或检出后可能不准。"
+            "note": "只读取 .drama/ 下的本地记录，不读聊天记录；不证明远端状态、采用或质量。" + recency +
                     "失效提示只比较本地缓存 manifest 里的可信条目，不说明远端有没有更新的修订。",
             "read_only": True, "remote_verified": False, "adoption_verified": False}
 
 
 def _run_lines(label: str, run: dict) -> list[str]:
     lines = [f"- {label}：{run['runId']}（{run['workstation']}，{run['status']['run']}/{run['status']['goal']}，任务 {run['taskId']}，"
-             f"快照 {run['contextSnapshotId']}，修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
+             f"快照 {'、'.join([run['contextSnapshotId'], *run.get('additionalSnapshotIds', [])])}，"
+             + (f"完成于 {run['finishedAt']}，" if run["finishedAt"] else "") + f"修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
     lines += [f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else []
     lines += [f"    可能已失效：快照引用 slot {_shown(item['slot'])} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['staleAgainstRevision']}；"
               + ("命令含换行类字符，见 status --json 的 newerRevisions[].impactCommand" if _breaks(item["impactCommand"]) else f"先运行 {item['impactCommand']}")
@@ -507,7 +539,8 @@ def render_status(result: dict) -> str:
     if others:
         lines.append(f"其他结果未知的调用（{len(others)}，不是待对账的保存）")
         lines += [f"- {item['requestId']}：{item['operation']}；{item['note']}" for item in others]
-    lines += ["", f"运行（{runs['count']} 份；最近一次按文件修改时间判定，recencyBasis: {runs['recencyBasis']}）"]
+    how = "按运行记录的 finishedAt 判定" if runs["recencyBasis"] == "finishedAt" else "按文件修改时间判定"
+    lines += ["", f"运行（{runs['count']} 份；最近一次{how}，recencyBasis: {runs['recencyBasis']}）"]
     if runs["latest"]:
         lines += _run_lines("最近", runs["latest"])
     for run in runs["open"]:

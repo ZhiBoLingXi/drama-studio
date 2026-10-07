@@ -86,6 +86,8 @@ class ProjectCase(unittest.TestCase):
 
     def run_handoff(self, run_id, snapshot_id, **changes):
         doc = json.loads((EXAMPLES / "run-handoff.json").read_text(encoding="utf-8"))
+        for optional in ("finishedAt", "additionalSnapshotIds"):  # a record written before #26; tests add them explicitly
+            doc.pop(optional)
         doc.update(runId=run_id, contextSnapshotId=snapshot_id, **changes)
         folder = self.drama / "runs"
         folder.mkdir(exist_ok=True)
@@ -1230,6 +1232,96 @@ class StatusTests(ProjectCase):
             self.assertIn(needle, text)
         self.assertNotIn("run-z-oldest", text)
         self.assertTrue(result["runs"]["latest"]["modifiedAt"].startswith("1970-01-0"))
+
+
+class HarnessGapTests(ProjectCase):
+    """#26: optional finishedAt and additionalSnapshotIds on run-handoff; records without them behave as before."""
+
+    status = StatusTests.status
+
+    def test_finished_at_picks_the_latest_run_when_mtimes_are_equal(self):
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-a-later", "ctx-a", unfinished=[], nextAction="后完成的一步", finishedAt="2026-10-07T10:00:00+08:00")
+        self.run_handoff("run-z-earlier", "ctx-a", unfinished=[], nextAction="先完成的一步", finishedAt="2026-10-07T01:30:00Z")
+        for run_id in ("run-a-later", "run-z-earlier"):  # rewritten together: equal mtimes, and the runId tie-break would pick run-z
+            os.utime(self.drama / f"runs/{run_id}.json", (5_000, 5_000))
+        result, lines = self.status()
+        self.assertEqual((result["runs"]["latest"]["runId"], result["runs"]["recencyBasis"]), ("run-a-later", "finishedAt"))
+        self.assertEqual((result["runs"]["latest"]["finishedAt"], result["runs"]["latest"]["recencyBasis"]),
+                         ("2026-10-07T10:00:00+08:00", "finishedAt"))
+        self.assertEqual(lines[0], "下一步：后完成的一步")
+        self.assertIn("recencyBasis: finishedAt", "\n".join(lines))
+        self.assertIn("finishedAt 判定", result["note"])
+
+    def test_finished_at_outranks_a_newer_mtime_and_runs_without_it_fall_back_to_mtime(self):
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-finished", "ctx-a", unfinished=[], nextAction="按完成时间", finishedAt="2026-10-07T10:00:00+08:00")
+        self.run_handoff("run-old-record", "ctx-a", unfinished=[], nextAction="旧记录")
+        os.utime(self.drama / "runs/run-finished.json", (9_999_999_999, 9_999_999_999))  # mtime far later than its finishedAt
+        os.utime(self.drama / "runs/run-old-record.json", (1_000, 1_000))
+        result, _ = self.status()
+        self.assertEqual([result["runs"]["latest"]["runId"], result["runs"]["recencyBasis"]], ["run-finished", "finishedAt"])
+        os.utime(self.drama / "runs/run-old-record.json", (1_900_000_000, 1_900_000_000))  # 2030: later than 2026-10-07
+        result, lines = self.status()
+        self.assertEqual([result["runs"]["latest"]["runId"], result["runs"]["recencyBasis"]], ["run-old-record", "file_mtime"])
+        self.assertIn("混比", result["note"])
+        self.assertIn("recencyBasis: file_mtime", "\n".join(lines))
+
+    def test_records_without_finished_at_keep_the_file_mtime_basis_and_note(self):
+        self.snapshot("ctx-a", [])
+        self.run_handoff("run-old", "ctx-a")
+        result, _ = self.status()
+        self.assertEqual((result["runs"]["recencyBasis"], result["runs"]["latest"]["recencyBasis"], result["runs"]["latest"]["finishedAt"]),
+                         ("file_mtime", "file_mtime", None))
+        self.assertIn("最近运行按文件修改时间判定，复制或检出后可能不准。", result["note"])
+        self.assertNotIn("additionalSnapshotIds", result["runs"]["latest"])
+        _, _, runs = self.impact(slot="ep-1", revision=2)
+        self.assertNotIn("additionalSnapshotIds", runs["run-old"])
+
+    def test_a_stale_additional_snapshot_makes_the_run_stale(self):
+        self.ac1_fixture()  # ctx-a pins ep-1 r1 (stale against r2), ctx-b is current
+        self.run_handoff("run-c6-two-reads", "ctx-b", additionalSnapshotIds=["ctx-a"])
+        self.run_handoff("run-c6-one-read", "ctx-b")
+        self.run_handoff("run-c6-missing-read", "ctx-b", additionalSnapshotIds=["ctx-gone"])
+        _, _, runs = self.impact(slot="ep-1", revision=2)
+        self.assertEqual({key: item["status"] for key, item in runs.items()},
+                         {"run-c6-two-reads": "stale", "run-c6-one-read": "current", "run-c6-missing-read": "unknown"})
+        two = runs["run-c6-two-reads"]
+        self.assertEqual((two["contextSnapshotId"], two["additionalSnapshotIds"]), ("ctx-b", ["ctx-a"]))
+        self.assertEqual(two["reasons"][0], {"ref": "context_snapshot ctx-a", "status": "stale", "reason": "所依赖的快照为 stale"})
+        self.assertIn("art-1@r1", two["reasons"][1]["ref"])
+        self.assertEqual(runs["run-c6-missing-read"]["reasons"][0]["ref"], "context_snapshot ctx-gone")
+        os.utime(self.drama / "runs/run-c6-two-reads.json", (9_000_000_000, 9_000_000_000))
+        result, lines = self.status()
+        latest = result["runs"]["latest"]
+        self.assertEqual((latest["runId"], latest["stalenessCheck"], latest["possiblyStale"]), ("run-c6-two-reads", "newer_revision_cached", True))
+        self.assertTrue(latest["newerRevisions"][0]["ref"].startswith("context_snapshot ctx-a > items[1] art-1@r1"))
+        self.assertEqual(result["nextAction"]["basis"], "stale_run")
+        self.assertIn("ctx-b、ctx-a", "\n".join(lines))
+
+    def test_new_optional_fields_are_checked_and_old_records_still_pass(self):
+        run = json.loads((EXAMPLES / "run-handoff.json").read_text(encoding="utf-8"))
+        review = json.loads((EXAMPLES / "review-record.json").read_text(encoding="utf-8"))
+        self.assertIn("finishedAt", run)
+        self.assertIn("additionalTargets", review)
+        old_run = {key: value for key, value in run.items() if key not in ("finishedAt", "additionalSnapshotIds")}
+        old_review = {key: value for key, value in review.items() if key != "additionalTargets"}
+        self.assertEqual((check_contract("run-handoff", old_run), check_contract("review-record", old_review)), ([], []))
+        self.assertEqual((check_contract("run-handoff", run), check_contract("review-record", review)), ([], []))
+        for value in ("2026-10-07T10:00:00Z", "2026-10-07T10:00+08:00", "2026-10-07T10:00:00.123456-05:00"):
+            self.assertEqual(check_contract("run-handoff", dict(run, finishedAt=value)), [], value)
+        for value in ("2026-10-07T10:00:00", "2026-10-07", "2026-13-07T10:00:00Z", "2026-02-30T10:00:00Z", "yesterday"):
+            with self.subTest(value):
+                self.assertTrue(any("finishedAt" in error for error in check_contract("run-handoff", dict(run, finishedAt=value))))
+        for extra in ([run["contextSnapshotId"]], ["ctx-x", "ctx-x"], [""], "ctx-x"):
+            with self.subTest(extra=extra):
+                self.assertTrue(any("additionalSnapshotIds" in error for error in check_contract("run-handoff", dict(run, additionalSnapshotIds=extra))))
+        bad_target = dict(review, additionalTargets=[{"kind": "remote_artifact", "id": "art-ep22-draft"}])
+        self.assertTrue(any("additionalTargets[0].revision: required" in error for error in check_contract("review-record", bad_target)))
+        for name, doc in (("run-handoff", old_run), ("review-record", old_review)):
+            path = Path(self.temp.name) / f"old-{name}.json"
+            path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+            self.assertEqual(self.cli("contract-check", name, path).returncode, 0, name)
 
 
 class CliTests(ProjectCase):

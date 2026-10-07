@@ -25,6 +25,13 @@
     "target": {
       "$ref": "#/$defs/ref"
     },
+    "additionalTargets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ref"
+      },
+      "description": "Optional: further reviewed artifacts when one review covers a batch; target stays the first one"
+    },
     "readingScope": {
       "type": "array",
       "items": {
