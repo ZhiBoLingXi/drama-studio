@@ -848,6 +848,51 @@ class CacheTests(ProjectCase):
         resent = self.record("10-resend-save.response.json", "save_story_artifact", "d1-save-3.resend-1", "05-unknown.input.json", reconciles="d1-save-3")
         self.assertEqual(json.loads(resent["receipt"]["notes"])["slotCheck"], "record.slot matched --input slot (S)")
 
+    def resent_chunk(self):
+        """One complete read_story_artifact chunk (bare data) of the revision the confirmed re-send saved: c41d… r2."""
+        record = fixture("10-resend-save.response.json")["structuredContent"]["data"]["record"]
+        body = record["body"]
+        data = {"projectId": record["projectId"], "artifactId": record["id"], "revision": record["revision"],
+                "fingerprint": "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest(), "totalCharacters": len(body),
+                "text": body, "coveredRange": {"from": 0, "to": len(body)}, "nextOffset": None}
+        path = Path(self.temp.name) / "resent-chunk.json"
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def test_slot_source_is_receipt_when_a_confirmed_resend_vouches_for_the_slot(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        chunk = self.resent_chunk()
+        self.assertEqual(self.cache(chunk, **self.META)["entry"]["slotSource"], "host")  # the unknown save alone vouches for nothing
+        self.cache_dir.joinpath("manifest.json").unlink()
+        resent = self.record("10-resend-save.response.json", "save_story_artifact", "d1-save-3.resend-1", "05-unknown.input.json", reconciles="d1-save-3")
+        self.assertEqual(resent["receipt"]["localRef"], {"kind": "remote_receipt", "id": "d1-save-3", "revision": None})
+        result = self.cache(chunk, **self.META)
+        self.assertEqual((result["passed"], result["entry"]["slotSource"], result["warnings"]), (True, "receipt", []))
+        refused = self.cache(chunk, **dict(self.META, slot="ep-04-outline"))
+        self.assertEqual((refused["passed"], refused["status"]), (False, "refused"))
+        self.assertIn("d1-save-3.resend-1", refused["error"])
+
+    def test_resend_vouches_only_with_its_checks_and_a_matching_reconciled_save(self):
+        self.record("05-unknown.response.json", "save_story_artifact", "d1-save-3", "05-unknown.input.json")
+        self.record("10-resend-save.response.json", "save_story_artifact", "d1-save-3.resend-1", "05-unknown.input.json", reconciles="d1-save-3")
+        path, target = self.receipts / "d1-save-3.resend-1.json", self.receipts / "d1-save-3.json"
+        good, original = json.loads(path.read_text(encoding="utf-8")), target.read_text(encoding="utf-8")
+        notes = json.loads(good["notes"])
+        cases = {"no slot check": (dict(good, notes=json.dumps({k: v for k, v in notes.items() if k != "slotCheck"})), None),
+                 "no observed requestId": (dict(good, notes=json.dumps({k: v for k, v in notes.items() if k != "observedRequestId"})), None),
+                 "other input than the unknown save": (dict(good, inputFingerprint="sha256:" + "0" * 64), None),
+                 "reconciled save missing": (good, "")}
+        chunk = self.resent_chunk()
+        for label, (doc, replaced) in cases.items():
+            with self.subTest(label):
+                path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+                if replaced is not None:
+                    target.unlink()
+                result = self.cache(chunk, **self.META)
+                self.assertEqual((result["passed"], result["entry"]["slotSource"]), (True, "host"))
+                target.write_text(original, encoding="utf-8")
+                self.manifest.unlink()
+
     def test_host_warning_follows_the_strongest_source_recorded_for_the_path(self):
         self.cache("03-get.response.json")  # unverified, slot from the record
         result = self.cache(*CHUNKS, **self.META)  # verified read appended with a host-declared slot

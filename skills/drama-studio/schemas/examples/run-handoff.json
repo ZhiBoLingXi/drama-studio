@@ -5,6 +5,10 @@
   "workstation": "C5",
   "methodVersion": "c5@0.1",
   "contextSnapshotId": "ctx-ep21-author-1",
+  "additionalSnapshotIds": [
+    "ctx-ep21-continuity-1"
+  ],
+  "finishedAt": "2026-10-01T16:30:00+08:00",
   "host": {
     "name": "claude-code",
     "model": null,

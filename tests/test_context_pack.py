@@ -434,6 +434,61 @@ class ContextPackTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("workstation", result["error"])
 
+    def local_ref(self, path, revision=None, partition="project_facts", required=True, **extra):
+        return {"ref": {"kind": "local_file", "id": path, "revision": revision, **extra.pop("ref", {})}, "partition": partition,
+                "required": required, "reason": "定向修订材料", **extra}
+
+    def test_local_files_inside_drama_or_runs_are_packed_with_their_sha256(self):
+        review = self.project / ".drama/reviews/rev-ep03-1.json"
+        draft = self.project / "runs/ep03/draft-r1.md"
+        for path, text in ((review, '{"findings": ["f1 第3场伞的去向前后矛盾"]}\n'), (draft, EP1)):
+            path.parent.mkdir(parents=True)
+            path.write_text(text, encoding="utf-8")
+        items = [self.local_ref("runs/ep03/draft-r1.md", partition="current_plan"),
+                 self.local_ref(".drama/reviews/rev-ep03-1.json", revision=sha(review.read_bytes()), ref={"range": {"start": 0, "end": 10}}),
+                 self.local_ref("runs/ep03/missing.md", required=False)]
+        code, result = self.pack(items)
+        self.assertEqual(code, 0, result)
+        packed = self.written(result)
+        by_id = {item["ref"]["id"]: item for item in packed["items"]}
+        for path, name in ((draft, "runs/ep03/draft-r1.md"), (review, ".drama/reviews/rev-ep03-1.json")):
+            with self.subTest(name):
+                self.assertEqual((by_id[name]["ref"]["revision"], by_id[name]["ref"]["sha256"]), (sha(path.read_bytes()),) * 2)
+                self.assertEqual(by_id[name]["usage"], "project_text")
+        self.assertEqual(by_id["runs/ep03/draft-r1.md"]["chars"], len(EP1))
+        self.assertEqual(by_id[".drama/reviews/rev-ep03-1.json"]["chars"], 10)
+        self.assertEqual(by_id[".drama/reviews/rev-ep03-1.json"]["sha256"], sha(review.read_text(encoding="utf-8")[:10].encode("utf-8")))
+        self.assertEqual([entry["ref"]["id"] for entry in packed["omitted"]], ["runs/ep03/missing.md"])
+        self.assertEqual(packed["completeness"], "complete")
+        stale_pin = [self.local_ref("runs/ep03/draft-r1.md", revision="sha256:" + "0" * 64)]
+        code, result = self.pack(stale_pin, selection=self.selection(stale_pin, "pin.json"))
+        self.assertEqual(code, 2, result)
+        self.assertIn("revision pins", " ".join(result["errors"]))
+
+    def test_local_files_outside_drama_and_runs_are_refused(self):
+        (self.project / "planning").mkdir()
+        (self.project / "planning/secret.md").write_text("不该装入", encoding="utf-8")
+        (self.project / "runs").mkdir()
+        for name in ("planning/secret.md", "notes.md", "/etc/hosts", "../proj/runs/x.md", ".drama/../planning/secret.md", "runs/../planning/secret.md",
+                     "runs\\x.md", "runs", ".drama/cache/art-ep01@r1.md", "runs/./x.md"):
+            with self.subTest(name):
+                items = [self.local_ref(name)]
+                code, result = self.pack(items, selection=self.selection(items, "bad.json"))
+                self.assertEqual(code, 1, result)
+                self.assertIn("selection.items[0]", result["error"])
+        outside = self.base / "outside.md"
+        outside.write_text("项目外的文件", encoding="utf-8")
+        (self.project / "runs/link.md").symlink_to(outside)
+        items = [self.local_ref("runs/link.md")]
+        code, result = self.pack(items, selection=self.selection(items, "link.json"))
+        self.assertEqual(code, 2, result)
+        self.assertIn("resolves outside runs/", " ".join(result["errors"]))
+        self.assertEqual(self.snapshots(), [])
+        pinned = [self.local_ref("runs/x.md", revision=3)]
+        code, result = self.pack(pinned, selection=self.selection(pinned, "int.json"))
+        self.assertEqual(code, 1, result)
+        self.assertIn("sha256", result["error"])
+
     def test_doctor_still_reports_offline_and_lists_selection(self):
         run = subprocess.run([sys.executable, "-B", str(TOOL), "doctor"], capture_output=True, text=True)
         result = json.loads(run.stdout)

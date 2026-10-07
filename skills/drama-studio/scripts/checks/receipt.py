@@ -623,10 +623,27 @@ def _saved_slots(drama: Path, project_id: str | None, artifact: str, revision: i
 
     Only receipts whose notes say the slot was matched against the response's record.slot count; one written from a
     response without a slot, or before that check existed, records only what the host's input claimed.
+
+    A confirmed identical re-send (#26) points its localRef at the unknown save it reconciles instead of at the slot;
+    its slot is that save's slot, taken only when the re-send's notes carry the slot check and the record.requestId
+    match, and the reconciled receipt is a valid save of the same input in the same project.
     """
-    return {_slot(doc): doc["requestId"] for _, doc in _receipts(drama)
-            if isinstance(doc, dict) and not check_contract("remote-receipt", doc)
-            and doc["operation"] == "save_story_artifact" and doc["outcome"] == "confirmed" and _slot(doc)
+    valid = [doc for _, doc in _receipts(drama) if isinstance(doc, dict) and not check_contract("remote-receipt", doc)]
+    by_id = {doc["requestId"]: doc for doc in valid}
+
+    def slot_of(doc: dict) -> str | None:
+        ref, notes = doc.get("localRef") or {}, _notes(doc)
+        if ref.get("kind") != "remote_receipt":
+            return _slot(doc)
+        target = by_id.get(ref.get("id"))
+        if target is None or notes.get("reconciles") != ref["id"] or notes.get("observedRequestId") != ref["id"]:
+            return None
+        same = (target["operation"], target["inputFingerprint"], target["remote"]["projectId"]) == (
+            "save_story_artifact", doc["inputFingerprint"], doc["remote"]["projectId"])
+        return _slot(target) if same else None
+
+    return {slot_of(doc): doc["requestId"] for doc in valid
+            if doc["operation"] == "save_story_artifact" and doc["outcome"] == "confirmed" and slot_of(doc)
             and _notes(doc).get("slotCheck") == SLOT_CHECK
             and project_id in (None, doc["remote"]["projectId"])
             and (doc["remote"].get("artifactId"), doc["remote"].get("revision")) == (artifact, revision)}

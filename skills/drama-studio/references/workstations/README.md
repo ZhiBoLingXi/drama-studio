@@ -9,9 +9,9 @@
 ## 每次运行的固定协议
 
 1. **任务**（`task`）：目标、非目标、读取范围、写入范围、授权来源、返修上限。读取范围可以大于写入范围；授权为 `none` 时不写任何东西。
-2. **上下文**（`context-snapshot`）：本次实际给了哪些版本、原文区间和知识卡，各自理由，以及遗漏项。必需材料缺失时 `completeness` 只能是 `incomplete`；超出预算就缩小工作单元，不静默截断。宿主（模型）先写选材清单（`selection`，格式见 `../../schemas/selection.schema.json`），再用 `scripts/drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role <角色> --budget <字数>` 从 `.drama/cache/` 与 `knowledge/cards/` 组装快照：工具按实际截取文本计算 `chars` 与 sha256，核对缓存指纹，按角色过滤用途，超预算退出码 2 且不写文件。选什么由模型判断，工具不做相关性排序。
+2. **上下文**（`context-snapshot`）：本次实际给了哪些版本、原文区间和知识卡，各自理由，以及遗漏项。必需材料缺失时 `completeness` 只能是 `incomplete`；超出预算就缩小工作单元，不静默截断。宿主（模型）先写选材清单（`selection`，格式见 `../../schemas/selection.schema.json`），再用 `scripts/drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role <角色> --budget <字数>` 从 `.drama/cache/`、`knowledge/cards/` 以及项目 `.drama/`、`runs/` 内的本地文件（`local_file`，见 [定向修订单独装包](#定向修订单独装包)）组装快照：工具按实际截取文本计算 `chars` 与 sha256，核对缓存指纹，按角色过滤用途，超预算退出码 2 且不写文件。选什么由模型判断，工具不做相关性排序。
 3. **产出**：完整可读的作品材料。联网时作为 mali-story 候选保存，保存不等于采用。源码中的保存工具为 `save_story_artifact`，实际名称以当前会话可用工具为准（见 [资料与拉片](../mali-story.md)）。保存的是产出，不是上下文快照。kind／slot／episodeRef、保存与缓存步骤见 [候选保存与对账](../mali-story.md#候选保存与对账)；读到的全文用 `drama_tools.py receipt cache` 落到本地缓存。
-4. **交接**（`run-handoff`）：输出引用、状态变化提案、上游变更提案、未完成项和下一动作。只写本层候选；涉及上游决定时提出 `changeProposals`，不静默改写。
+4. **交接**（`run-handoff`）：输出引用、状态变化提案、上游变更提案、未完成项和下一动作。只写本层候选；涉及上游决定时提出 `changeProposals`，不静默改写。两个可选字段：`finishedAt` 写运行结束时间（ISO 8601，带时区，如 `2026-10-07T16:30:00+08:00`），`status` 判断“最近运行”时优先用它，缺失才回落到文件修改时间；一次运行读了不止一个上下文包（如 C6 首读、次读）时，第一个填 `contextSnapshotId`，其余写进 `additionalSnapshotIds`，`impact` 对其中任一快照失效都把运行标为 `stale`。旧记录不写这两个字段也照样有效。
 5. **远端回执**（`remote-receipt`）：每次保存记录 `requestId` 与输入指纹。结果未知时先按 `requestId` 对账，不盲目重试；没有连接或未获授权时记 `outcome: not_sent`，`artifactId` 与 `revision` 必须为 null。保存的响应用 `drama_tools.py receipt record` 生成回执，`receipt pending` 列出待对账项，方法见 [候选保存与对账](../mali-story.md#候选保存与对账)。
 
 ## 执行层级
@@ -28,6 +28,18 @@
 | 首读不看作者解释（`context-pack` 只按分区拦 `current_plan`；放进其他分区的作者说明工具不识别）、状态变化如实上报、不越权改稿、远端 ID 不编造 | M | 本文件约定；只能靠审读抽查发现违反 |
 
 S 通过只说明格式与脚本规则满足，不说明引用在远端存在、引文支持结论或创作质量达标。
+
+## 定向修订单独装包
+
+按审读意见定向修订一集时，单独装一个包，不沿用写初稿时的快照：
+
+- 被修订稿列为 `current_plan`（要在它上面改）或 `project_facts`（只作事实依据）；已保存为候选的按 `remote_artifact` 引用其修订号。
+- 审读记录、修改单等本地文件以 `local_file` 列入：`ref.id` 写项目内的相对路径，只能在 `.drama/`（不含 `.drama/cache/`，缓存一律按 `remote_artifact` 经 manifest 装入）或 `runs/` 之内，如 `.drama/reviews/rev-ep45-1.json`、`runs/ep45/fix-list.md`；绝对路径、`..`、反斜杠和解析到这两个目录之外的符号链接都被拒绝（退出码 1 或 2）。`revision` 写 `null`，或写希望钉住的 `sha256:<hex>`（与文件不符时退出码 2）；工具读取原字节，把实际 sha256 同时写进快照的 `revision` 与 `sha256`。文件不存在时列入 `omitted`。
+- 这样修订的输入都留在快照里，换会话也能知道这次修订依据的是哪一版审读意见。`impact` 目前只评估 `remote_artifact` 依赖：快照里的 `local_file`（任务文件除外）一律报 `unknown`（“该引用类型的依赖未评估”），本地文件改动后需要人判断是否重跑。
+
+## 并行子代理的临时文件
+
+几个子代理同时跑工位（如分批精修）时，每个子代理用自己的临时文件名（带 runId 或集号，如 `tmp-ep45-c5-save.json`），不共用 scratchpad 里的辅助脚本或日志文件，也不改别人的文件。共用一个辅助脚本时，后启动的会覆盖先启动的，记录可能写进别人的日志。需要共享的只读材料先由编排方写好，再交给各子代理读取；各子代理的产出各写各的文件，由编排方汇总。
 
 ## 知识类型 K1–K9
 

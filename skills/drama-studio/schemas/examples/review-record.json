@@ -6,6 +6,13 @@
     "id": "art-ep21-draft",
     "revision": 1
   },
+  "additionalTargets": [
+    {
+      "kind": "remote_artifact",
+      "id": "art-ep22-draft",
+      "revision": 1
+    }
+  ],
   "readingScope": [
     {
       "kind": "remote_artifact",
@@ -15,6 +22,11 @@
     {
       "kind": "remote_artifact",
       "id": "art-ep21-draft",
+      "revision": 1
+    },
+    {
+      "kind": "remote_artifact",
+      "id": "art-ep22-draft",
       "revision": 1
     }
   ],

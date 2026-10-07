@@ -1,7 +1,8 @@
 """Assemble a reproducible context-snapshot from a task, a host selection and local cache/knowledge files.
 
 Deterministic assembly only: no semantic selection, no truncation, no network, no model. Reads --task,
---selection, <project>/.drama/cache/ (through its manifest) and <project>/knowledge/cards/; writes only
+--selection, <project>/.drama/cache/ (through its manifest), <project>/knowledge/cards/ and, for local_file
+items, files inside <project>/.drama/ (not its cache) or <project>/runs/; writes only
 <project>/.drama/snapshots/, and never overwrites an existing snapshot.
 """
 from __future__ import annotations
@@ -17,6 +18,7 @@ from .receipt import effective_entries
 
 MANIFEST_VERSION = "drama-studio/cache-manifest/v0"
 PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns"]
+LOCAL_ROOTS = (".drama", "runs")  # the only folders a local_file selection item may read from
 
 
 def _sha(data: bytes) -> str:
@@ -113,6 +115,39 @@ def _read_card(cards: Path, ref: dict, where: str, project_id: str, errors: list
     return "ok", (data, card["usage"])
 
 
+def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
+    """A local_file (#26): a project-relative path inside .drama/ or runs/, read as is and pinned by its sha256.
+
+    Absolute paths, `..`, backslashes and anything resolving outside those two folders (symlinks included) are input
+    errors. The revision is null or the sha256 the host expects; the snapshot records the file's actual sha256 as both.
+    """
+    name = ref["id"]
+    parts = name.split("/")
+    if (not name or name.startswith("/") or "\\" in name or "\0" in name or any(part in ("", ".", "..") for part in parts)
+            or parts[0] not in LOCAL_ROOTS or len(parts) < 2):
+        raise ValueError(f"{where}: local_file id must be a relative path inside {' or '.join(f'{folder}/' for folder in LOCAL_ROOTS)} "
+                         "without '..' (e.g. .drama/reviews/rev-ep45-1.json or runs/ep45/review.md)")
+    if parts[:2] == [".drama", "cache"]:
+        raise ValueError(f"{where}: cached artifacts are packed as remote_artifact through the cache manifest, not as local_file")
+    if ref["revision"] is not None and not (isinstance(ref["revision"], str) and re.fullmatch(r"sha256:[a-f0-9]{64}", ref["revision"])):
+        raise ValueError(f"{where}: a local_file revision must be null or the sha256:<hex> of the file")
+    path = root / name
+    for folder in LOCAL_ROOTS:
+        if (root / folder).exists() or (root / folder).is_symlink():
+            _inside(root / folder, root, folder)
+    resolved = path.resolve()
+    if not resolved.is_relative_to((root / parts[0]).resolve()):
+        errors.append(f"{where}: {name} resolves outside {parts[0]}/ ({resolved}); refused to read it")
+        return "error", None
+    if not resolved.is_file():
+        return "missing", None
+    data = resolved.read_bytes()
+    if ref["revision"] is not None and ref["revision"] != _sha(data):
+        errors.append(f"{where}: revision pins {ref['revision']} but the file is {_sha(data)}")
+        return "error", None
+    return "ok", data
+
+
 def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) -> list[str]:
     named = []
     for error in errors:
@@ -159,9 +194,9 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
     for index, item in enumerate(chosen["items"]):
         ref = item["ref"]
         where = f"selection.items[{index}] ({_label(ref)})"
-        if ref["kind"] not in ("remote_artifact", "knowledge_card"):
-            raise ValueError(f"{where}: kind must be remote_artifact (cache) or knowledge_card")
-        if not isinstance(ref["revision"], int) or isinstance(ref["revision"], bool):
+        if ref["kind"] not in ("remote_artifact", "knowledge_card", "local_file"):
+            raise ValueError(f"{where}: kind must be remote_artifact (cache), knowledge_card or local_file (.drama/ or runs/)")
+        if ref["kind"] != "local_file" and (not isinstance(ref["revision"], int) or isinstance(ref["revision"], bool)):
             raise ValueError(f"{where}: revision must pin an integer revision")
         span = ref.get("range")
         if span and span["start"] > span["end"]:
@@ -170,6 +205,9 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         if ref["kind"] == "remote_artifact":
             entries = _manifest(cache) if entries is None else entries
             status, loaded = _read_cache(root, cache, entries, ref, where, allow_unverified, errors, unknowns)
+        elif ref["kind"] == "local_file":
+            status, loaded = _read_local(root, ref, where, errors)
+            loaded = (loaded, None) if status == "ok" else loaded
         else:
             status, loaded = _read_card(cards, ref, where, task_doc["project"]["localId"], errors)
         if status in ("missing", "retired"):
@@ -184,6 +222,9 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             prior = slots.setdefault(detail, (ref["id"], ref["revision"], index))
             if prior[:2] != (ref["id"], ref["revision"]):
                 errors.append(f"{where}: slot {detail!r} is already packed as {prior[0]}@r{prior[1]} (selection.items[{prior[2]}]); one package cannot mix revisions of a slot")
+        elif ref["kind"] == "local_file":
+            usage = item.get("usage", "project_text")
+            clean["revision"] = _sha(data)  # the file's bytes are its revision, as for the task item
         else:
             usage = detail
             if "usage" in item and item["usage"] != usage:

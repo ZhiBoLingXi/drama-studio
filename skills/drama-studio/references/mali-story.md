@@ -70,9 +70,9 @@ slot 是跨修订的稳定身份：同一产出的每次修订用同一 slot，`
 **步骤**：
 
 1. 读上下文：`get_writing_context` 读到 `nextOffset` 为 null，保存响应，`receipt record <项目> <响应> --operation get_writing_context --request-id <读取ID> --input <输入>`。保存时的 `input_snapshot_id` 取其 `snapshotId`；与本地已确认的上下文回执不符时 record 会给出警告。
-2. 保存：先把完整输入（含固定的 `request_id`）写成文件，再调用 `save_story_artifact`；`expected_revision` 取该 slot 当前最高修订，新 slot 为 0。响应原样保存，丢失就不存。
+2. 保存：先把完整输入（含固定的 `request_id`）写成文件，再调用 `save_story_artifact`；`expected_revision` 取该 slot 当前最高修订，新 slot 为 0。响应原样保存，丢失就不存。正文须逐字保真，见下文 [保存正文逐字保真](#保存正文逐字保真)。
 3. 记录：`receipt record <项目> <响应> --operation save_story_artifact --request-id <ID> --input <输入>`，写入 `.drama/receipts/<requestId>.json`。成功得到 artifactId、revision；HTTP 409／`VERSION_CONFLICT` 记 `rejected_conflict`，有两种原因：`expected_revision 已过期`，或服务端发现同一 requestId 配了不同输入。前者重新读取后按新修订号用新 requestId 保存；后者说明 requestId 被误复用，先查清原请求再决定，不要改输入重发。响应缺失、无法解析、`MCP_OUTCOME_UNKNOWN` 或 5xx 记 `unknown`，`retryAllowed` 恒为 false。同一 requestId 再次记录相同输入视为重放；输入不同则退出码 2，原回执不变。
-4. 缓存：`read_story_artifact` 从 offset 0 连续读到 `nextOffset` 为 null，保存每块响应，执行 `receipt cache <项目> <全部分块> [get 响应]`。全文写入 `.drama/cache/<artifactId>@r<revision>.md`（原样 UTF-8，不加换行），manifest 只追加。全文 sha256 必须等于服务端 `fingerprint`；缺块、断档、末块缺失或内容被改都拒绝（退出码 2）。没有 get 响应时须给 `--slot`、`--kind`（分集还要 `--episode-ref`）。这样给的值只是宿主声明（`slotSource: host`；本地有 slot 一致的 confirmed 保存回执时为 `receipt`），写错了带 get 响应重新缓存即可纠正：同一产物修订的条目以最强来源为准（`record` > `receipt` > `host`），工具追加一条纠正 slot、kind、episodeRef 的条目，旧条目不改不删；来源相同或更弱而取值不同的调用被拒绝（退出码 2）。保存回执只担保 slot：靠回执的调用只能纠正宿主声明的 slot，kind 或 episodeRef 与已有条目不同时也被拒绝，须带 get 响应。宿主只通过 `receipt` 工具写 manifest，条目不手工修改。只有 `get_story_artifact` 响应时记 `verified: false`，装包默认不用未验证缓存。
+4. 缓存：`read_story_artifact` 从 offset 0 连续读到 `nextOffset` 为 null，保存每块响应，执行 `receipt cache <项目> <全部分块> [get 响应]`。全文写入 `.drama/cache/<artifactId>@r<revision>.md`（原样 UTF-8，不加换行），manifest 只追加。全文 sha256 必须等于服务端 `fingerprint`；缺块、断档、末块缺失或内容被改都拒绝（退出码 2）。没有 get 响应时须给 `--slot`、`--kind`（分集还要 `--episode-ref`）。这样给的值只是宿主声明（`slotSource: host`；本地有 slot 一致的 confirmed 保存回执时为 `receipt`，经对账确认的重发回执也算：它的 `localRef` 指向原 unknown 回执、`notes` 记有 `slotCheck`，slot 取原回执的 slot），写错了带 get 响应重新缓存即可纠正：同一产物修订的条目以最强来源为准（`record` > `receipt` > `host`），工具追加一条纠正 slot、kind、episodeRef 的条目，旧条目不改不删；来源相同或更弱而取值不同的调用被拒绝（退出码 2）。保存回执只担保 slot：靠回执的调用只能纠正宿主声明的 slot，kind 或 episodeRef 与已有条目不同时也被拒绝，须带 get 响应。宿主只通过 `receipt` 工具写 manifest，条目不手工修改。只有 `get_story_artifact` 响应时记 `verified: false`，装包默认不用未验证缓存。
 5. 对账 unknown：`receipt pending <项目>` 在 `pending` 列出未决的保存，读操作的 unknown 单列在 `read_only_unknown`（重读即可，没有写入需要对账）。`prepare_story_context` 没有按 requestId 查询的办法，其 unknown 列在 `unreconcilable_unknown`：重试前先用 `get_writing_context` 重读上下文状态。回执只追加，对账结果另记一份回执，用 `--reconciles <原 requestId>` 指向原回执；只有 confirmed 的响应能了结 unknown。三种方式：
    - get（S）：`list_story_artifacts(project_id, slot)` → 对高于 expectedRevision 的修订逐个 `get_story_artifact`，比对 `record.requestId` → 找到后 `receipt record <项目> <get 响应> --operation get_story_artifact --request-id <新读取ID> --input <get 输入> --reconciles <原 requestId>`，工具核对 `record.requestId`。
    - list（M）：只凭列表判断时用 list 响应记录；输入须按原保存的 slot 过滤，项目也须一致，且列表中至少有一行同 slot、修订号大于原 expectedRevision、inputSnapshotId 相同，匹配行记入 notes。列表行不带 requestId，这是宿主判断，`pending` 记为 `resolved_host_judged`，不是 `resolved_verified`。列表为空或没有这样的行时拒绝记录：保存多半没有落地，改用重发。
@@ -81,3 +81,11 @@ slot 是跨修订的稳定身份：同一产出的每次修订用同一 slot，`
    get 与重发记为 `resolved_verified`。直接用原 requestId 记录重发响应会被拒绝（`outcome_differs`，退出码 2），因为原回执不会被改写。对账前不换新 requestId 重试，以免重复候选或重复计费。
 
 `inputFingerprint` 是 `--input` 规范 JSON（键排序、UTF-8、紧凑分隔；忽略以 `_` 开头的顶层注释键）的 sha256，只用于本地冲突判断，与服务端 `requestFingerprint` 算法不同，不能相互比较。
+
+### 保存正文逐字保真
+
+模型转写长正文时会悄悄改字：D3 出现过两次，直引号变弯引号、省略号变破折号，保存的候选与本地稿不再一致。保存正文时：
+
+1. 先把要传的正文写成文件，与源文件用 `cmp` 比对一致后，才把这个文件的内容放进保存输入；不要凭记忆或重新输入一遍正文。
+2. 保存后按步骤 4 读回全文，比对服务端 `fingerprint` 与本地源文件的 sha256（`sha256:<hex>`）。一致才算保存的是这份稿。
+3. 不一致时只做一次纠错重存：用新的 `request_id`（原 ID 加 `-fix`，如 `ep45-draft-save-1-fix`），`expected_revision` 取刚才那个错误修订号，正文按第 1 条重新准备。错误的修订保留在远端，不删除、不采用，在运行日志（`run-handoff` 的 `unknowns` 或 `unfinished`）注明它的修订号与错在哪里。纠错后仍不一致就停下，告知用户，不再重试。
