@@ -1,0 +1,34 @@
+{
+ "schemaVersion": "mali-tool-result/v1",
+ "ok": true,
+ "data": {
+  "projectId": "c1c04a99f1ec4e4d8f963",
+  "pageId": "76681133-9e48-4010-b9ff-4d7dfb4e69dd",
+  "revision": 2,
+  "isCurrent": true,
+  "producer": "external_ai",
+  "inputSnapshotId": "sha256:195d650d16bc1424441c1d0746115a973dd3b1df9c8ac7e88fd823e66bf91004",
+  "label": null,
+  "fingerprint": "sha256:54815d699b19b1d27fd9cd1e3f33e0535fc087638563b2dfe16eb1aad29b09bf",
+  "offset": 20,
+  "offsetUnit": "unicode_code_points",
+  "text": "ama-studio #34 真实响应夹具。不是创作内容。",
+  "totalCharacters": 49,
+  "nextOffset": null,
+  "atEnd": true,
+  "coveredRange": {
+   "from": 20,
+   "to": 49
+  },
+  "resourceUri": "mali-story://projects/c1c04a99f1ec4e4d8f963/pages/76681133-9e48-4010-b9ff-4d7dfb4e69dd/revisions/2/fingerprints/54815d699b19b1d27fd9cd1e3f33e0535fc087638563b2dfe16eb1aad29b09bf/chunks/20",
+  "nextResourceUri": null,
+  "contentTrust": "reference_data"
+ },
+ "recovery": {
+  "action": "none",
+  "retrySafe": false
+ },
+ "transport": {
+  "status": 200
+ }
+}

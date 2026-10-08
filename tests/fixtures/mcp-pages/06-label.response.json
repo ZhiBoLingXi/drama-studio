@@ -1,0 +1,16 @@
+{
+ "schemaVersion": "mali-tool-result/v1",
+ "ok": true,
+ "data": {
+  "revision": 1,
+  "label": "探测基线",
+  "previousLabel": null
+ },
+ "recovery": {
+  "action": "none",
+  "retrySafe": false
+ },
+ "transport": {
+  "status": 200
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "project_id": "c1c04a99f1ec4e4d8f963",
+ "page_id": "76681133-9e48-4010-b9ff-4d7dfb4e69dd",
+ "expected_revision": 1,
+ "body": "页面探测 r2：更新后的正文。用于 drama-studio #34 真实响应夹具。不是创作内容。",
+ "producer": "external_ai",
+ "input_snapshot_id": "sha256:195d650d16bc1424441c1d0746115a973dd3b1df9c8ac7e88fd823e66bf91004",
+ "request_id": "d5-page-probe-update-r2"
+}
