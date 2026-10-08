@@ -175,6 +175,7 @@ python3 -B skills/drama-studio/scripts/drama_tools.py import-project apply ../my
 
 - 集号 `<N>` 可写成 `ep03`、`ep-003`、`第3集` 或 `3`，统一成至少两位的 `ep-03`（与上面 mali-story 说明的示例一致）。
 - 跳过：版本后缀或多集合并（如 `characters-v1.md`、`01-10-v1.md`）、稿件目录的子目录（如 `planning/experiments/`）、`reference/`（对标资料）、`deliveries/`（交付汇编）、项目根目录文件（如 `PROJECT.md`）、其他目录、符号链接、非 Markdown、空文件、非 UTF-8、超过 500000 字的文件；多个文件映射到同一 slot 时全部跳过。隐藏目录（`.drama/` 等）不扫描。
+- 判断冲突时，远端形如 `ep-<数字>` 或 `ep-<数字>-<后缀>` 的 slot 按集号整数比较：远端 `ep-003-draft` 与本地 `ep-03-draft` 视为同一 slot，判为冲突，冲突项的 `remoteSlots` 带远端原始 slot 名。生成的 slot 仍是两位补零。
 - 正文按文件原始字节解码，不改换行或标点，`bodySha256` 是文件字节的 sha256。
 
 计划和请求文件都不是保存结果，更不是采用；输出带 `remote_verified: false`、`adoption_verified: false`。

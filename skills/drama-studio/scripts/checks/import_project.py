@@ -25,7 +25,9 @@ Mapping rules (conservative; anything not matched below is reported as skipped w
 * A file that is empty, not UTF-8, or longer than the 500000-character body limit is skipped.
   When several files map to the same slot, all of them are skipped.
 * A slot that already has any revision in the listing is a conflict (with the highest remote
-  revision); only slots absent remotely are importable, so every request uses expected_revision 0.
+  revision). Remote slots shaped `ep-<digits>` or `ep-<digits>-<suffix>` are compared by episode
+  number as an integer, so a remote `ep-003-draft` conflicts with a local `ep-03-draft`; the
+  conflict carries the remote slot names as listed. Generated slots stay two-digit padded; only slots absent remotely are importable, so every request uses expected_revision 0.
 """
 from __future__ import annotations
 
@@ -45,6 +47,7 @@ SKIPPED_FOLDERS = {"reference": "reference/ 是对标与拉片资料，不是本
 BODY_LIMIT = 500000  # save_story_artifact body maxLength
 SNAPSHOT = re.compile(r"sha256:[a-f0-9]{64}")
 PRODUCERS = ("codex", "human", "external_ai")
+EPISODE_SLOT = re.compile(r"ep-(?P<n>\d+)(?P<suffix>-.+)?")
 _N = r"(?:ep-?|第)?0*(?P<n>\d{1,4})(?:集)?"
 EPISODE_RULES = {  # folder -> [(file-name pattern, kind, slot suffix)]
     "episodes": [(re.compile(_N + r"(?:-?draft|正文)?\.md", re.I), "episode_draft", "draft")],
@@ -138,6 +141,12 @@ def _scan(project: Path, exclude: Path | None) -> tuple[list[dict], list[dict]]:
     return kept, skipped
 
 
+def slot_key(slot: str) -> str:
+    """Comparison key: `ep-<digits>[-suffix]` compares by integer episode number (ep-003-draft == ep-03-draft)."""
+    match = EPISODE_SLOT.fullmatch(slot)
+    return f"ep-{int(match['n']):02d}{match['suffix'] or ''}" if match else slot
+
+
 def _listing(paths: list[str]) -> tuple[dict[str, dict], dict]:
     """Highest remote revision per slot from saved list_story_artifacts responses (one file per page)."""
     remote: dict[str, dict] = {}
@@ -163,8 +172,9 @@ def _listing(paths: list[str]) -> tuple[dict[str, dict], dict]:
                     and isinstance(revision, int) and not isinstance(revision, bool) and revision >= 1):
                 raise ValueError(f"--listing {name} has a row without a slot and a revision >= 1: {row!r}")
             rows_seen += 1
-            seen = remote.setdefault(row["slot"], {"remoteRevision": 0, "remoteKinds": set()})
+            seen = remote.setdefault(slot_key(row["slot"]), {"remoteRevision": 0, "remoteKinds": set(), "remoteSlots": set()})
             seen["remoteRevision"] = max(seen["remoteRevision"], revision)
+            seen["remoteSlots"].add(row["slot"])
             if isinstance(row.get("kind"), str):
                 seen["remoteKinds"].add(row["kind"])
     if open_pages != 1:  # keyset pagination: only the last page has nextCursorId null
@@ -172,6 +182,7 @@ def _listing(paths: list[str]) -> tuple[dict[str, dict], dict]:
                          "expected exactly one (the last page). List again with cursor_id until nextCursorId is null and pass every page")
     for seen in remote.values():
         seen["remoteKinds"] = sorted(seen["remoteKinds"])
+        seen["remoteSlots"] = sorted(seen["remoteSlots"])
     return remote, {"pages": len(paths), "rows": rows_seen, "slots": len(remote)}
 
 
@@ -183,12 +194,13 @@ def _plan(project: str, listings: list[str], exclude: Path | None = None) -> tup
     remote, summary = _listing(listings)
     create, conflicts = [], []
     for item in items:
-        seen = remote.get(item["slot"])
+        seen = remote.get(slot_key(item["slot"]))
         if seen is None:
             create.append(item)
         else:
             conflicts.append({**item, "remoteRevision": seen["remoteRevision"], "remoteKinds": seen["remoteKinds"],
-                              "reason": f"远端 slot {item['slot']} 已有修订 r{seen['remoteRevision']}，不生成请求；先读远端稿再由主创决定"})
+                              "remoteSlots": seen["remoteSlots"],
+                              "reason": f"远端 slot {'、'.join(seen['remoteSlots'])} 已有修订 r{seen['remoteRevision']}，不生成请求；先读远端稿再由主创决定"})
     public = lambda rows: [{k: v for k, v in row.items() if not k.startswith("_")} for row in rows]  # noqa: E731
     result = {"ok": True, "project": str(root), "listing": summary,
               "create": public(create), "conflicts": public(conflicts), "skipped": skipped,

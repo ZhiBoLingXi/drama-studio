@@ -106,13 +106,25 @@ class ImportProjectTests(unittest.TestCase):
                                 {"id": "a2", "slot": "ep-01-draft", "kind": "episode_draft", "episodeRef": "ep-01", "revision": 3},
                                 {"id": "a3", "slot": "unrelated", "kind": "research", "revision": 1}])
         preview = self.run_json("import-project", "preview", self.project, "--listing", listing)
-        self.assertEqual([(c["slot"], c["remoteRevision"], c["source"]) for c in preview["conflicts"]], [("ep-01-draft", 3, "episodes/ep-01.md")])
+        self.assertEqual([(c["slot"], c["remoteRevision"], c["source"], c["remoteSlots"]) for c in preview["conflicts"]],
+                         [("ep-01-draft", 3, "episodes/ep-01.md", ["ep-01-draft"])])
         self.assertNotIn("ep-01-draft", {item["slot"] for item in preview["create"]})
         applied = self.apply(listing)
         self.assertEqual([c["slot"] for c in applied["conflicts"]], ["ep-01-draft"])
         slots = {json.loads(path.read_text(encoding="utf-8"))["slot"] for path in self.out.glob("*.json")}
         self.assertNotIn("ep-01-draft", slots)
         self.assertEqual(len(slots), 5)
+
+    def test_three_digit_remote_episode_slot_conflicts_with_two_digit_local_slot(self):
+        listing = self.listing([{"id": "a1", "slot": "ep-001-draft", "kind": "episode_draft", "episodeRef": "ep-001", "revision": 2},
+                                {"id": "a2", "slot": "ep-0002", "kind": "episode_draft", "revision": 1},
+                                {"id": "a3", "slot": "ep-001-outlines", "kind": "episode_outline", "revision": 1}])
+        preview = self.run_json("import-project", "preview", self.project, "--listing", listing)
+        conflicts = {c["slot"]: (c["remoteRevision"], c["remoteSlots"]) for c in preview["conflicts"]}
+        self.assertEqual(conflicts, {"ep-01-draft": (2, ["ep-001-draft"])})
+        self.assertIn("ep-01-draft", {c["slot"] for c in self.apply(listing)["conflicts"]})
+        self.assertNotIn("ep-01-draft", {json.loads(p.read_text(encoding="utf-8"))["slot"] for p in self.out.glob("*.json")})
+        self.assertIn("ep-01-outline", {item["slot"] for item in preview["create"]})  # different suffix is a different slot
 
     def test_apply_writes_one_request_per_item_and_only_into_out(self):
         before = snapshot(self.project)
