@@ -113,6 +113,7 @@ def main() -> int:
     impact.add_argument("--slot", help="Target slot; needs --revision")
     impact.add_argument("--revision", help="The slot's new revision (integer >= 1)")
     impact.add_argument("--artifact", help="artifactId of the new revision, resolved through the cache manifest; excludes --slot/--revision")
+    impact.add_argument("--card", help="Only snapshots and runs packing this knowledge card, judged on it alone; excludes --slot/--revision/--artifact")
     args = parser.parse_args()
     try:
         if args.command == "doctor":
@@ -147,7 +148,7 @@ def main() -> int:
                 print(render_status(result))
                 return 0
         elif args.command == "impact":
-            result = run_impact(args.project, args.slot, args.revision, args.artifact)
+            result = run_impact(args.project, args.slot, args.revision, args.artifact, args.card)
         else:
             result = run_dup_check(args.new, args.source, ks=args.k, threshold=args.threshold)
         print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -5,7 +5,7 @@ files, no network, no model, no chat history. Passing proves only what those fil
 records say is next and flags a run whose snapshot pins an older revision than the newest trusted one in the local
 cache; it does not judge whether that step is right, and it never says the remote has nothing newer. `stale` means a
 snapshot pins an older revision of the target slot through a manifest entry whose slot a get record or a save receipt
-vouches for; `current` means no recorded execution dependency points at an older revision of that slot. Reference
+vouches for, or packs a knowledge card that has a newer local revision or whose newest revision is retired (#46); `current` means no recorded execution dependency points at an older revision of that slot. Reference
 kinds whose dependencies are not assessed, content-level implicit dependencies aside, are `unknown`; anything else
 uncertain is `unknown` too, and nothing here proves remote state or adoption.
 """
@@ -18,9 +18,11 @@ from pathlib import Path
 import shlex
 
 from .contract_check import check_contract, finished_at
+from .knowledge_store import latest_revisions, store_entries
 from .receipt import MANIFEST, SLOT_SOURCES, area, contained, drama_dir, effective_entries, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
+NOTE_CARD = "--card 只列出引用这张卡的快照与运行（读不出记录的也列出，标 unknown），只按这张卡判定，不看 slot 修订与其他引用；工具只读，不自动重跑运行，也不改写正文。"
 LINE_BREAKS = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"  # what str.splitlines splits on
 MAX_DEPTH = 50  # context_snapshot references followed before giving up as unknown
 OPEN_RUNS = ("planned", "running", "interrupted")
@@ -132,37 +134,84 @@ def _ref_label(index: int, ref: dict) -> str:
     return f"items[{index}] {name}" + (f"@r{ref['revision']}" if type(ref["revision"]) is int else "")
 
 
-def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tuple = ()) -> list[dict]:
+def _card_index(root: Path) -> dict:
+    """{cardId: {"latest": revision or None, "retired": bool, "valid": {revisions}, "invalid": [revisions]}} of the local store."""
+    entries = store_entries(root)
+    latest, invalid = latest_revisions(entries)
+    cards: dict[str, dict] = {}
+    for entry in entries:
+        if entry["cardId"] is not None:
+            card = cards.setdefault(entry["cardId"], {"latest": None, "retired": False, "valid": set(), "invalid": sorted(invalid.get(entry["cardId"], []))})
+            if not entry["errors"]:
+                card["valid"].add(entry["revision"])
+    for card_id, entry in latest.items():
+        cards[card_id].update(latest=entry["revision"], retired=entry["doc"]["processing"] == "retired")
+    return cards
+
+
+def judge_card(ref: dict, cards: dict) -> tuple[str, str]:
+    """Classify one knowledge_card reference against the local store: retired or a newer revision is stale (#46).
+
+    The newest revision is the newest one that passes validation, as `knowledge search` reads it. A card the store does
+    not hold, a pinned revision not held locally, or a failing file above the pinned revision leaves it unknown.
+    """
+    card_id, pinned = ref["id"], ref["revision"]
+    card = cards.get(card_id)
+    if card is None:
+        return "unknown", f"本地 knowledge/cards/ 中找不到卡 {card_id}"
+    if card["latest"] is None:
+        return "unknown", f"卡 {card_id} 的本地修订文件都未通过校验（{'、'.join(f'r{rev}' for rev in card['invalid'])}），无法判定"
+    if card["retired"]:
+        return "stale", f"卡 {card_id} 已退役（最新修订 r{card['latest']} 的 processing 为 retired）"
+    if type(pinned) is not int or pinned < 1:
+        return "unknown", "引用缺少不小于 1 的整数 revision，无法判断卡的新旧"
+    if card["latest"] > pinned:
+        return "stale", f"卡 {card_id} 已有 r{card['latest']}，快照引用的是 r{pinned}"
+    failing = [rev for rev in card["invalid"] if rev > pinned]
+    if failing:
+        return "unknown", f"卡 {card_id} 的 {'、'.join(f'r{rev}' for rev in failing)} 未通过校验，无法判定是否有更新的修订"
+    if pinned not in card["valid"]:
+        return "unknown", f"快照引用的卡 {card_id} r{pinned} 在本地不存在或未通过校验（本地最新有效修订为 r{card['latest']}）"
+    return "current", f"引用的是卡 {card_id} 的最新修订 r{pinned}，未退役"
+
+
+def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tuple = (), card=None) -> list[dict]:
     """Every dependency of a snapshot that is not clearly current, following context_snapshot references.
 
-    `judge(ref)` classifies one remote_artifact reference as (status, reason, slot, target revision). The task file
-    (the local_file in the task partition, as context-pack writes it) and knowledge cards are not slot dependencies;
-    every other reference kind is unknown, never silently current, and so is a chain deeper than MAX_DEPTH.
+    `judge(ref)` classifies one remote_artifact reference as (status, reason, slot, target revision). `card(ref)`
+    classifies one knowledge_card reference as (status, reason), or None when it is not to be recorded; without it
+    cards are skipped (status). The task file (the local_file in the task partition, as context-pack writes it) is
+    not a dependency; every other reference kind is unknown, never silently current, and so is a chain deeper than
+    MAX_DEPTH. Findings about the snapshots themselves (missing, damaged, cyclic, too deep) carry `structural`.
     """
     item = snapshots.get(snapshot_id)
     if item is None:
-        return [{"ref": None, "status": "unknown", "reason": f"快照 {snapshot_id} 不在 .drama/snapshots/ 中"}]
+        return [{"ref": None, "status": "unknown", "reason": f"快照 {snapshot_id} 不在 .drama/snapshots/ 中", "structural": True}]
     if item["problems"]:
-        return [{"ref": None, "status": "unknown", "reason": "快照未通过完整性检查：" + problem} for problem in item["problems"]]
+        return [{"ref": None, "status": "unknown", "reason": "快照未通过完整性检查：" + problem, "structural": True} for problem in item["problems"]]
     found = []
     for index, packed in enumerate(item["doc"]["items"]):  # omitted entries never entered the context, so they are not dependencies
         ref = packed["ref"]
         label = _ref_label(index, ref)
-        if ref["kind"] == "knowledge_card" or (ref["kind"] == "local_file" and packed["partition"] == "task"):
+        if ref["kind"] == "local_file" and packed["partition"] == "task":
             continue
-        if ref["kind"] == "remote_artifact":
+        if ref["kind"] == "knowledge_card":
+            verdict = card(ref) if card else None
+            if verdict:
+                found.append({"ref": label, "status": verdict[0], "reason": verdict[1], "card": ref["id"]})
+        elif ref["kind"] == "remote_artifact":
             status, why, slot, target = judge(ref)
             if status != "current":
                 found.append({"ref": label, "status": status, "reason": why, "slot": slot, "pinned": ref["revision"], "target": target})
         elif ref["kind"] != "context_snapshot":
             found.append({"ref": label, "status": "unknown", "reason": "该引用类型的依赖未评估"})
         elif ref["id"] in (*trail, snapshot_id):
-            found.append({"ref": label, "status": "unknown", "reason": "快照之间的引用成环，无法判定"})
+            found.append({"ref": label, "status": "unknown", "reason": "快照之间的引用成环，无法判定", "structural": True})
         elif len(trail) >= MAX_DEPTH:
-            found.append({"ref": label, "status": "unknown", "reason": f"快照引用嵌套超过 {MAX_DEPTH} 层，未继续展开"})
+            found.append({"ref": label, "status": "unknown", "reason": f"快照引用嵌套超过 {MAX_DEPTH} 层，未继续展开", "structural": True})
         else:
             found += [dict(inner, ref=f"{label} > {inner['ref']}" if inner["ref"] else label)
-                      for inner in _dependencies(ref["id"], snapshots, judge, (*trail, snapshot_id))]
+                      for inner in _dependencies(ref["id"], snapshots, judge, (*trail, snapshot_id), card)]
     return found
 
 
@@ -178,8 +227,9 @@ def _verdict(result: dict, reasons: list[dict]) -> dict:
     return result
 
 
-def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge) -> dict:
-    return _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(found) for found in _dependencies(item["id"], snapshots, judge)])
+def _judge_snapshot(item: dict, snapshots: dict[str, dict], judge, card=None) -> dict:
+    return _verdict({"snapshotId": item["id"], "path": item["path"]},
+                    [_public(found) for found in _dependencies(item["id"], snapshots, judge, card=card)])
 
 
 def _claims(entries: list[dict], slot: str) -> list[dict]:
@@ -239,7 +289,7 @@ def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[lis
             produced.setdefault(identity[0], {}).setdefault(identity[1], f"outputs[{index}] {ref['id']}@r{identity[1]}")
     kept, own = [], []
     for item in found:
-        if item["status"] != "stale":
+        if item["status"] != "stale" or "card" in item:  # a card is no slot revision a run can have produced
             kept.append(item)
             continue
         slot, pinned, mine = item["slot"], item["pinned"], produced.get(item["slot"], {})
@@ -277,7 +327,7 @@ def _snapshot_ids(doc: dict) -> list[str]:
     return list(dict.fromkeys([doc["contextSnapshotId"], *doc.get("additionalSnapshotIds", [])]))
 
 
-def _judge_run(item: dict, loaded: dict[str, dict], snapshots: dict[str, dict], judge, entries: list[dict]) -> dict:
+def _judge_run(item: dict, loaded: dict[str, dict], snapshots: dict[str, dict], judge, entries: list[dict], card=None) -> dict:
     """A run is judged on every snapshot it records: contextSnapshotId and each of additionalSnapshotIds; the worst wins."""
     result = {"runId": item["id"], "path": item["path"], "contextSnapshotId": None}
     if item["problems"]:
@@ -291,7 +341,7 @@ def _judge_run(item: dict, loaded: dict[str, dict], snapshots: dict[str, dict], 
         if snapshot_id not in snapshots:
             reasons.append({"ref": ref, "status": "unknown", "reason": "所依赖的快照不在 .drama/snapshots/ 中"})
             continue
-        kept, own = _own_outputs(_dependencies(snapshot_id, loaded, judge), item["doc"], entries)
+        kept, own = _own_outputs(_dependencies(snapshot_id, loaded, judge, card=card), item["doc"], entries)
         worst = "stale" if any(found["status"] == "stale" for found in kept) else "unknown"
         text = f"所依赖的快照为 {worst}" if snapshots[snapshot_id]["status"] == worst else "所依赖的快照中有无法判定的引用"
         reasons += ([{"ref": ref, "status": worst, "reason": text}] if kept else []) + [_public(found) for found in kept + own]
@@ -302,11 +352,76 @@ def _count(items: list[dict]) -> dict:
     return {name: sum(item["status"] == name for item in items) for name in ("stale", "unknown", "current")}
 
 
-def run_impact(project: str, slot: str | None = None, revision: int | str | None = None, artifact: str | None = None) -> dict:
-    """Mark every snapshot and run stale, unknown or current against one slot revision. Read-only."""
+def _card_mode(drama: Path, card_id: str) -> dict:
+    """impact --card: only the snapshots and runs that pack this card, each judged on this card alone (#46).
+
+    A snapshot or run whose records cannot be read (damaged, missing, cyclic, too deep) may pack the card without
+    showing it, so it is listed as unknown rather than left out.
+    """
+    cards = _card_index(drama.parent)
+    target = cards.get(card_id)
+
+    def card(ref: dict):
+        return judge_card(ref, cards) if ref["id"] == card_id else None
+
+    def relevant(found: list[dict]) -> list[dict]:
+        hits = [item for item in found if item.get("card") == card_id]
+        return hits + [item for item in found if item.get("structural")] if hits or any(item.get("structural") for item in found) else []
+
+    loaded = {item["id"]: item for item in _snapshots(drama)}
+    current = lambda ref: ("current", None, "", 0)  # slot revisions are not the question here
+    snapshots, by_id = [], {}
+    for item in loaded.values():
+        found = relevant(_dependencies(item["id"], loaded, current, card=card))
+        if found:
+            judged = _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(entry) for entry in found])
+            snapshots.append(judged)
+            by_id[item["id"]] = judged
+    runs = []
+    for item in _records(drama, "runs", "run-handoff", "runId"):
+        result = {"runId": item["id"], "path": item["path"], "contextSnapshotId": None}
+        if item["problems"]:
+            runs.append(_verdict(result, [{"ref": None, "status": "unknown", "reason": "运行记录无效，无法判定是否引用该卡：" + problem}
+                                          for problem in item["problems"]]))
+            continue
+        result["contextSnapshotId"] = item["doc"]["contextSnapshotId"]
+        if "additionalSnapshotIds" in item["doc"]:
+            result["additionalSnapshotIds"] = list(item["doc"]["additionalSnapshotIds"])
+        reasons = []
+        for snapshot_id in _snapshot_ids(item["doc"]):
+            ref = f"context_snapshot {snapshot_id}"
+            if snapshot_id not in loaded:
+                reasons.append({"ref": ref, "status": "unknown", "reason": "所依赖的快照不在 .drama/snapshots/ 中，无法判定是否引用该卡"})
+            elif snapshot_id in by_id:
+                status = by_id[snapshot_id]["status"]
+                reasons += [{"ref": ref, "status": status, "reason": f"所依赖的快照为 {status}"}, *by_id[snapshot_id]["reasons"]]
+        if reasons:
+            runs.append(_verdict(result, reasons))
+    warnings = []
+    if target is None:
+        warnings.append(f"本地 knowledge/cards/ 中找不到卡 {card_id}：可能是拼写错误，也可能卡不在本地；引用它的记录一律为 unknown")
+    if not snapshots and not runs:
+        warnings.append(f"没有快照或运行引用卡 {card_id}；结论只覆盖记录在案的引用")
+    return {"ok": True, "command": "impact", "project": str(drama.parent),
+            "target": {"card": card_id, "resolvedFrom": f"--card {card_id}", "cardInStore": target is not None,
+                       "latestRevision": target["latest"] if target else None,
+                       "retired": target["retired"] if target and target["latest"] is not None else None},
+            "snapshots": snapshots, "runs": runs, "summary": {"snapshots": _count(snapshots), "runs": _count(runs)},
+            "warnings": warnings, "note": NOTE_CARD, "read_only": True, "remote_verified": False}
+
+
+def run_impact(project: str, slot: str | None = None, revision: int | str | None = None, artifact: str | None = None,
+               card: str | None = None) -> dict:
+    """Mark every snapshot and run stale, unknown or current against one slot revision, or list those packing one card. Read-only."""
     drama = drama_dir(project)
+    if card is not None:
+        if slot is not None or revision is not None or artifact is not None:
+            raise ValueError("--card 与 --slot/--revision、--artifact 互斥：--card 只看这张卡的影响")
+        if not isinstance(card, str) or not card.strip():
+            raise ValueError("--card 不能为空")
+        return _card_mode(drama, card)
     if not ((artifact is None and slot is not None and revision is not None) or (artifact is not None and slot is None and revision is None)):
-        raise ValueError("给出 --slot 与 --revision 两者，或只给 --artifact；两组互斥，也不能只给一半")
+        raise ValueError("给出 --slot 与 --revision 两者，或只给 --artifact，或只给 --card；三组互斥，--slot/--revision 也不能只给一半")
     if artifact is None:
         text = str(revision) if type(revision) in (int, str) else ""
         if not (text.isascii() and text.isdigit() and int(text) >= 1):
@@ -323,13 +438,18 @@ def run_impact(project: str, slot: str | None = None, revision: int | str | None
                              "请用它的 get_story_artifact 响应重新缓存（receipt cache），或显式给出 --slot 与 --revision")
         (slot, revision), resolved = identity, f"--artifact {artifact}"
     loaded = {item["id"]: item for item in _snapshots(drama)}
+    cards = _card_index(drama.parent)
 
     def judge(ref: dict) -> tuple[str, str | None, str, int]:
         return (*judge_ref(ref, entries, slot, revision), slot, revision)
 
-    snapshots = [_judge_snapshot(item, loaded, judge) for item in loaded.values()]
+    def card_judge(ref: dict):  # a current card is not recorded, like a current remote_artifact
+        verdict = judge_card(ref, cards)
+        return None if verdict[0] == "current" else verdict
+
+    snapshots = [_judge_snapshot(item, loaded, judge, card_judge) for item in loaded.values()]
     by_id = {item["snapshotId"]: item for item in snapshots}
-    runs = [_judge_run(item, loaded, by_id, judge, entries) for item in _records(drama, "runs", "run-handoff", "runId")]
+    runs = [_judge_run(item, loaded, by_id, judge, entries, card_judge) for item in _records(drama, "runs", "run-handoff", "runId")]
     seen = bool(_claims(entries, slot))
     moved = {}  # artifacts an entry placed in this slot before a stronger source settled them elsewhere
     for entry in entries if not seen else []:
