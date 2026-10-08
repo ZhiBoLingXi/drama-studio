@@ -146,6 +146,39 @@ python3 -B skills/drama-studio/scripts/drama_tools.py receipt show ../my-drama d
 
 同一 requestId 输入不同、缓存分块不完整或全文哈希与服务端 `fingerprint` 不符时退出码 2，已有文件不变；响应缺失记 `unknown` 且不允许重试。回执和缓存都不是采用证据。方法见 [候选保存与对账](skills/drama-studio/references/mali-story.md#候选保存与对账)。
 
+`import-project` 把旧本地项目里的稿件整理成 mali-story 候选的保存请求。工具不联网、不调用 MCP；远端现状由宿主事先取回存成文件。**安装不等于授权**：对真实项目执行保存，需要主创逐项确认计划后才可进行。
+
+```sh
+python3 -B skills/drama-studio/scripts/drama_tools.py import-project preview ../my-drama --listing list-page1.json
+python3 -B skills/drama-studio/scripts/drama_tools.py import-project apply ../my-drama --listing list-page1.json --out ../import-requests --producer external_ai --input-snapshot-id sha256:<get_writing_context 的 snapshotId>
+```
+
+完整流程：
+
+1. 宿主用 MCP `list_story_artifacts(project_id)` 列出该项目全部候选，**不带 kind／slot 过滤**，响应原样存成文件；有 `nextCursorId` 时用 `cursor_id` 继续列，每页一个文件，都用 `--listing` 传入（只有最后一页的 `nextCursorId` 为 null，否则退出码 1）。
+2. `preview`：只读，不写任何文件。输出 JSON 计划：`create`（将创建的项，含来源文件、slot、kind、episodeRef、正文 `bodySha256`、字数）、`conflicts`（远端同 slot 已有修订，带最高远端修订号 `remoteRevision`）、`skipped`（跳过的文件与原因）。
+3. 主创确认计划。冲突项先读远端稿，由主创决定怎么处理；工具不为它们生成请求。
+4. `apply`：为每个 `create` 项在 `--out` 写一个 `<request_id>.json`，内容就是 `save_story_artifact` 的参数（`project_id`、`slot`、`kind`、`episode_ref`（分集类）、`expected_revision`、`body`、`producer`、`input_snapshot_id`、`request_id`），项目目录里其他地方不写。`project_id` 取 `.drama/project.json` 的 `remoteProjectId`，没有就退出码 1，不猜。`expected_revision` 恒为 0，因为只有远端没有的 slot 才会生成请求。`--producer`（`codex`／`human`／`external_ai`，规则见 [候选保存与对账](skills/drama-studio/references/mali-story.md#候选保存与对账)）与 `--input-snapshot-id`（先 `get_writing_context` 读到的 `snapshotId`）必须显式给出。`request_id` 为 `import-<slot>-<16 位哈希>`，哈希取除 `request_id` 外整份输入（含正文）的规范 JSON 的 sha256，同样输入重跑得到同一 ID 和逐字节相同的文件；已存在且相同的文件记 `existing: true`，内容不同则退出码 2，什么都不写。`--out` 不能是项目根目录、`.drama/` 或稿件目录本身。
+5. 宿主逐条把请求文件的内容传给 MCP `save_story_artifact`，响应原样存成文件；保存前列举到保存之间若有人写了同一 slot，服务端会以 409 拒绝，按 [候选保存与对账](skills/drama-studio/references/mali-story.md#候选保存与对账) 处理。
+6. 记录回执：`receipt record <项目> <响应> --operation save_story_artifact --request-id <request_id> --input <请求文件>`；再按逐字保真要求 `read_story_artifact` 读回全文，`receipt cache` 缓存并核对服务端 `fingerprint` 等于计划里的 `bodySha256`。
+
+映射规则（只按文件名判断，拿不准的一律跳过并写明原因）：
+
+| 本地文件 | kind | slot | episode_ref |
+| --- | --- | --- | --- |
+| `episodes/<N>.md`、`<N>-draft.md`、`<N>正文.md` | `episode_draft` | `ep-NN-draft` | `ep-NN` |
+| `planning/<N>-outline.md`、`<N>集纲.md` | `episode_outline` | `ep-NN-outline` | `ep-NN` |
+| `reviews/<N>-review.md`、`<N>评审.md` | `review` | `ep-NN-review` | `ep-NN` |
+| `planning/characters.md`、`人物.md`、`人物小传.md` | `characters` | `characters` | null |
+| `planning/series-outline.md`、`大纲.md`、`全剧大纲.md` | `series_outline` | `series-outline` | null |
+| `research/positioning.md` | `research` | `positioning` | null |
+
+- 集号 `<N>` 可写成 `ep03`、`ep-003`、`第3集` 或 `3`，统一成至少两位的 `ep-03`（与上面 mali-story 说明的示例一致）。
+- 跳过：版本后缀或多集合并（如 `characters-v1.md`、`01-10-v1.md`）、稿件目录的子目录（如 `planning/experiments/`）、`reference/`（对标资料）、`deliveries/`（交付汇编）、项目根目录文件（如 `PROJECT.md`）、其他目录、符号链接、非 Markdown、空文件、非 UTF-8、超过 500000 字的文件；多个文件映射到同一 slot 时全部跳过。隐藏目录（`.drama/` 等）不扫描。
+- 正文按文件原始字节解码，不改换行或标点，`bodySha256` 是文件字节的 sha256。
+
+计划和请求文件都不是保存结果，更不是采用；输出带 `remote_verified: false`、`adoption_verified: false`。
+
 `status` 与 `impact` 只读项目的 `.drama/`（回执、缓存 manifest、快照、运行记录；`impact` 另读 `knowledge/cards/` 判定知识卡），用于换会话或前文修订后恢复现场；不读聊天记录、不联网、不写任何文件（不建目录，不留锁文件）：
 
 ```sh
