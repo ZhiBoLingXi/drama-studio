@@ -80,6 +80,8 @@ slot 是跨修订的稳定身份：同一产出的每次修订用同一 slot，`
 
    get 与重发记为 `resolved_verified`。直接用原 requestId 记录重发响应会被拒绝（`outcome_differs`，退出码 2），因为原回执不会被改写。对账前不换新 requestId 重试，以免重复候选或重复计费。
 
+**旧本地项目导入**：已有本地稿件要成批存成候选时，先 `list_story_artifacts(project_id)`（不过滤，翻完所有页）存成文件，运行 `drama_tools.py import-project preview <项目> --listing <各页响应>` 给主创看计划（将建项、远端已有修订的冲突、跳过原因）；主创确认后再 `import-project apply ... --out <请求目录> --producer <值> --input-snapshot-id <snapshotId>` 生成逐条保存输入，按上面第 2、3、4 步逐条保存、记录、读回核对。映射规则见仓库 README。冲突项不生成请求，安装或计划都不等于保存授权。
+
 `inputFingerprint` 是 `--input` 规范 JSON（键排序、UTF-8、紧凑分隔；忽略以 `_` 开头的顶层注释键）的 sha256，只用于本地冲突判断，与服务端 `requestFingerprint` 算法不同，不能相互比较。
 
 ### 保存正文逐字保真

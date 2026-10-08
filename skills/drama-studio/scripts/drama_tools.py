@@ -14,6 +14,7 @@ from checks.contract_check import run_contract_check, schema_names
 from checks.context_pack import run_context_pack
 from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
+from checks.import_project import PRODUCERS, run_apply, run_preview
 from checks.knowledge_store import run_knowledge_search, run_knowledge_show, run_knowledge_validate
 from checks.project_status import render_status, run_impact, run_status
 from checks.reference_check import run_reference_check
@@ -105,6 +106,17 @@ def main() -> int:
     show = receipt_commands.add_parser("show", help="Print one receipt and its contract-check result")
     show.add_argument("project")
     show.add_argument("request_id")
+    importer = commands.add_parser("import-project", help="Plan saving old local drafts as mali-story candidates; never calls MCP")
+    import_commands = importer.add_subparsers(dest="import_command", required=True)
+    preview = import_commands.add_parser("preview", help="Read-only: map local drafts to slot/kind/episode_ref and report remote conflicts")
+    apply = import_commands.add_parser("apply", help="Write one save_story_artifact input JSON per non-conflicting draft into --out only")
+    for sub in (preview, apply):
+        sub.add_argument("project")
+        sub.add_argument("--listing", action="append", required=True,
+                         help="Saved list_story_artifacts response (no kind/slot filter); repeat once per page")
+    apply.add_argument("--out", required=True, help="Folder for the request files; nothing else is written")
+    apply.add_argument("--producer", required=True, choices=PRODUCERS)
+    apply.add_argument("--input-snapshot-id", required=True, help="snapshotId of the get_writing_context read (sha256:<hex>)")
     status = commands.add_parser("status", help="Next step from local receipts, runs and snapshots; read-only, reads no chat history, proves nothing remote")
     status.add_argument("project")
     status.add_argument("--json", action="store_true", help="Print JSON instead of text whose first line is the next action")
@@ -140,6 +152,10 @@ def main() -> int:
         elif args.command == "context-pack":
             result = run_context_pack(args.project, args.task, args.selection, args.role, args.budget,
                                       dry_run=args.dry_run, allow_unverified=args.allow_unverified)
+        elif args.command == "import-project" and args.import_command == "preview":
+            result = run_preview(args.project, args.listing)
+        elif args.command == "import-project":
+            result = run_apply(args.project, args.listing, args.out, args.producer, args.input_snapshot_id)
         elif args.command == "receipt":
             result = run_receipt(args)
         elif args.command == "status":
