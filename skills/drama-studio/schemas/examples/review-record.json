@@ -2,14 +2,14 @@
   "schemaVersion": "drama-studio/review-record/v0",
   "reviewId": "rev-ep21-1",
   "target": {
-    "kind": "remote_artifact",
-    "id": "art-ep21-draft",
+    "kind": "remote_page",
+    "id": "page-ep21-draft",
     "revision": 1
   },
   "additionalTargets": [
     {
-      "kind": "remote_artifact",
-      "id": "art-ep22-draft",
+      "kind": "remote_page",
+      "id": "page-ep22-draft",
       "revision": 1
     }
   ],
@@ -20,13 +20,13 @@
       "revision": 3
     },
     {
-      "kind": "remote_artifact",
-      "id": "art-ep21-draft",
+      "kind": "remote_page",
+      "id": "page-ep21-draft",
       "revision": 1
     },
     {
-      "kind": "remote_artifact",
-      "id": "art-ep22-draft",
+      "kind": "remote_page",
+      "id": "page-ep22-draft",
       "revision": 1
     }
   ],
@@ -41,8 +41,8 @@
       "evidence": [
         {
           "ref": {
-            "kind": "remote_artifact",
-            "id": "art-ep21-draft",
+            "kind": "remote_page",
+            "id": "page-ep21-draft",
             "revision": 1
           },
           "quote": "（示例引文）"

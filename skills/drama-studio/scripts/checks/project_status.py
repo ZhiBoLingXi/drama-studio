@@ -19,10 +19,12 @@ import shlex
 
 from .contract_check import check_contract, finished_at
 from .knowledge_store import latest_revisions, store_entries
-from .receipt import MANIFEST, SLOT_SOURCES, area, contained, drama_dir, effective_entries, pending, slot_rank
+from .receipt import MANIFESTS, SLOT_SOURCES, area, contained, drama_dir, effective_entries, pending, slot_rank
 
 NOTE = "current 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具只读，不自动重跑运行，也不改写正文。"
-NOTE_CARD = "--card 只列出引用这张卡的快照与运行（读不出记录的也列出，标 unknown），只按这张卡判定，不看 slot 修订与其他引用；工具只读，不自动重跑运行，也不改写正文。"
+NOTE_PAGE = ("--page 只列出引用这个页面的快照与运行（读不出记录的也列出，标 unknown），只按该页面的修订判定，不看 slot 与其他引用；"
+             "版本标签（如“主创通过”）不是制作采用，也不影响判定。工具只读，不自动重跑运行，也不改写正文。")
+NOTE_CARD ="--card 只列出引用这张卡的快照与运行（读不出记录的也列出，标 unknown），只按这张卡判定，不看 slot 修订与其他引用；工具只读，不自动重跑运行，也不改写正文。"
 LINE_BREAKS = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"  # what str.splitlines splits on
 MAX_DEPTH = 50  # context_snapshot references followed before giving up as unknown
 OPEN_RUNS = ("planned", "running", "interrupted")
@@ -88,8 +90,8 @@ def _entries(drama: Path) -> list[dict]:
         manifest = json.loads(path.read_bytes().decode("utf-8"))
     except ValueError as error:
         raise ValueError(f"cache manifest {path} 不是有效的 UTF-8 JSON（{error}）；无法判定任何依赖") from error
-    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
-        raise ValueError(f"cache manifest {path} 不是 {MANIFEST} 对象；无法判定任何依赖")
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") not in MANIFESTS or not isinstance(manifest.get("entries"), list):
+        raise ValueError(f"cache manifest {path} 不是 {'／'.join(MANIFESTS)} 对象；无法判定任何依赖")
     return [entry for entry in manifest["entries"] if isinstance(entry, dict)]
 
 
@@ -175,12 +177,13 @@ def judge_card(ref: dict, cards: dict) -> tuple[str, str]:
     return "current", f"引用的是卡 {card_id} 的最新修订 r{pinned}，未退役"
 
 
-def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tuple = (), card=None) -> list[dict]:
+def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tuple = (), card=None, page=None) -> list[dict]:
     """Every dependency of a snapshot that is not clearly current, following context_snapshot references.
 
     `judge(ref)` classifies one remote_artifact reference as (status, reason, slot, target revision). `card(ref)`
     classifies one knowledge_card reference as (status, reason), or None when it is not to be recorded; without it
-    cards are skipped (status). The task file (the local_file in the task partition, as context-pack writes it) is
+    cards are skipped (status). `page(ref)` does the same for a remote_page reference (v1.2, #34), optionally adding
+    the target revision; without it a page reference is unknown. The task file (the local_file in the task partition, as context-pack writes it) is
     not a dependency; every other reference kind is unknown, never silently current, and so is a chain deeper than
     MAX_DEPTH. Findings about the snapshots themselves (missing, damaged, cyclic, too deep) carry `structural`.
     """
@@ -199,6 +202,13 @@ def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tu
             verdict = card(ref) if card else None
             if verdict:
                 found.append({"ref": label, "status": verdict[0], "reason": verdict[1], "card": ref["id"]})
+        elif ref["kind"] == "remote_page" and page is not None:
+            verdict = page(ref)
+            if verdict:
+                found.append({"ref": label, "status": verdict[0], "reason": verdict[1], "page": ref["id"], "pinned": ref["revision"],
+                              **({"target": verdict[2]} if len(verdict) > 2 else {})})
+        elif ref["kind"] == "remote_page":
+            found.append({"ref": label, "status": "unknown", "reason": "按 slot 判定时不评估页面引用；页面用 impact --page <pageId> --revision <n> 判定"})
         elif ref["kind"] == "remote_artifact":
             status, why, slot, target = judge(ref)
             if status != "current":
@@ -211,7 +221,7 @@ def _dependencies(snapshot_id: str, snapshots: dict[str, dict], judge, trail: tu
             found.append({"ref": label, "status": "unknown", "reason": f"快照引用嵌套超过 {MAX_DEPTH} 层，未继续展开", "structural": True})
         else:
             found += [dict(inner, ref=f"{label} > {inner['ref']}" if inner["ref"] else label)
-                      for inner in _dependencies(ref["id"], snapshots, judge, (*trail, snapshot_id), card)]
+                      for inner in _dependencies(ref["id"], snapshots, judge, (*trail, snapshot_id), card, page)]
     return found
 
 
@@ -289,7 +299,7 @@ def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[lis
             produced.setdefault(identity[0], {}).setdefault(identity[1], f"outputs[{index}] {ref['id']}@r{identity[1]}")
     kept, own = [], []
     for item in found:
-        if item["status"] != "stale" or "card" in item:  # a card is no slot revision a run can have produced
+        if item["status"] != "stale" or "card" in item or "page" in item:  # cards and pages are no slot revisions
             kept.append(item)
             continue
         slot, pinned, mine = item["slot"], item["pinned"], produced.get(item["slot"], {})
@@ -410,10 +420,122 @@ def _card_mode(drama: Path, card_id: str) -> dict:
             "warnings": warnings, "note": NOTE_CARD, "read_only": True, "remote_verified": False}
 
 
+def judge_page(ref: dict, page_id: str, revision: int) -> tuple[str, str, int] | None:
+    """Classify one remote_page reference against page `page_id` at `revision` (v1.2, #34); None when it is another page.
+
+    A page keeps one pageId across revisions, so no manifest lookup is needed: an older pinned revision is stale.
+    """
+    if ref.get("id") != page_id:
+        return None
+    pinned = ref.get("revision")
+    if type(pinned) is not int or pinned < 1:
+        return "unknown", "引用缺少不小于 1 的整数 revision，无法判断页面的新旧", revision
+    if pinned < revision:
+        return "stale", f"引用了页面 {page_id} 的旧修订 r{pinned}，目标修订为 r{revision}", revision
+    return "current", f"引用的是页面 {page_id} 的 r{pinned}，不低于目标修订 r{revision}", revision
+
+
+def _page_outputs(found: list[dict], run: dict, page_id: str) -> list[dict]:
+    """A run's stale pins of the page that its own recorded outputs cover: every revision pinned+1..target listed.
+
+    Page revisions increase by one per write on the server, so the run covers the span only when its outputs list each
+    of them as remote_page `page_id`. The outputs are the run record's claim; planned or failed runs cover nothing.
+    """
+    mine = {ref["revision"]: index for index, ref in enumerate(run["outputs"] if run["status"]["run"] not in ("planned", "failed") else [])
+            if ref["kind"] == "remote_page" and ref["id"] == page_id and type(ref["revision"]) is int}
+    result = []
+    for item in found:
+        if item["status"] != "stale" or item.get("page") != page_id:
+            result.append(item)
+            continue
+        low, high = item["pinned"] + 1, item["target"]
+        claimed = sorted(revision for revision in mine if low <= revision <= high)
+        if claimed and len(claimed) == high - low + 1:
+            result.append(dict(item, status="current", reason=f"运行记录声称产出了页面 {page_id} 的 "
+                               + "、".join(f"r{revision}（outputs[{mine[revision]}]）" for revision in claimed)
+                               + f"，快照对旧修订 r{item['pinned']} 的引用不使它失效"))
+        elif claimed:
+            missing = high - low + 1 - len(claimed)
+            result.append(dict(item, reason=item["reason"] + f"；运行记录只声称产出了其中的 {'、'.join(f'r{r}' for r in claimed)}，"
+                               f"另有 {missing} 个修订不是它的产出"))
+        else:
+            result.append(item)
+    return result
+
+
+def _page_mode(drama: Path, page_id: str, revision: int) -> dict:
+    """impact --page: the snapshots and runs that pack this page, judged on its revision alone (v1.2, #34).
+
+    Like --card, a snapshot or run whose records cannot be read may pack the page without showing it, so it is listed as
+    unknown rather than left out. The cache manifest is not needed: the pageId is the page's identity on the server.
+    """
+    def page(ref: dict):
+        return judge_page(ref, page_id, revision)
+
+    def relevant(found: list[dict]) -> list[dict]:
+        hits = [item for item in found if item.get("page") == page_id]
+        return hits + [item for item in found if item.get("structural")] if hits or any(item.get("structural") for item in found) else []
+
+    loaded = {item["id"]: item for item in _snapshots(drama)}
+    current = lambda ref: ("current", None, "", 0)  # slot revisions are not the question here
+    snapshots, by_id = [], {}
+    for item in loaded.values():
+        found = relevant(_dependencies(item["id"], loaded, current, page=page))
+        if found:
+            judged = _verdict({"snapshotId": item["id"], "path": item["path"]}, [_public(entry) for entry in found])
+            snapshots.append(judged)
+            by_id[item["id"]] = judged
+    runs = []
+    for item in _records(drama, "runs", "run-handoff", "runId"):
+        result = {"runId": item["id"], "path": item["path"], "contextSnapshotId": None}
+        if item["problems"]:
+            runs.append(_verdict(result, [{"ref": None, "status": "unknown", "reason": "运行记录无效，无法判定是否引用该页面：" + problem}
+                                          for problem in item["problems"]]))
+            continue
+        result["contextSnapshotId"] = item["doc"]["contextSnapshotId"]
+        if "additionalSnapshotIds" in item["doc"]:
+            result["additionalSnapshotIds"] = list(item["doc"]["additionalSnapshotIds"])
+        reasons = []
+        for snapshot_id in _snapshot_ids(item["doc"]):
+            ref = f"context_snapshot {snapshot_id}"
+            if snapshot_id not in loaded:
+                reasons.append({"ref": ref, "status": "unknown", "reason": "所依赖的快照不在 .drama/snapshots/ 中，无法判定是否引用该页面"})
+            elif snapshot_id in by_id:
+                found = _page_outputs(relevant(_dependencies(snapshot_id, loaded, current, page=page)), item["doc"], page_id)
+                worst = next((name for name in ("stale", "unknown") if any(entry["status"] == name for entry in found)), "current")
+                reasons += [{"ref": ref, "status": worst, "reason": f"所依赖的快照为 {by_id[snapshot_id]['status']}"
+                             + ("" if worst == by_id[snapshot_id]["status"] else f"，计入运行自身产出后为 {worst}")},
+                            *[_public(entry) for entry in found]]
+        if reasons:
+            runs.append(_verdict(result, reasons))
+    warnings = []
+    if not snapshots and not runs:
+        warnings.append(f"没有快照或运行引用页面 {page_id}：可能是拼写错误，也可能从未装包；结论只覆盖记录在案的引用")
+    return {"ok": True, "command": "impact", "project": str(drama.parent),
+            "target": {"page": page_id, "revision": revision, "resolvedFrom": "--page/--revision"},
+            "snapshots": snapshots, "runs": runs, "summary": {"snapshots": _count(snapshots), "runs": _count(runs)},
+            "warnings": warnings, "note": NOTE_PAGE, "read_only": True, "remote_verified": False, "adoption_verified": False}
+
+
+def _positive(revision, flag: str = "--revision") -> int:
+    text = str(revision) if type(revision) in (int, str) else ""
+    if not (text.isascii() and text.isdigit() and int(text) >= 1):
+        raise ValueError(f"{flag} 必须是不小于 1 的整数，收到 {revision!r}")
+    return int(text)
+
+
 def run_impact(project: str, slot: str | None = None, revision: int | str | None = None, artifact: str | None = None,
-               card: str | None = None) -> dict:
-    """Mark every snapshot and run stale, unknown or current against one slot revision, or list those packing one card. Read-only."""
+               card: str | None = None, page: str | None = None) -> dict:
+    """Mark every snapshot and run stale, unknown or current against one slot or page revision, or list those packing one card. Read-only."""
     drama = drama_dir(project)
+    if page is not None:
+        if slot is not None or artifact is not None or card is not None:
+            raise ValueError("--page 与 --slot、--artifact、--card 互斥：--page 只看这个页面的修订")
+        if not isinstance(page, str) or not page.strip():
+            raise ValueError("--page 不能为空")
+        if revision is None:
+            raise ValueError("--page 需要 --revision（页面的新修订号）")
+        return _page_mode(drama, page, _positive(revision))
     if card is not None:
         if slot is not None or revision is not None or artifact is not None:
             raise ValueError("--card 与 --slot/--revision、--artifact 互斥：--card 只看这张卡的影响")
@@ -493,6 +615,18 @@ def _against_newest(ref: dict, entries: list[dict]) -> tuple[str, str | None, st
     return ("unknown", doubt, slot, newest) if status == "current" and doubt else (status, why, slot, newest)
 
 
+def _page_against_newest(ref: dict, entries: list[dict]):
+    """A remote_page reference against the newest revision of that page in the local cache manifest (v1.2); None when current."""
+    cached = [entry["revision"] for entry in entries if entry.get("pageId") == ref["id"] and type(entry.get("revision")) is int]
+    pinned = ref.get("revision")
+    if type(pinned) is not int or pinned < 1:
+        return "unknown", "引用缺少不小于 1 的整数 revision，无法判断页面的新旧"
+    if not cached:
+        return "unknown", f"本地缓存 manifest 里没有页面 {ref['id']} 的条目，无法判断是否有更新修订"
+    newest = max(cached)
+    return ("stale", f"引用了页面 {ref['id']} 的 r{pinned}，本地缓存已有 r{newest}", newest) if newest > pinned else None
+
+
 def _staleness(run: dict, snapshots: dict[str, dict], entries: list[dict], manifest_error: str | None, project: Path) -> dict:
     """Compare what a run's snapshot pins with the newest trusted revision of each slot in the local cache manifest.
 
@@ -502,11 +636,20 @@ def _staleness(run: dict, snapshots: dict[str, dict], entries: list[dict], manif
     for index, snapshot_id in enumerate([] if manifest_error else _snapshot_ids(run)):  # findings of further snapshots name their snapshot
         prefix = f"context_snapshot {snapshot_id}" if index else None
         found += [dict(item, ref=f"{prefix} > {item['ref']}" if item["ref"] else prefix) if prefix else item
-                  for item in _dependencies(snapshot_id, snapshots, lambda ref: _against_newest(ref, entries))]
+                  for item in _dependencies(snapshot_id, snapshots, lambda ref: _against_newest(ref, entries),
+                                            page=lambda ref: _page_against_newest(ref, entries))]
     found, own = ([{"ref": None, "status": "unknown", "reason": manifest_error}], []) if manifest_error else _own_outputs(found, run, entries)
-    produced = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "producedRevision": item["produced"],
-                 "output": item["output"]} for item in own]
-    newer = [{"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
+    for page_id in sorted({item["page"] for item in found if item.get("page") and item["status"] == "stale"}):
+        covered = _page_outputs(found, run, page_id)
+        own += [dict(item, produced=item["target"], output=item["reason"]) for item in covered if item.get("page") == page_id and item["status"] == "current"]
+        found = [item for item in covered if not (item.get("page") == page_id and item["status"] == "current")]
+    produced = [{"ref": item["ref"], **({"page": item["page"]} if "page" in item else {"slot": item["slot"]}), "pinnedRevision": item["pinned"],
+                 "producedRevision": item["produced"], "output": item["output"]} for item in own]
+    newer = [{"ref": item["ref"], "page": item["page"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
+              "staleAgainstRevision": item["target"],
+              "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --page={shlex.quote(item['page'])} --revision {item['target']}"}
+             if "page" in item else
+             {"ref": item["ref"], "slot": item["slot"], "pinnedRevision": item["pinned"], "newestTrustedRevision": item["target"],
               "staleAgainstRevision": item["against"],
               "impactCommand": f"drama_tools.py impact {shlex.quote(str(project))} --slot={shlex.quote(item['slot'])} --revision {item['against']}"}
              for item in found if item["status"] == "stale"]
@@ -525,6 +668,11 @@ def _breaks(text: str) -> bool:
 def _shown(slot: str) -> str:
     """A slot as the text view may print it: escaped when it holds a line break, so one line never alters it."""
     return json.dumps(slot) if _breaks(slot) else slot
+
+
+def _what(item: dict) -> str:
+    """'slot X' or '页面 P' for a newerRevisions / ownOutputs item."""
+    return f"页面 {_shown(item['page'])}" if "page" in item else f"slot {_shown(item['slot'])}"
 
 
 def _recency(item: dict) -> tuple[int, str, str]:
@@ -551,9 +699,13 @@ def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> di
     if receipts["pending"]:
         first, total = receipts["pending"][0], len(receipts["pending"])
         slot = f"（slot {first['slot']}）" if first["slot"] else ""
-        text = (f"对账结果未知的保存回执 {first['requestId']}{slot}：先用 list_story_artifacts 查该 slot 的新修订，"
-                f"再用 get_story_artifact 核对 record.requestId，然后 receipt record … --reconciles {first['requestId']}；"
-                "对账前不要换新 requestId 重试" + (f"（共 {total} 份未决回执）" if total > 1 else ""))
+        if first.get("summary"):  # a page write (v1.2)
+            text = (f"对账结果未知的页面写入回执 {first['requestId']}（{first['operation']}）：{first['summary']}，然后 receipt record … "
+                    f"--reconciles {first['requestId']}；对账前不要换新 requestId 重试" + (f"（共 {total} 份未决回执）" if total > 1 else ""))
+        else:
+            text = (f"对账结果未知的保存回执 {first['requestId']}{slot}：先用 list_story_artifacts 查该 slot 的新修订，"
+                    f"再用 get_story_artifact 核对 record.requestId，然后 receipt record … --reconciles {first['requestId']}；"
+                    "对账前不要换新 requestId 重试" + (f"（共 {total} 份未决回执）" if total > 1 else ""))
         return {"basis": "unknown_receipt", "text": text, "from": f".drama/receipts/{first['requestId']}.json"}
     if invalid:
         first = invalid[0]
@@ -561,13 +713,13 @@ def _next_action(receipts: dict, invalid: list[dict], latest: dict | None) -> di
                 "text": f"处理无效或损坏的记录 {first['path']}：{first['errors'][0]}（共 {len(invalid)} 项）；{first['advice']}"}
     if latest is not None and latest.get("possiblyStale"):
         first, more = latest["newerRevisions"][0], len(latest["newerRevisions"]) - 1
-        slot = _shown(first["slot"])
+        slot = _what(first)
         # a command holding a line break cannot be printed on one line without changing it: point at the exact JSON value instead
-        start = (f"先对 slot {slot} 的 r{first['staleAgainstRevision']} 运行 impact（命令含换行类字符，写不成安全的单行命令："
+        start = (f"先对 {slot} 的 r{first['staleAgainstRevision']} 运行 impact（命令含换行类字符，写不成安全的单行命令："
                  "完整命令见 status --json 的 nextAction.impactCommand）" if _breaks(first["impactCommand"]) else f"先运行 {first['impactCommand']} ")
         text = (f"{start}确认失效范围，再决定是否重新装包、重跑：最近运行 {latest['runId']} 的快照引用了 "
-                f"slot {slot} 的 r{first['pinnedRevision']}，本地缓存已有可信的 r{first['staleAgainstRevision']}"
-                + (f"（另有 {more} 个 slot 也有更新修订）" if more else ""))
+                f"{slot} 的 r{first['pinnedRevision']}，本地缓存已有可信的 r{first['staleAgainstRevision']}"
+                + (f"（另有 {more} 个 slot 或页面也有更新修订）" if more else ""))
         return {"basis": "stale_run", "text": text, "from": latest["path"], "impactCommand": first["impactCommand"],
                 "recordedNextAction": latest["nextAction"]}
     if latest is not None:
@@ -621,10 +773,10 @@ def _run_lines(label: str, run: dict) -> list[str]:
              f"快照 {'、'.join([run['contextSnapshotId'], *run.get('additionalSnapshotIds', [])])}，"
              + (f"完成于 {run['finishedAt']}，" if run["finishedAt"] else "") + f"修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
     lines += [f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else []
-    lines += [f"    可能已失效：快照引用 slot {_shown(item['slot'])} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['staleAgainstRevision']}；"
+    lines += [f"    可能已失效：快照引用 {_what(item)} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['staleAgainstRevision']}；"
               + ("命令含换行类字符，见 status --json 的 newerRevisions[].impactCommand" if _breaks(item["impactCommand"]) else f"先运行 {item['impactCommand']}")
               for item in run["newerRevisions"]]
-    lines += [f"    快照引用 slot {_shown(item['slot'])} 的 r{item['pinnedRevision']}；运行记录声称更新的 r{item['producedRevision']} 是它自己的产出"
+    lines += [f"    快照引用 {_what(item)} 的 r{item['pinnedRevision']}；运行记录声称更新的 r{item['producedRevision']} 是它自己的产出"
               f"（{item['output']}），不因此失效" for item in run["ownOutputs"]]
     if run["stalenessReasons"]:
         lines.append(f"    {'其余引用' if run['newerRevisions'] else ''}无法判断是否失效：{'；'.join(run['stalenessReasons'])}")
@@ -650,7 +802,7 @@ def render_status(result: dict) -> str:
     lines += [f"依据：{BASIS[action['basis']]}" + (f"（{action['from']}）" if action["from"] else "") + "。" + doubt + result["note"], "",
              f"未决回执（{len(receipts['pending'])}）"]
     for item in receipts["pending"]:
-        known = "".join(f"，{label} {item[key]}" for label, key in (("slot", "slot"), ("expectedRevision", "expectedRevision")) if item[key] is not None)
+        known = "".join(f"，{label} {item[key]}" for label, key in (("slot", "slot"), ("页面", "pageId"), ("expectedRevision", "expectedRevision")) if item.get(key) is not None)
         lines.append(f"- {item['requestId']}：{item['operation']}{known}；不可重试，先对账")
         for step in item["steps"]:
             call = step.get("command") or f"{step['tool']} {json.dumps(step['args'], ensure_ascii=False)}"

@@ -1,0 +1,49 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story v0.20.0 (faff8fd) source: api-mcp-server.ts toolResult({status,headers,body}) + tool-output.ts normalizeMcpOutput (mali-tool-result/v1) + page-version-service.ts (read_page -> GET /pages/:pageId/text, readPageText, limit=4000; fingerprint = sha256 of the full UTF-8 body; resource_link appended by the read_page handler); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Rd11aB3cD4eF5gH6iJ7k\",\"data\":{\"projectId\":\"2f70c1e9fad74f35ae27f\",\"pageId\":\"5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f\",\"revision\":1,\"isCurrent\":false,\"producer\":\"external_ai\",\"inputSnapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"label\":null,\"fingerprint\":\"sha256:51dd2b373dd4c42836ef3bd6a5cde48f8931cb8c0e5c9d962b007a212f285f82\",\"offset\":0,\"offsetUnit\":\"unicode_code_points\",\"text\":\"第3集 集纲\\n处境：林晚在祠堂外等来𠮷字号当铺的伙计，雨一直没停。\\n结尾钩子：当票上写的是她自己的名字。\",\"totalCharacters\":52,\"nextOffset\":null,\"atEnd\":true,\"coveredRange\":{\"from\":0,\"to\":52},\"resourceUri\":\"mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/1/fingerprints/51dd2b373dd4c42836ef3bd6a5cde48f8931cb8c0e5c9d962b007a212f285f82/chunks/0\",\"nextResourceUri\":null,\"contentTrust\":\"reference_data\"},\"error\":null}}"
+    },
+    {
+      "type": "resource_link",
+      "uri": "mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/1/fingerprints/51dd2b373dd4c42836ef3bd6a5cde48f8931cb8c0e5c9d962b007a212f285f82/chunks/0",
+      "name": "Page text chunk",
+      "mimeType": "application/json"
+    }
+  ],
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": true,
+    "transport": {
+      "status": 200
+    },
+    "data": {
+      "projectId": "2f70c1e9fad74f35ae27f",
+      "pageId": "5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f",
+      "revision": 1,
+      "isCurrent": false,
+      "producer": "external_ai",
+      "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+      "label": null,
+      "fingerprint": "sha256:51dd2b373dd4c42836ef3bd6a5cde48f8931cb8c0e5c9d962b007a212f285f82",
+      "offset": 0,
+      "offsetUnit": "unicode_code_points",
+      "text": "第3集 集纲\n处境：林晚在祠堂外等来𠮷字号当铺的伙计，雨一直没停。\n结尾钩子：当票上写的是她自己的名字。",
+      "totalCharacters": 52,
+      "nextOffset": null,
+      "atEnd": true,
+      "coveredRange": {
+        "from": 0,
+        "to": 52
+      },
+      "resourceUri": "mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/1/fingerprints/51dd2b373dd4c42836ef3bd6a5cde48f8931cb8c0e5c9d962b007a212f285f82/chunks/0",
+      "nextResourceUri": null,
+      "contentTrust": "reference_data"
+    },
+    "recovery": {
+      "action": "none",
+      "retrySafe": false
+    }
+  }
+}

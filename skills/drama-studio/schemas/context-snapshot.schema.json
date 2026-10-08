@@ -213,6 +213,7 @@
           "type": "string",
           "enum": [
             "remote_artifact",
+            "remote_page",
             "remote_snapshot",
             "remote_brief",
             "local_file",

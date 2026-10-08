@@ -1,0 +1,29 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story v0.20.0 (faff8fd) source: api-mcp-server.ts toolResult({status,headers,body}) + tool-output.ts normalizeMcpOutput (mali-tool-result/v1) + page-version-service.ts (PageVersionService.versionConflict + mapPageWriteError 409 + error-handler body; details kept for VERSION_CONFLICT); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":409,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Cf3cX4dV6bN8mQ0wE2rT4\",\"data\":null,\"error\":{\"code\":\"VERSION_CONFLICT\",\"message\":\"Page 5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f is at revision 2, not 1.\",\"details\":{\"currentRevision\":2,\"currentFingerprint\":\"sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33\"}}}}"
+    }
+  ],
+  "isError": true,
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": false,
+    "transport": {
+      "status": 409
+    },
+    "error": {
+      "code": "VERSION_CONFLICT",
+      "message": "Page 5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f is at revision 2, not 1.",
+      "details": {
+        "currentRevision": 2,
+        "currentFingerprint": "sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33"
+      }
+    },
+    "recovery": {
+      "action": "refresh_state",
+      "retrySafe": false
+    }
+  }
+}

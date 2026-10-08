@@ -1,0 +1,19 @@
+{
+ "status": 409,
+ "headers": {
+  "content-type": "application/json",
+  "x-request-id": "3b73d93d-61aa-477c-a4bd-5e4dd85aea1f"
+ },
+ "body": {
+  "requestId": "Tc9SBtro2AFHl7P5bifWa",
+  "data": null,
+  "error": {
+   "code": "VERSION_CONFLICT",
+   "message": "Page 76681133-9e48-4010-b9ff-4d7dfb4e69dd is at revision 2, not 1.",
+   "details": {
+    "currentRevision": 2,
+    "currentFingerprint": "sha256:54815d699b19b1d27fd9cd1e3f33e0535fc087638563b2dfe16eb1aad29b09bf"
+   }
+  }
+ }
+}

@@ -1,0 +1,22 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story v0.20.0 (faff8fd) source: api-mcp-server.ts toolResult({status,headers,body}) + tool-output.ts normalizeMcpOutput (mali-tool-result/v1) + page-version-service.ts (unexpectedMcpFailure + normalizeMcpOutput, write tool: readOnly=false, no transport); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"error\": true, \"code\": \"MCP_OUTCOME_UNKNOWN\", \"message\": \"The response was not confirmed. Inspect the existing task or request receipt before retrying a write.\"}"
+    }
+  ],
+  "isError": true,
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": false,
+    "error": {
+      "code": "MCP_OUTCOME_UNKNOWN",
+      "message": "The response was not confirmed. Inspect the existing task or request receipt before retrying a write."
+    },
+    "recovery": {
+      "action": "inspect_task",
+      "retrySafe": false
+    }
+  }
+}

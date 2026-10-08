@@ -1,0 +1,18 @@
+{
+ "schemaVersion": "mali-tool-result/v1",
+ "ok": true,
+ "data": {
+  "pageId": "76681133-9e48-4010-b9ff-4d7dfb4e69dd",
+  "restoredFromRevision": 1,
+  "revision": 3,
+  "fingerprint": "sha256:0df87da3e4d17d17681d24ae0518ab909a9fdcd33352b2cfb4ed80a79ac6b2de",
+  "replayed": false
+ },
+ "recovery": {
+  "action": "none",
+  "retrySafe": false
+ },
+ "transport": {
+  "status": 200
+ }
+}

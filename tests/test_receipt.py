@@ -634,7 +634,7 @@ class CacheTests(ProjectCase):
         self.assertFalse(self.cached.read_bytes().endswith(b"\n"))
         digest = "sha256:" + sha_file(self.cached)
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
-        self.assertEqual(manifest["schemaVersion"], "drama-studio/cache-manifest/v0")
+        self.assertEqual(manifest["schemaVersion"], "drama-studio/cache-manifest/v1")  # v1.2 (#34); artifact entries keep their v0 fields
         entry = manifest["entries"][0]
         self.assertEqual(set(entry), {"path", "artifactId", "slot", "kind", "episodeRef", "revision", "sha256", "serverFingerprint", "verified", "operation", "readAt", "slotSource"})
         self.assertEqual(digest, entry["sha256"])

@@ -12,6 +12,7 @@ import re
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schemas"
 LAYERS = ["C1", "C2", "C3", "C4", "C5", "C6"]
+PAGE_OPERATIONS = ("create_page", "update_page", "read_page", "list_page_revisions", "label_page_revision", "restore_page")
 TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "null": type(None)}
 
 
@@ -125,6 +126,8 @@ def _rules_context_snapshot(doc: dict) -> list[str]:
             errors.append(f"{where}: shared knowledge cannot be packed as project facts")
         if item["required"] and item["ref"].get("revision") is None:
             errors.append(f"{where}: required material must pin an exact revision")
+        if item["ref"]["kind"] == "remote_page" and not (type(revision) is int and revision >= 1):
+            errors.append(f"{where}: a remote_page reference is pageId + an integer revision >= 1")
     if total > doc["budget"]["limit"]:
         errors.append(f"budget: {total} chars exceed limit {doc['budget']['limit']}; shrink the unit or omit explicitly")
     for index, entry in enumerate(doc["omitted"]):
@@ -192,6 +195,21 @@ def _rules_remote_receipt(doc: dict) -> list[str]:
             errors.append("remote.inputSnapshotId: saves must bind the snapshot used to write")
     if doc["outcome"] == "unknown" and doc.get("retryAllowed"):
         errors.append("retryAllowed: an unknown outcome must be reconciled by requestId before any retry")
+    operation = doc["operation"]
+    if operation in PAGE_OPERATIONS:  # v1.2 page operations (#34)
+        if remote.get("artifactId") is not None:
+            errors.append("remote.artifactId: page operations name a pageId, not a story artifact")
+        if operation == "create_page" and doc["outcome"] != "confirmed" and remote.get("pageId") is not None:
+            errors.append("remote.pageId: an unconfirmed create_page has no page yet")
+        if operation != "create_page" and doc["outcome"] != "not_sent" and remote.get("pageId") is None:
+            errors.append(f"remote.pageId: {operation} addresses a page and must name it")
+        if operation in ("create_page", "update_page", "restore_page", "label_page_revision") and doc["outcome"] == "confirmed" \
+                and (remote.get("pageId") is None or remote.get("revision") is None):
+            errors.append("remote: a confirmed page write must record pageId and revision")
+        if doc["outcome"] != "confirmed" and remote.get("revision") is not None:
+            errors.append("remote.revision: only a confirmed page call records a revision")
+    elif remote.get("pageId") is not None:
+        errors.append("remote.pageId: only page operations record a pageId")
     return errors
 
 

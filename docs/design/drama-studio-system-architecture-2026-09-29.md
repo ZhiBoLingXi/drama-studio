@@ -1,6 +1,6 @@
 # Drama Studio 创作系统架构设计
 
-版本：架构提案 v1.1，2026-09-29。状态：已评审，按评审意见修订，未实施。
+版本：架构 v1.2，2026-10-08（v1.1 为 2026-09-29 评审稿）。状态：v1.1 已按 D0–D5 实施；v1.2 修订内容模型，见下文“v1.2 修订”，本地工具已按合成夹具实现（#34），真实页面响应待 mali-story#2336 上线后补测。
 
 本稿回答系统边界、组件责任、信息权威、上下文、运行与变更如何协作，不继续拆开发排期。输入为[知识体系设计](drama-studio-knowledge-harness-design-2026-09-29.md)、[实施路线](drama-studio-implementation-roadmap-2026-09-29.md)和既有重构方案。阶段编号与组件命名以本稿 §3.1 为准；其他文档的任务定义与状态不因此改变。
 
@@ -11,6 +11,45 @@
 3. 新增 §3.1：统一为 D0–D5 一套阶段编号，并给出 M1–M6、C1–C6 与本稿组件的对照。
 4. §8.5：首版知识库只做项目私有；工作室共享推迟到 D4 之后。
 5. §15：共享知识生产以 D2 的对照结果为门槛；新增成本构成；D0 契约以 JSON Schema＋测试交付，不再新增 Markdown 契约文档。
+
+**v1.2 修订（2026-10-08，依据用户 2026-10-07 的决定；实现见 #34）**
+
+用户决定：所有内容都是页面，像飞书文档一样每个页面有版本；AI 写入的新版本立刻生效；已有候选迁成页面，候选保留只读。远端能力见 mali-story#2336（v0.20.0 源码的 `create_page`、`update_page`、`read_page`、`list_page_revisions`、`label_page_revision`、`restore_page`、`import_pages`）。
+
+1. **内容模型**：每份产出是 mali-story 的一个页面。身份是 `pageId`，跨修订不变；`revision` 每次写入加 1。v1.1 的“slot＋每次保存新 artifactId”不再用于新内容（D2 已发现它让失效追踪复杂：本地必须经 manifest 把 artifactId 解析成 slot）。
+2. **版本即生效**：写入的新修订立即成为当前内容。没有“候选 vs 正文”两套对象，也没有单独的采用动作；同一页面的不同修订就是不同版本。
+3. **验收即标签**：主创验收用版本标签表达（如“主创通过”），一个修订一个标签，后写覆盖，不改正文。
+4. **恢复即回退**：回退是追加一个新修订，内容取自旧修订；历史不改写，本地不实现回退或合并。
+5. **本地按 pageId@revision 记录**：回执覆盖六种页面操作（`remote.pageId`）；缓存文件为 `.drama/cache/<pageId>@r<revision>.md`；`context-pack` 接受 `remote_page` 引用，同一页面混两个修订退出码 2；`impact --page <pageId> --revision <n>` 把引用该页旧修订的快照与运行标为 stale，不再经 slot。
+6. **迁移前的候选只读兼容**：story-artifacts 的回执、缓存、`impact --slot`／`--artifact` 保留，用于读取迁移前的历史候选；不删除这部分支持。
+
+与 v1.1 的差异与保留的原则：
+
+| 方面 | v1.1（候选模型） | v1.2（页面模型） |
+| --- | --- | --- |
+| 远端对象 | story artifact 候选，按 slot 归组 | 页面，pageId 稳定 |
+| 新内容何时生效 | 正式采用后 | 写入即为当前修订 |
+| 主创验收 | 单独的采用动作 | 版本标签 |
+| 回退 | 重新保存旧稿为新候选 | `restore_page` 追加新修订 |
+| 本地判断新旧 | artifactId → manifest → slot | pageId＋revision 直接比较 |
+| 版本库在哪里 | 只在 mali-story | 仍只在 mali-story；本地不实现版本库、合并或 CAS |
+
+保留不变的诚实原则：
+
+- **不声称没有发生的写入**：结果未知的写入在对账前不算写入；`unchanged: true`（正文与当前修订相同）没有新修订；`replayed: true` 是原结果的重放，不是第二次写入。mali-story v0.20.0 的修订列表不带 requestId，列表比对只是宿主判断，只有用原 request_id 原样重发才能按 request_id 核实。
+- **标签不等于制作采用**：标签只是修订的名字（mali-story 工具说明原文：a label is not an approval）。回执、缓存、`impact` 都不把标签当采用证据；`task.status.adoption: adopted_remote` 仍只认 `remote_receipt` 引用（S）。“写入即生效”说的是页面当前内容，不是导演或制作方已经采用。
+- 工具只读本地文件、不联网、不调用模型；回执和缓存不证明响应真实。
+
+**项目工作目录约定 v1.2（与 Epic #15 同步）**：v1.1 的约定表不变，以下为改动：
+
+| 路径 | 内容 | 写入者 | 可变性 |
+| --- | --- | --- | --- |
+| `.drama/cache/<pageId>@r<revision>.md` | 宿主经 `read_page` 分块读到的页面全文 | `receipt cache` | 写入后不改 |
+| `.drama/cache/<artifactId>@r<revision>.md` | 迁移前历史候选的全文（只读兼容） | `receipt cache` | 写入后不改 |
+| `.drama/cache/manifest.json` | cache manifest v1，见下 | `receipt` 工具 | 仅追加 |
+| `.drama/receipts/<requestId>.json` | `remote-receipt`，含六种页面操作与 `remote.pageId` | `receipt` 工具 | 仅追加（同键异指纹即冲突） |
+
+cache manifest v1：`{"schemaVersion": "drama-studio/cache-manifest/v1", "entries": [...]}`。页面条目为 `{"path", "pageId", "revision", "title", "labels", "producer", "sha256", "serverFingerprint", "verified", "operation": "read_page", "readAt"}`：`title` 来自 `--title` 或本地 confirmed `create_page` 回执（页面工具不返回标题），否则为 null；`labels` 是读取时看到的标签，可能之后被改写；`verified` 仅在 `sha256 == serverFingerprint` 时为 true。v0 条目（`artifactId`、`slot`、`kind`、`episodeRef`、`slotSource` 等）照旧可读，规则不变。`receipt cache` 第一次写入 v0 manifest 时只把 `schemaVersion` 改为 v1，已有条目原样保留；读取方（`context-pack`、`impact`、`status`）同时接受 v0 与 v1。
 
 ## 1. 架构结论
 
@@ -362,7 +401,7 @@ mali-story 的 StoryArtifactService 已有快照绑定、候选保存回读、�
 
 | 数据 | 存放位置 | 本地需要实现的只有 |
 | --- | --- | --- |
-| 候选产物、修订、采用决定 | mali-story | 调用适配与回执记录 |
+| 候选产物、修订、采用决定（v1.2 起为页面、修订与版本标签，见文首“v1.2 修订”） | mali-story | 调用适配与回执记录 |
 | 知识卡与原始证据（项目私有） | 项目工作目录 | 文件读写、哈希、用途过滤 |
 | ContextSnapshot、选材记录 | 项目工作目录 | 写入后不再修改的文件＋哈希清单 |
 | 离线降级草稿 | 项目工作目录 | 文件＋父版本哈希；不做 CAS、幂等或多写者合并 |

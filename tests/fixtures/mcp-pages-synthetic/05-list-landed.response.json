@@ -1,0 +1,59 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story v0.20.0 (faff8fd) source: api-mcp-server.ts toolResult({status,headers,body}) + tool-output.ts normalizeMcpOutput (mali-tool-result/v1) + page-version-service.ts (list_page_revisions -> GET /pages/:pageId/revisions, PageRevisionSummary rows newest first; rows carry no requestId); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Ls4dC5fV7gB9nM1qW3eR5\",\"data\":{\"revisions\":[{\"revision\":3,\"op\":\"update\",\"producer\":\"external_ai\",\"submittedBy\":\"usr_synthetic01\",\"inputSnapshotId\":null,\"createdAt\":\"2026-10-08T03:20:11.512Z\",\"label\":null,\"fingerprint\":\"sha256:c31980b8fd7c12c206a6e31d8c192c26daa6af110ffda19085a2fdada2e20afd\",\"restoredFromRevision\":null},{\"revision\":2,\"op\":\"update\",\"producer\":\"external_ai\",\"submittedBy\":\"usr_synthetic01\",\"inputSnapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"createdAt\":\"2026-10-08T03:15:02.204Z\",\"label\":null,\"fingerprint\":\"sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33\",\"restoredFromRevision\":null},{\"revision\":1,\"op\":\"create\",\"producer\":\"external_ai\",\"submittedBy\":\"usr_synthetic01\",\"inputSnapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"createdAt\":\"2026-10-08T03:12:40.001Z\",\"label\":null,\"fingerprint\":\"sha256:51dd2b373dd4c42836ef3bd6a5cde48f8931cb8c0e5c9d962b007a212f285f82\",\"restoredFromRevision\":null}],\"currentRevision\":3,\"nextBeforeRevision\":null},\"error\":null}}"
+    }
+  ],
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": true,
+    "transport": {
+      "status": 200
+    },
+    "data": {
+      "revisions": [
+        {
+          "revision": 3,
+          "op": "update",
+          "producer": "external_ai",
+          "submittedBy": "usr_synthetic01",
+          "inputSnapshotId": null,
+          "createdAt": "2026-10-08T03:20:11.512Z",
+          "label": null,
+          "fingerprint": "sha256:c31980b8fd7c12c206a6e31d8c192c26daa6af110ffda19085a2fdada2e20afd",
+          "restoredFromRevision": null
+        },
+        {
+          "revision": 2,
+          "op": "update",
+          "producer": "external_ai",
+          "submittedBy": "usr_synthetic01",
+          "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+          "createdAt": "2026-10-08T03:15:02.204Z",
+          "label": null,
+          "fingerprint": "sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33",
+          "restoredFromRevision": null
+        },
+        {
+          "revision": 1,
+          "op": "create",
+          "producer": "external_ai",
+          "submittedBy": "usr_synthetic01",
+          "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+          "createdAt": "2026-10-08T03:12:40.001Z",
+          "label": null,
+          "fingerprint": "sha256:51dd2b373dd4c42836ef3bd6a5cde48f8931cb8c0e5c9d962b007a212f285f82",
+          "restoredFromRevision": null
+        }
+      ],
+      "currentRevision": 3,
+      "nextBeforeRevision": null
+    },
+    "recovery": {
+      "action": "none",
+      "retrySafe": false
+    }
+  }
+}

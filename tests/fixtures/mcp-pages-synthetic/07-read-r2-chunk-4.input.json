@@ -1,0 +1,9 @@
+{
+  "_synthetic": "synthetic MCP tool input (read_page; argument names from api-mcp-server.ts inputSchema); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "project_id": "2f70c1e9fad74f35ae27f",
+  "page_id": "5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f",
+  "revision": 2,
+  "fingerprint": "sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33",
+  "offset": 60,
+  "limit": 20
+}

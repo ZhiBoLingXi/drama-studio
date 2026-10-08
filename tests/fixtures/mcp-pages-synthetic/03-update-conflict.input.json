@@ -1,0 +1,9 @@
+{
+  "_synthetic": "synthetic MCP tool input (update_page with stale expected_revision; argument names from api-mcp-server.ts inputSchema); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "project_id": "2f70c1e9fad74f35ae27f",
+  "page_id": "5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f",
+  "expected_revision": 1,
+  "body": "第3集 集纲（导演改）\n林晚没有去祠堂。",
+  "producer": "external_ai",
+  "request_id": "pg-update-3"
+}

@@ -1,0 +1,9 @@
+{
+  "_synthetic": "synthetic MCP tool input (update_page whose response was lost; argument names from api-mcp-server.ts inputSchema); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "project_id": "2f70c1e9fad74f35ae27f",
+  "page_id": "5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f",
+  "expected_revision": 2,
+  "body": "第3集 集纲（二稿）\n处境：林晚在祠堂外等来𠮷字号当铺的伙计，雨一直没停。\n行动目标：拿回母亲押下的玉镯，不让继母先到。\n结尾钩子：当票上写的是她自己的名字。\n补：伙计临走时回头看了她一眼。",
+  "producer": "external_ai",
+  "request_id": "pg-update-4"
+}
