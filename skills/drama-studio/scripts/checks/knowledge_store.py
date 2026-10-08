@@ -125,17 +125,28 @@ def _line(doc: dict, same: list[dict], newer_invalid: list[int]) -> str:
     return line
 
 
-def run_knowledge_search(project: str, knowledge_type: str | None = None, workstation: str | None = None,
-                         usage: str | None = None, text: str | None = None, include_retired: bool = False) -> dict:
-    store = _load_store(_project(project))
+def store_entries(root: Path) -> list[dict]:
+    """Every card file under <root>/knowledge/cards/, valid or not; empty when there is no store. Read-only."""
+    return _load_store(root)["entries"]
+
+
+def latest_revisions(entries: list[dict]) -> tuple[dict[str, dict], dict[str, list[int]]]:
+    """({cardId: entry of its newest valid revision}, {cardId: revisions whose files failed validation})."""
     latest: dict[str, dict] = {}
     invalid_revisions: dict[str, list[int]] = {}
-    for entry in store["entries"]:
+    for entry in entries:
         if entry["errors"]:
             if entry["cardId"] is not None:
                 invalid_revisions.setdefault(entry["cardId"], []).append(entry["revision"])
         elif entry["revision"] > latest.get(entry["cardId"], {}).get("revision", 0):
             latest[entry["cardId"]] = entry
+    return latest, invalid_revisions
+
+
+def run_knowledge_search(project: str, knowledge_type: str | None = None, workstation: str | None = None,
+                         usage: str | None = None, text: str | None = None, include_retired: bool = False) -> dict:
+    store = _load_store(_project(project))
+    latest, invalid_revisions = latest_revisions(store["entries"])
     pool = [entry for _, entry in sorted(latest.items())
             if include_retired or entry["doc"]["processing"] != "retired"]
     # Same-source is computed over the whole participating set, before any filter narrows it.

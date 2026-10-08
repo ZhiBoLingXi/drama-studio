@@ -95,6 +95,16 @@ class ProjectCase(unittest.TestCase):
         path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return path
 
+    def card_file(self, card_id, revision, processing="pending"):
+        """A valid knowledge card at knowledge/cards/<cardId>@r<revision>.json, built from the schema example."""
+        doc = json.loads((EXAMPLES / "knowledge-card.json").read_text(encoding="utf-8"))
+        doc.update(cardId=card_id, revision=revision, processing=processing)
+        folder = self.project / "knowledge/cards"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{card_id}@r{revision}.json"
+        path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return path
+
     def impact(self, **target):
         result = project_status.run_impact(str(self.project), **target)
         return result, {item["snapshotId"]: item for item in result["snapshots"]}, {item["runId"]: item for item in result["runs"]}
@@ -374,6 +384,7 @@ class ImpactTests(ProjectCase):
         left_out = {"ref": {"kind": "remote_artifact", "id": "art-1", "revision": 1}, "required": False, "reason": "not_relevant"}
         self.snapshot("ctx-omitted", [card], omitted=[left_out])
         self.snapshot("ctx-task-only", [])
+        self.card_file("art-1", 1)  # the card is its newest revision, so only the slot question is left
         _, snapshots, _ = self.impact(slot="ep-1", revision=2)
         self.assertEqual({key: item["status"] for key, item in snapshots.items()}, {"ctx-omitted": "current", "ctx-task-only": "current"})
 
@@ -383,6 +394,7 @@ class ImpactTests(ProjectCase):
                              ("remote_receipt", "d1-save-2")]:
             self.snapshot(f"ctx-{kind}", [ref("art-9", 1), other(kind, ref_id)])
         self.snapshot("ctx-ignored", [ref("art-9", 1), dict(other("knowledge_card", "kc-1", 1), partition="knowledge")])
+        self.card_file("kc-1", 1)  # a current card adds no finding
         self.snapshot("ctx-task-lookalike", [ref("art-9", 1), other("local_file", "task:another-task")])  # not in the task partition
         _, snapshots, _ = self.impact(slot="ep-1", revision=2)
         self.assertEqual((snapshots["ctx-ignored"]["status"], snapshots["ctx-task-lookalike"]["status"]), ("current", "unknown"))
@@ -787,6 +799,104 @@ class ImpactTests(ProjectCase):
         self.assertNotIn("passed", result)
         self.assertEqual(check_contract("context-snapshot", json.loads((self.drama / "snapshots/ctx-a.json").read_text(encoding="utf-8"))), [])
         self.assertEqual(result["project"], str(self.project))
+
+
+def card_ref(card_id, revision):
+    return {"ref": {"kind": "knowledge_card", "id": card_id, "revision": revision}, "partition": "knowledge", "required": False,
+            "usage": "creative_reference", "chars": 4, "reason": "知识卡"}
+
+
+class CardImpactTests(ProjectCase):
+    """#46: knowledge_card references in snapshots, and impact --card."""
+
+    def test_retired_card_marks_snapshot_and_its_run_stale_even_on_the_retired_revision(self):
+        self.ac1_fixture()
+        self.card_file("kc-a", 1)
+        self.card_file("kc-a", 2, processing="retired")
+        self.snapshot("ctx-card", [ref("art-9", 1), card_ref("kc-a", 2)])
+        self.run_handoff("run-card", "ctx-card", **DONE)
+        _, snapshots, runs = self.impact(slot="ep-1", revision=2)
+        self.assertEqual((snapshots["ctx-card"]["status"], runs["run-card"]["status"]), ("stale", "stale"))
+        reason = snapshots["ctx-card"]["reasons"][0]
+        self.assertEqual((reason["ref"], reason["status"]), ("items[2] knowledge_card kc-a@r2", "stale"))
+        self.assertIn("卡 kc-a 已退役", reason["reason"])
+        self.assertEqual(runs["run-card"]["reasons"][0], {"ref": "context_snapshot ctx-card", "status": "stale", "reason": "所依赖的快照为 stale"})
+        self.assertIn("卡 kc-a 已退役", runs["run-card"]["reasons"][1]["reason"])
+        self.assertEqual(snapshots["ctx-a"]["status"], "stale")  # the slot verdicts are unchanged
+        self.assertEqual(snapshots["ctx-b"]["status"], "current")
+
+    def test_new_revision_marks_old_pin_stale_and_keeps_newest_pin_current(self):
+        self.ac1_fixture()
+        for revision in (1, 2, 3):
+            self.card_file("kc-a", revision)
+        self.snapshot("ctx-old", [ref("art-9", 1), card_ref("kc-a", 1)])
+        self.snapshot("ctx-new", [ref("art-9", 1), card_ref("kc-a", 3)])
+        self.snapshot("ctx-nested", [ref("art-9", 1), other("context_snapshot", "ctx-old", 1)])
+        _, snapshots, _ = self.impact(slot="ep-1", revision=2)
+        self.assertEqual({key: snapshots[key]["status"] for key in ("ctx-old", "ctx-new", "ctx-nested")},
+                         {"ctx-old": "stale", "ctx-new": "current", "ctx-nested": "stale"})
+        self.assertIn("卡 kc-a 已有 r3", snapshots["ctx-old"]["reasons"][0]["reason"])
+        self.assertEqual(snapshots["ctx-new"]["reasons"], [])
+        self.assertEqual(snapshots["ctx-nested"]["reasons"][0]["ref"], "items[2] context_snapshot ctx-old@r1 > items[2] knowledge_card kc-a@r1")
+
+    def test_missing_card_or_unheld_revision_is_unknown(self):
+        self.ac1_fixture()
+        self.card_file("kc-a", 1)
+        self.snapshot("ctx-missing", [ref("art-9", 1), card_ref("kc-absent", 1)])
+        self.snapshot("ctx-ahead", [ref("art-9", 1), card_ref("kc-a", 4)])
+        _, snapshots, _ = self.impact(slot="ep-1", revision=2)
+        for key, needle in (("ctx-missing", "找不到卡 kc-absent"), ("ctx-ahead", "r4 在本地不存在")):
+            with self.subTest(key):
+                self.assertEqual(snapshots[key]["status"], "unknown")
+                self.assertIn(needle, snapshots[key]["reasons"][0]["reason"])
+                self.assertIn("扩大阅读", snapshots[key]["suggestion"])
+        (self.project / "knowledge/cards/kc-a@r2.json").write_text("{", encoding="utf-8")  # a newer file that fails validation
+        self.snapshot("ctx-held", [ref("art-9", 1), card_ref("kc-a", 1)])
+        reason = self.impact(slot="ep-1", revision=2)[1]["ctx-held"]["reasons"][0]
+        self.assertEqual(reason["status"], "unknown")
+        self.assertIn("r2 未通过校验", reason["reason"])
+
+    def test_card_option_lists_only_records_packing_that_card(self):
+        self.ac1_fixture()
+        for revision in (1, 2):
+            self.card_file("kc-a", revision)
+        self.card_file("kc-b", 1)
+        self.snapshot("ctx-old", [ref("art-1", 1), card_ref("kc-a", 1)])
+        self.snapshot("ctx-new", [ref("art-1", 1), card_ref("kc-a", 2), card_ref("kc-b", 1)])
+        self.snapshot("ctx-other", [ref("art-1", 1), card_ref("kc-b", 1)])
+        self.run_handoff("run-old", "ctx-old", **DONE)
+        self.run_handoff("run-new", "ctx-new", **DONE)
+        self.run_handoff("run-other", "ctx-other", **DONE)
+        result, snapshots, runs = self.impact(card="kc-a")
+        self.assertEqual({key: item["status"] for key, item in snapshots.items()}, {"ctx-old": "stale", "ctx-new": "current"})
+        self.assertEqual({key: item["status"] for key, item in runs.items()}, {"run-old": "stale", "run-new": "current"})
+        self.assertEqual(result["target"], {"card": "kc-a", "resolvedFrom": "--card kc-a", "cardInStore": True, "latestRevision": 2, "retired": False})
+        self.assertEqual([reason["ref"] for reason in snapshots["ctx-new"]["reasons"]], ["items[2] knowledge_card kc-a@r2"])  # art-1 is stale for ep-1, not asked here
+        self.assertEqual((result["summary"]["snapshots"], result["warnings"]), ({"stale": 1, "unknown": 0, "current": 1}, []))
+        cli = self.cli("impact", self.project, "--card", "kc-a")
+        self.assertEqual(cli.returncode, 0, cli.stderr)
+        self.assertEqual(json.loads(cli.stdout)["summary"], result["summary"])
+        absent = self.impact(card="kc-none")[0]
+        self.assertEqual((absent["snapshots"], absent["runs"], absent["target"]["cardInStore"]), ([], [], False))
+        self.assertEqual(len(absent["warnings"]), 2)
+        for extra in ({"slot": "ep-1", "revision": 2}, {"artifact": "art-2"}):
+            with self.subTest(extra), self.assertRaisesRegex(ValueError, "互斥"):
+                project_status.run_impact(str(self.project), card="kc-a", **extra)
+        self.assertEqual(self.cli("impact", self.project, "--card", "kc-a", "--artifact", "art-2").returncode, 1)
+
+    def test_card_option_lists_unreadable_records_as_unknown(self):
+        self.card_file("kc-a", 1)
+        self.snapshot("ctx-broken", [card_ref("kc-a", 1)], sidecar=False)
+        self.run_handoff("run-lost", "ctx-gone", **DONE)
+        _, snapshots, runs = self.impact(card="kc-a")
+        self.assertEqual((snapshots["ctx-broken"]["status"], runs["run-lost"]["status"]), ("unknown", "unknown"))
+
+    def test_snapshots_without_card_references_are_unchanged(self):
+        self.ac1_fixture()
+        before = self.impact(slot="ep-1", revision=2)[0]
+        self.card_file("kc-a", 1, processing="retired")  # a store full of retired cards changes nothing the snapshots never packed
+        after = self.impact(slot="ep-1", revision=2)[0]
+        self.assertEqual(after, before)
 
 
 class StatusTests(ProjectCase):
@@ -1579,7 +1689,7 @@ class InvariantTests(unittest.TestCase):
                 names.update(alias.name for alias in node.names)
             elif isinstance(node, ast.Call):
                 called.add(node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", ""))
-        self.assertEqual(imported, {"__future__", "datetime", "hashlib", "json", "pathlib", "shlex", ".contract_check", ".receipt"})
+        self.assertEqual(imported, {"__future__", "datetime", "hashlib", "json", "pathlib", "shlex", ".contract_check", ".knowledge_store", ".receipt"})
         writers = {"open", "write", "write_text", "write_bytes", "mkdir", "makedirs", "unlink", "rmdir", "rename", "replace", "touch",
                    "link", "symlink_to", "atomic_write", "publish_new", "manifest_lock", "cache", "record_receipt"}
         self.assertEqual((called | names) & writers, set())
