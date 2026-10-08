@@ -113,11 +113,13 @@ def plan(args) -> dict:
     if "SKILL.md" not in files or "scripts/drama_tools.py" not in files:
         raise InstallError("Incomplete source skill")
     existing = inspect_target(target)
+    version = (ROOT / "VERSION").read_text().strip()
+    # identical files under an older receipt version still need a new receipt, or verify keeps reporting the old version
     action = "install" if existing["state"] == "absent" else (
-        "unchanged" if existing["files"] == files else "upgrade_required")
+        "unchanged" if existing["files"] == files and existing["version"] == version else "upgrade_required")
     return {"ok": True, "action": action, "host": args.host,
             "destination": str(target), "file_count": len(files),
-            "version": (ROOT / "VERSION").read_text().strip(),
+            "version": version,
             "remote_mcp": "not_checked", "host_discovery": "not_checked"}
 
 

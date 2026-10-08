@@ -81,6 +81,21 @@ class DistributionTests(unittest.TestCase):
             self.assertEqual((Path(result["backup"]) / "SKILL.md").read_bytes(), old)
             self.assertTrue(installer.verify(self.args)["matches_checkout"])
 
+    def test_version_only_change_refreshes_receipt(self):
+        # same skill files, older receipt version: plan must not say unchanged, and --upgrade rewrites the receipt
+        target = Path(installer.install(self.args)["destination"])
+        receipt = target / installer.RECEIPT
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        data["version"] = "0.0.1-old"
+        receipt.write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual(installer.verify(self.args)["version"], "0.0.1-old")
+        self.assertEqual(installer.plan(self.args)["action"], "upgrade_required")
+        self.args.upgrade = True
+        self.assertEqual(installer.install(self.args)["action"], "upgraded")
+        current = (ROOT / "VERSION").read_text().strip()
+        self.assertEqual(installer.verify(self.args)["version"], current)
+        self.assertEqual(installer.install(self.args)["action"], "unchanged")
+
     def test_symlink_target_rejected(self):
         target = installer.destination(self.args)
         target.parent.mkdir()
