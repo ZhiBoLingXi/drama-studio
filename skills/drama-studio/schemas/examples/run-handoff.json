@@ -21,8 +21,8 @@
   },
   "outputs": [
     {
-      "kind": "remote_artifact",
-      "id": "art-ep21-draft",
+      "kind": "remote_page",
+      "id": "page-ep21-draft",
       "revision": 1
     }
   ],
@@ -30,8 +30,8 @@
     {
       "claim": "孩子知道父亲受伤",
       "evidence": {
-        "kind": "remote_artifact",
-        "id": "art-ep21-draft",
+        "kind": "remote_page",
+        "id": "page-ep21-draft",
         "revision": 1
       }
     }
@@ -41,8 +41,8 @@
       "targetLayer": "C4",
       "problem": "和解缺少关键选择",
       "evidence": {
-        "kind": "remote_artifact",
-        "id": "art-ep21-outline",
+        "kind": "remote_page",
+        "id": "page-ep21-outline",
         "revision": 2
       },
       "proposedChange": "集纲补一个父亲放弃便利的选择",

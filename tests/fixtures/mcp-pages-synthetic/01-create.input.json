@@ -1,0 +1,11 @@
+{
+  "_synthetic": "synthetic MCP tool input (create_page; argument names from api-mcp-server.ts inputSchema); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "project_id": "2f70c1e9fad74f35ae27f",
+  "title": "第3集 集纲",
+  "semantic": "episode_outline",
+  "body": "第3集 集纲\n处境：林晚在祠堂外等来𠮷字号当铺的伙计，雨一直没停。\n结尾钩子：当票上写的是她自己的名字。",
+  "producer": "external_ai",
+  "request_id": "pg-create-1",
+  "input_snapshot_id": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+  "episode_ref": "ep-03"
+}

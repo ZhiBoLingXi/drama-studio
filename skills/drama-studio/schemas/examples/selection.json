@@ -15,12 +15,12 @@
       "partition": "project_facts",
       "required": true,
       "usage": "project_text",
-      "reason": "前集结尾孩子失手的原场面"
+      "reason": "前集结尾孩子失手的原场面（迁移前的历史候选，按 remote_artifact 只读引用）"
     },
     {
       "ref": {
-        "kind": "remote_artifact",
-        "id": "art-ep21-outline",
+        "kind": "remote_page",
+        "id": "page-ep21-outline",
         "revision": 2
       },
       "partition": "current_plan",

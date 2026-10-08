@@ -24,19 +24,30 @@ except ImportError:  # loaded as a top-level module
     from contract_check import check_contract
 
 SCHEMA = "drama-studio/remote-receipt/v0"
-MANIFEST = "drama-studio/cache-manifest/v0"
+MANIFEST_V0 = "drama-studio/cache-manifest/v0"
+MANIFEST = "drama-studio/cache-manifest/v1"  # written since v1.2 (#34); a v0 manifest and its entries stay readable
+MANIFESTS = (MANIFEST_V0, MANIFEST)
 LOCK_TIMEOUT = 5.0
 FILE_MODE = 0o644  # published receipts, cache files and the manifest
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 FINGERPRINT = re.compile(r"sha256:[a-f0-9]{64}")
 KINDS = ("research", "adaptation_options", "characters", "series_outline", "episode_outline", "episode_draft", "review")
 READ_KEYS = ("fingerprint", "coveredRange")
+# mali-story v0.20.0 page tools (#34): data keys of each success result, as page-version-service.ts returns them
+PAGE_READ_KEYS = ("pageId", "fingerprint", "coveredRange")
+PAGE_WRITES = ("create_page", "update_page", "restore_page", "label_page_revision")
+PAGE_OPS = (*PAGE_WRITES, "read_page", "list_page_revisions")
+PAGE_REQUEST_IDS = ("create_page", "update_page", "restore_page")  # label_page_revision takes no request_id
 EXPECTED = {"save_story_artifact": (("record",),), "get_story_artifact": (("record",),),
             "read_story_artifact": (READ_KEYS,), "get_writing_context": (("snapshotId",),),
-            "list_story_artifacts": (("records",), ("items",)), "prepare_story_context": ()}
+            "list_story_artifacts": (("records",), ("items",)), "prepare_story_context": (),
+            "create_page": (("pageId", "revision", "fingerprint"),), "update_page": (("pageId", "revision", "previousRevision"),),
+            "restore_page": (("pageId", "restoredFromRevision", "revision"),), "label_page_revision": (("revision", "label", "previousLabel"),),
+            "read_page": (PAGE_READ_KEYS,), "list_page_revisions": (("revisions", "currentRevision"),)}
 TOOL_RESULT = "mali-tool-result/v1"
-RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact")
-WRITES = ("save_story_artifact",)  # unknowns reconcilable by requestId; prepare_story_context has no lookup
+RECONCILERS = ("get_story_artifact", "list_story_artifacts", "save_story_artifact", *PAGE_WRITES, "list_page_revisions")
+WRITES = ("save_story_artifact", *PAGE_WRITES)  # unknowns reconcilable; prepare_story_context has no lookup
+LABEL_NOTE = "版本标签只是给修订起的名字（mali-story：a label is not an approval），不是制作采用；工具也不把它当作采用证据"
 SLOT_CHECK = "record.slot matched --input slot (S)"  # receipt note; without it a save receipt does not vouch for a slot
 SLOT_SOURCES = ("host", "receipt", "record")  # weakest first; a manifest entry without slotSource counts as host
 SLOT_FIELDS = ("slot", "kind", "episodeRef")  # what a stronger slot source corrects
@@ -62,12 +73,18 @@ def _data(data, keysets, shape: list[str], status) -> dict:
     if keysets and not (isinstance(data, dict) and any(all(key in data for key in keys) for keys in keysets)):
         wanted = " or ".join("+".join(keys) for keys in keysets)
         raise ValueError(f"Response data does not match this operation (expected keys {wanted}); was the right file or --operation given?")
-    return {"ok": True, "data": data, "httpStatus": status, "errorCode": None, "retrySafe": None, "shape": " > ".join(shape)}
+    return {"ok": True, "data": data, "httpStatus": status, "errorCode": None, "retrySafe": None, "shape": " > ".join(shape),
+            "errorDetails": None}
 
 
-def _error(code, status, retry_safe, shape: list[str]) -> dict:
+def _details(error) -> dict | None:
+    """error.details as the server sent it (mali-story keeps it for VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, PAGE_ALREADY_EXISTS)."""
+    return error.get("details") if isinstance(error, dict) and isinstance(error.get("details"), dict) else None
+
+
+def _error(code, status, retry_safe, shape: list[str], details=None) -> dict:
     return {"ok": False, "data": None, "httpStatus": status, "errorCode": code,
-            "retrySafe": retry_safe if isinstance(retry_safe, bool) else None, "shape": " > ".join(shape)}
+            "retrySafe": retry_safe if isinstance(retry_safe, bool) else None, "shape": " > ".join(shape), "errorDetails": details}
 
 
 def _parse(value, keysets, shape: list[str], status=None) -> dict:
@@ -87,17 +104,17 @@ def _parse(value, keysets, shape: list[str], status=None) -> dict:
                 raise Unparseable(f"contradictory response: ok is true but transport.status is {status}")
             return _data(value.get("data"), keysets, shape + [TOOL_RESULT], status)
         recovery = value.get("recovery") if isinstance(value.get("recovery"), dict) else {}
-        return _error(_code(value.get("error")), status, recovery.get("retrySafe"), shape + [TOOL_RESULT])
+        return _error(_code(value.get("error")), status, recovery.get("retrySafe"), shape + [TOOL_RESULT], _details(value.get("error")))
     if _is_int(value.get("status")) and "body" in value:
         shape = shape + ["dispatch{status,body}"]
         if value["status"] >= 400:
             body = value["body"] if isinstance(value["body"], dict) else {}
-            return _error(_code(body.get("error")) or _code(body), value["status"], None, shape)
+            return _error(_code(body.get("error")) or _code(body), value["status"], None, shape, _details(body.get("error")))
         return _parse(value["body"], keysets, shape, value["status"])
     if "data" in value and "error" in value:
         shape = shape + ["rest{requestId,data,error}"]
         if value["error"] is not None:
-            return _error(_code(value["error"]), status, None, shape)
+            return _error(_code(value["error"]), status, None, shape, _details(value["error"]))
         return _data(value["data"], keysets, shape, status)
     if keysets and any(all(key in value for key in keys) for keys in keysets):
         return _data(value, keysets, shape + ["bare data"], status)
@@ -298,8 +315,62 @@ def _receipts(drama: Path) -> list[tuple[Path, object]]:
     return items
 
 
+def _page_remote(operation: str, data, request: dict) -> dict:
+    """remote for a page operation: write results carry no projectId, so it comes from --input; the addressed page_id too."""
+    data = data if isinstance(data, dict) else {}
+    project = _field(data, "projectId") or _field(request, "project_id", "projectId")
+    if project is None:
+        raise ValueError("projectId is neither in the response nor in --input (project_id)")
+    page = _field(data, "pageId") or _field(request, "page_id", "pageId")
+    revision = data.get("revision") if operation != "list_page_revisions" and _is_int(data.get("revision")) else None
+    snapshot = _field(data, "inputSnapshotId") or _field(request, "input_snapshot_id", "inputSnapshotId")
+    return {"projectId": project, "artifactId": None, "pageId": page, "revision": revision, "inputSnapshotId": snapshot}
+
+
+def body_fingerprint(request: dict) -> str | None:
+    """sha256 of the UTF-8 page body sent, the algorithm mali-story uses for `fingerprint` (shared/text-fingerprint.ts)."""
+    body = request.get("body")
+    return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest() if isinstance(body, str) else None
+
+
+def _page_notes(operation: str, request: dict, parsed: dict | None, outcome: str) -> dict:
+    notes = {key: value for key, value in (
+        ("expectedRevision", _field(request, "expected_revision", "expectedRevision")),
+        ("producer", _field(request, "producer")), ("bodyFingerprint", body_fingerprint(request)),
+        ("toRevision", _field(request, "to_revision", "toRevision")), ("title", _field(request, "title")),
+        ("semantic", _field(request, "semantic")), ("episodeRef", _field(request, "episode_ref", "episodeRef"))) if value is not None}
+    if operation == "label_page_revision":
+        notes.update(revision=request.get("revision"), label=request.get("label"), labelNote=LABEL_NOTE)
+    data = parsed["data"] if parsed and parsed["ok"] and isinstance(parsed["data"], dict) else {}
+    for key in ("replayed", "unchanged", "previousRevision", "restoredFromRevision", "fingerprint", "previousLabel"):
+        if key in data:
+            notes["response" + key[0].upper() + key[1:]] = data[key]
+    if outcome == "rejected_conflict" and parsed:
+        notes["conflict"] = {"code": parsed["errorCode"], **(parsed.get("errorDetails") or {})}
+    return notes
+
+
+def _page_warnings(operation: str, notes: dict, outcome: str) -> list[str]:
+    """What a page write receipt does not say, in the host's language (v1.2)."""
+    warnings = []
+    if notes.get("responseUnchanged") is True:
+        warnings.append("update_page 返回 unchanged=true：正文与当前修订相同，服务端没有写入新修订，也没有记下这个 request_id；不要把它当作一次新写入")
+    if notes.get("responseReplayed") is True:
+        warnings.append("服务端重放了同一 request_id 的原结果（replayed=true）：这不是第二次写入")
+    if outcome == "rejected_conflict":
+        code = (notes.get("conflict") or {}).get("code")
+        warnings.append("IDEMPOTENCY_CONFLICT：这个 request_id 已用于不同的输入；查清原请求再决定，不要改输入重发" if code == "IDEMPOTENCY_CONFLICT" else
+                        "VERSION_CONFLICT：页面已被其他来源更新（见 notes.conflict.currentRevision）；先 read_page 读最新修订，合并后用新 request_id 写，"
+                        "expected_revision 取新读到的修订号")
+    if operation == "label_page_revision":
+        warnings.append(LABEL_NOTE)
+    return warnings
+
+
 def _remote(operation: str, parsed: dict | None, request: dict) -> dict:
     data = parsed["data"] if parsed and parsed["ok"] else None
+    if operation in PAGE_OPS:
+        return _page_remote(operation, data, request)
     record = data.get("record") if isinstance(data, dict) and isinstance(data.get("record"), dict) else None
     source = record if record is not None else data if operation == "read_story_artifact" else None
     project = _field(record or data or {}, "projectId") or _field(request, "projectId", "project_id")
@@ -328,6 +399,10 @@ def _reconcile_check(operation: str, reconciles: str, target, doc: dict, parsed:
     """Return (refusal reason, enforcement note) for a receipt that claims to resolve `reconciles`."""
     if not isinstance(target, dict) or check_contract("remote-receipt", target):
         return f"local receipt {reconciles!r} fails contract-check; it cannot be reconciled", ""
+    if target["operation"] in PAGE_WRITES and target["outcome"] == "unknown":
+        return _reconcile_page(operation, reconciles, target, doc, parsed, request)
+    if operation in PAGE_OPS:
+        return f"{reconciles!r} is a {target['operation']} with outcome {target['outcome']!r}; {operation} reconciles only an unknown page write", ""
     if target["operation"] != "save_story_artifact" or target["outcome"] != "unknown":
         return f"{reconciles!r} is a {target['operation']} with outcome {target['outcome']!r}; only an unknown save is reconciled", ""
     if doc["remote"]["projectId"] != target["remote"]["projectId"]:
@@ -364,6 +439,80 @@ def _reconcile_check(operation: str, reconciles: str, target, doc: dict, parsed:
                   "matchedArtifactId": match.get("id"), "matchedRevision": match["revision"]}
 
 
+def _reconcile_page(operation: str, reconciles: str, target: dict, doc: dict, parsed: dict | None,
+                    request: dict) -> tuple[str | None, dict | str]:
+    """Resolve an unknown page write (v1.2, #34) by an identical re-send or by a list_page_revisions listing.
+
+    mali-story v0.20.0 list rows carry no requestId (PageRevisionSummary), so a listing can only match the sent body's
+    fingerprint and producer after expectedRevision: a host judgment (M), except for a label, whose requested state the
+    row shows directly (S). Only the identical re-send with the original request_id is verified by request identity:
+    the server replays an exact retry (replayed: true) before any revision check (R).
+    """
+    tnotes, op = _notes(target), target["operation"]
+    if doc["remote"]["projectId"] != target["remote"]["projectId"]:
+        return f"projectId {doc['remote']['projectId']!r} is not the unknown {op}'s {target['remote']['projectId']!r}", ""
+    if operation == op:
+        if doc["inputFingerprint"] != target["inputFingerprint"]:
+            return f"the re-send input differs from the unknown {op} (inputFingerprint); only an identical re-send may reconcile it", ""
+        if doc["outcome"] != "confirmed":  # recorded as an attempt; the target stays pending
+            return None, {"check": f"identical re-send with outcome {doc['outcome']!r}; does not resolve {reconciles!r}"}
+        data = parsed["data"]
+        if op != "label_page_revision" and target["remote"].get("pageId") not in (None, data.get("pageId")):
+            return f"the re-send response pageId {data.get('pageId')!r} is not the unknown {op}'s page {target['remote']['pageId']!r}", ""
+        how = ("label is idempotent; the identical PUT confirmed the label (S)" if op == "label_page_revision" else
+               "identical re-send with the original request_id; inputFingerprint matched (S), the server replays an exact retry (R)")
+        return None, {"check": how, "resendOf": reconciles, "replayed": data.get("replayed")}
+    if operation != "list_page_revisions":
+        return f"an unknown {op} is reconciled by list_page_revisions or an identical {op} re-send, not by {operation}", ""
+    if doc["outcome"] != "confirmed":
+        return f"this {operation} outcome is {doc['outcome']!r}; only a confirmed response can resolve an unknown", ""
+    page = target["remote"].get("pageId")
+    if page is None:
+        return (f"the unknown {op} names no pageId, so there is no page to list: re-send the identical input with the same request_id "
+                f"{reconciles!r} (the server replays it) and record it with --reconciles {reconciles}"), ""
+    if _field(request, "page_id", "pageId") != page:
+        return f"list_page_revisions must list the unknown {op}'s page {page!r}; --input has {_field(request, 'page_id', 'pageId')!r}", ""
+    data = parsed["data"]
+    rows = [row for row in data.get("revisions") or [] if isinstance(row, dict) and _is_int(row.get("revision"))]
+    if op == "label_page_revision":
+        wanted, label = tnotes.get("revision"), tnotes.get("label")
+        row = next((row for row in rows if row["revision"] == wanted), None)
+        if row is None:
+            return f"the listing has no row for r{wanted}; list again with before_revision {wanted + 1 if _is_int(wanted) else '?'}", ""
+        if row.get("label") != label:
+            return (f"r{wanted} is labelled {row.get('label')!r}, not {label!r}: the label probably did not land. Re-send the identical "
+                    f"label_page_revision (idempotent) and record it with --reconciles {reconciles}"), ""
+        return None, {"check": "the listed revision carries the requested label (S); a label is not an approval", "matchedRevision": wanted,
+                      "labelState": label}
+    expected = tnotes.get("expectedRevision")
+    if not _is_int(expected):
+        return f"the unknown {op} receipt records no integer expectedRevision; re-send the identical input instead", ""
+    kind = "update" if op == "update_page" else "restore"
+
+    def same(row: dict) -> bool:
+        if row["revision"] <= expected or row.get("op") != kind or row.get("producer") != tnotes.get("producer"):
+            return False
+        return (row.get("fingerprint") == tnotes.get("bodyFingerprint") if kind == "update"
+                else row.get("restoredFromRevision") == tnotes.get("toRevision"))
+
+    match = min((row for row in rows if same(row)), key=lambda row: row["revision"], default=None)
+    if match is None:
+        current = data.get("currentRevision")
+        if _is_int(current) and current <= expected:
+            return (f"currentRevision {current} is not above expectedRevision {expected}: the {op} did not land. Re-send the identical input with "
+                    f"the same request_id {reconciles!r} and record it with --reconciles {reconciles}"), ""
+        lowest = min((row["revision"] for row in rows), default=None)
+        if data.get("nextBeforeRevision") is not None and (lowest is None or lowest > expected + 1):
+            return (f"the listing stops at r{lowest} and does not reach expectedRevision {expected}: list again with "
+                    f"before_revision {data.get('nextBeforeRevision')} and record that page"), ""
+        what = "body fingerprint" if kind == "update" else f"restoredFromRevision {tnotes.get('toRevision')}"
+        return (f"no listed {kind} after r{expected} matches the sent {what} and producer {tnotes.get('producer')!r}: the {op} probably did not "
+                f"land and the page has moved on. Re-read it (read_page) before writing again; an identical re-send would be VERSION_CONFLICT"), ""
+    return None, {"check": f"host judged: a listed {kind} after expectedRevision matches the sent "
+                           + ("body fingerprint" if kind == "update" else "restore source") + " and producer; list rows carry no requestId (M)",
+                  "matchedPageId": page, "matchedRevision": match["revision"], "matchedFingerprint": match.get("fingerprint")}
+
+
 def record_receipt(project: str, response_path: str, operation: str, request_id: str, input_path: str,
                    reconciles: str | None = None) -> dict:
     drama = drama_dir(project)
@@ -384,7 +533,7 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
             raise ValueError(f"No local receipt {reconciles!r} to reconcile")
         target = json.loads(target_path.read_text(encoding="utf-8"))
     declared = _field(request, "request_id", "requestId")
-    if operation == "save_story_artifact" and reconciles is not None:
+    if operation in ("save_story_artifact", *PAGE_REQUEST_IDS) and reconciles is not None:
         if declared != reconciles:  # an identical re-send keeps the original request_id (S)
             return _refused(base, f"a re-send must carry the original request_id {reconciles!r}; --input has {declared!r}")
     elif declared is not None and declared != request_id:
@@ -414,6 +563,9 @@ def record_receipt(project: str, response_path: str, operation: str, request_id:
             doc["localRef"] = {"kind": "remote_artifact", "id": f"slot:{slot}", "revision": None}
         notes.update(kind=_field(request, "kind"), episodeRef=_field(request, "episode_ref", "episodeRef"),
                      expectedRevision=_field(request, "expected_revision", "expectedRevision"), **({"slotCheck": SLOT_CHECK} if slot_checked else {}))
+    if operation in PAGE_WRITES:
+        notes.update(_page_notes(operation, request, parsed, outcome))
+        base["warnings"] += _page_warnings(operation, notes, outcome)
     if reconciles is not None:
         doc["localRef"] = {"kind": "remote_receipt", "id": reconciles, "revision": None}
         reason, check = _reconcile_check(operation, reconciles, target, doc, parsed, request)
@@ -464,6 +616,38 @@ def _notes(doc: dict) -> dict:
     return notes if isinstance(notes, dict) else {}
 
 
+def _page_pending(doc: dict, attempts: list[str]) -> dict:
+    """Reconciliation steps for an unknown page write (v1.2). List rows carry no requestId in mali-story v0.20.0."""
+    request_id, op, notes = doc["requestId"], doc["operation"], _notes(doc)
+    project_id, page = doc["remote"]["projectId"], doc["remote"].get("pageId")
+    expected = notes.get("expectedRevision")
+    resend = {"tool": op, "args": "<原样的 --input 文件>", "why": (
+        "原样重发：同一 request_id + 同一输入由服务端重放原结果（replayed: true），没落地的则这次写入；只有它能按 request_id 核实"
+        if op in PAGE_REQUEST_IDS else "原样重发：标签写入是幂等的 PUT，重发得到同一状态")}
+    record_resend = {"command": f"drama_tools.py receipt record <project> <resend-response.json> --operation {op} "
+                                f"--request-id {request_id}.resend-{len(attempts) + 1} --input <原输入> --reconciles {request_id}"}
+    record_list = {"command": f"drama_tools.py receipt record <project> <list-response.json> --operation list_page_revisions "
+                              f"--request-id <new-read-id> --input <list-input.json> --reconciles {request_id}"}
+    if op == "create_page" or page is None:
+        steps = [resend, record_resend]
+        summary = "create_page 结果未知时还不知道 pageId，无法列修订：用原 request_id 原样重发，由服务端重放"
+    elif op == "label_page_revision":
+        steps = [{"tool": "list_page_revisions", "args": {"project_id": project_id, "page_id": page},
+                  "check": f"r{notes.get('revision')} 的 label == {notes.get('label')!r}"}, record_list, resend, record_resend]
+        summary = f"先用 list_page_revisions 看页面 {page} 的 r{notes.get('revision')} 是否已带标签，没有就原样重发（标签不是采用）"
+    else:
+        what = (f"fingerprint == {notes.get('bodyFingerprint')}（--input 正文的 sha256）" if op == "update_page"
+                else f"op == restore 且 restoredFromRevision == {notes.get('toRevision')}")
+        steps = [{"tool": "list_page_revisions", "args": {"project_id": project_id, "page_id": page},
+                  "why": "mali-story 的修订列表不带 requestId，无法直接按 request_id 查：只能找 expectedRevision 之后的修订按指纹与 producer 比对（宿主判断）",
+                  "check": f"revision > {expected}，{what}，producer == {notes.get('producer')!r}"},
+                 record_list, resend, record_resend]
+        summary = (f"先用 list_page_revisions 查页面 {page} 在 r{expected} 之后的修订（列表行不带 requestId，按正文指纹与 producer 比对）；"
+                   "要按 request_id 核实，就用原 request_id 原样重发")
+    return {"requestId": request_id, "operation": op, "projectId": project_id, "pageId": page, "slot": None,
+            "expectedRevision": expected, "retryAllowed": False, "unconfirmedAttempts": attempts, "summary": summary, "steps": steps}
+
+
 def pending(project: str) -> dict:
     """List unknown receipts that no reconciliation receipt resolves yet, with the calls to make."""
     drama = drama_dir(project)
@@ -480,10 +664,19 @@ def pending(project: str) -> dict:
             continue
         target_id, notes = doc["localRef"]["id"], _notes(doc)
         target = by_id.get(target_id)
-        if target is None or target["operation"] != "save_story_artifact" or target["outcome"] != "unknown":
-            reason = f"reconciles {target_id!r}, which is not a valid unknown save receipt"
+        judged_by_host = doc["operation"] == "list_story_artifacts"
+        if target is None or target["operation"] not in WRITES or target["outcome"] != "unknown":
+            reason = f"reconciles {target_id!r}, which is not a valid unknown write receipt"
+        elif (target["operation"] in PAGE_WRITES) != (doc["operation"] in PAGE_OPS):
+            reason = f"a {doc['operation']} does not reconcile a {target['operation']}"
         elif doc["remote"]["projectId"] != target["remote"]["projectId"]:
-            reason = f"projectId {doc['remote']['projectId']!r} is not the reconciled save's {target['remote']['projectId']!r}"
+            reason = f"projectId {doc['remote']['projectId']!r} is not the reconciled write's {target['remote']['projectId']!r}"
+        elif doc["operation"] == "list_page_revisions":
+            judged_by_host = notes.get("labelState") is None  # a listed label is the requested state itself (S)
+            reason = None if _is_int(notes.get("matchedRevision")) and notes.get("reconciles") == target_id else "page list reconciliation names no matched revision"
+        elif doc["operation"] in PAGE_WRITES:
+            reason = None if notes.get("resendOf") == target_id and doc["inputFingerprint"] == target["inputFingerprint"] \
+                else f"the re-send is not an identical {target['operation']} of {target_id!r}"
         elif doc["operation"] == "list_story_artifacts":
             reason = None if notes.get("matchedArtifactId") and _is_int(notes.get("matchedRevision")) else "list reconciliation names no matched row"
         else:
@@ -491,16 +684,19 @@ def pending(project: str) -> dict:
         if reason:
             invalid.append({"path": str(drama / "receipts" / f"{doc['requestId']}.json"), "errors": [f"reconciliation not counted: {reason}"]})
             continue
-        (host_judged if doc["operation"] == "list_story_artifacts" else verified).add(target_id)
+        (host_judged if judged_by_host else verified).add(target_id)
     items, read_only, unreconcilable = [], [], []
     for doc in valid:
         request_id = doc["requestId"]
         if doc["outcome"] != "unknown" or request_id in verified or request_id in host_judged:
             continue
-        if doc["operation"] == "save_story_artifact" and doc.get("localRef", {}).get("kind") == "remote_receipt":
+        if doc["operation"] in WRITES and doc.get("localRef", {}).get("kind") == "remote_receipt":
             continue  # an unconfirmed re-send attempt: its target stays pending on its own
-        attempts = sorted(d["requestId"] for d in valid if d["operation"] == "save_story_artifact" and d["outcome"] != "confirmed"
+        attempts = sorted(d["requestId"] for d in valid if d["operation"] == doc["operation"] and d["outcome"] != "confirmed"
                           and d.get("localRef", {}).get("kind") == "remote_receipt" and d["localRef"]["id"] == request_id)
+        if doc["operation"] in PAGE_WRITES:
+            items.append(_page_pending(doc, attempts))
+            continue
         if doc["operation"] not in WRITES:
             dead_end = doc["operation"] == "prepare_story_context"
             (unreconcilable if dead_end else read_only).append({
@@ -554,6 +750,26 @@ def _chunk(data: dict, name: str) -> dict:
     return fields
 
 
+def _page_chunk(data: dict, name: str) -> dict:
+    """One read_page chunk (mali-story v0.20.0 readPageText): same chunk fields as a story artifact read, keyed by pageId."""
+    span = data.get("coveredRange") if isinstance(data.get("coveredRange"), dict) else {}
+    fields = {"projectId": data.get("projectId"), "pageId": data.get("pageId"), "revision": data.get("revision"),
+              "fingerprint": data.get("fingerprint"), "totalCharacters": data.get("totalCharacters"),
+              "text": data.get("text"), "from": span.get("from"), "to": span.get("to"), "nextOffset": data.get("nextOffset")}
+    kinds = {"projectId": str, "pageId": str, "fingerprint": str, "text": str}
+    for key, value in fields.items():
+        if key == "nextOffset" and value is None:
+            continue
+        if not (isinstance(value, kinds[key]) if key in kinds else _is_int(value)):
+            raise ValueError(f"{name}: read_page chunk has no valid {key}")
+    if fields["revision"] < 1:
+        raise ValueError(f"{name}: read_page revision {fields['revision']} names no page revision; cache a page with history (revision >= 1)")
+    if not FINGERPRINT.fullmatch(fields["fingerprint"]):
+        raise ValueError(f"{name}: fingerprint is not sha256:<hex>")
+    safe_id(fields["pageId"], "pageId")
+    return fields
+
+
 def _refuse(error: str) -> dict:
     return {"ok": True, "passed": False, "status": "refused", "error": error + "; nothing written",
             "remote_verified": False, "adoption_verified": False}
@@ -561,9 +777,10 @@ def _refuse(error: str) -> dict:
 
 def _join(chunks: list[dict]) -> tuple[str | None, str | None]:
     """Return (text, None) for a complete verified sequence, else (None, reason)."""
-    identity = {(c["projectId"], c["artifactId"], c["revision"], c["fingerprint"], c["totalCharacters"]) for c in chunks}
+    identity = {(c["projectId"], c.get("artifactId", c.get("pageId")), c["revision"], c["fingerprint"], c["totalCharacters"]) for c in chunks}
     if len(identity) > 1:
-        return None, "chunks disagree on projectId, artifactId, revision, fingerprint or totalCharacters"
+        what = "pageId" if "pageId" in chunks[0] else "artifactId"
+        return None, f"chunks disagree on projectId, {what}, revision, fingerprint or totalCharacters"
     # a read at offset == totalCharacters returns an empty chunk; it adds no text, so drop it
     chunks = [c for c in chunks if not (c["from"] == c["to"] == c["totalCharacters"] and c["text"] == "")] or chunks
     by_start: dict[int, dict] = {}
@@ -649,9 +866,76 @@ def _saved_slots(drama: Path, project_id: str | None, artifact: str, revision: i
             and (doc["remote"].get("artifactId"), doc["remote"].get("revision")) == (artifact, revision)}
 
 
+def _load_manifest(manifest_path: Path) -> dict:
+    """The manifest to append to: v0 entries are kept as they are; the file is written back as v1 (#34)."""
+    if not manifest_path.exists():
+        return {"schemaVersion": MANIFEST, "entries": []}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") not in MANIFESTS or not isinstance(manifest.get("entries"), list):
+        raise ValueError(f"{manifest_path} is not a {' or '.join(MANIFESTS)} manifest")
+    return {**manifest, "schemaVersion": MANIFEST}
+
+
+def _created_title(drama: Path, page_id: str) -> str | None:
+    """The title a valid confirmed local create_page receipt sent for this page; no page tool returns a title."""
+    titles = {_notes(doc).get("title") for _, doc in _receipts(drama) if isinstance(doc, dict) and not check_contract("remote-receipt", doc)
+              and doc["operation"] == "create_page" and doc["outcome"] == "confirmed" and doc["remote"].get("pageId") == page_id}
+    titles.discard(None)
+    return titles.pop() if len(titles) == 1 else None
+
+
+def cache_page(drama: Path, chunks: list[dict], meta: list[dict], title: str | None) -> dict:
+    """Cache one page revision from a complete read_page sequence; verified only when the joined text hashes to its fingerprint.
+
+    The manifest v1 entry records pageId, revision, title (host-declared or from a local create_page receipt: no page tool
+    returns it), the labels the read chunks carried, producer, both hashes, operation read_page and readAt. A label
+    observed in a read is a name for the revision, not production adoption.
+    """
+    text, reason = _join(chunks)
+    if reason:
+        return _refuse(reason)
+    page, revision, server = chunks[0]["pageId"], chunks[0]["revision"], chunks[0]["fingerprint"]
+    content = text.encode("utf-8")
+    digest = "sha256:" + hashlib.sha256(content).hexdigest()
+    labels = sorted({item["label"] for item in meta if isinstance(item.get("label"), str)})
+    producers = sorted({item["producer"] for item in meta if isinstance(item.get("producer"), str)})
+    warnings = [LABEL_NOTE] if labels else []
+    if len(labels) > 1:
+        warnings.append(f"读取过程中标签发生了变化（{'、'.join(labels)}）；标签可随时改写，manifest 记下的是读取时看到的全部标签")
+    if title is None:
+        title = _created_title(drama, page)
+        if title is None:
+            warnings.append("没有给 --title，本地也没有该页面的 confirmed create_page 回执：title 记为 null（页面工具不返回标题）")
+    name = f"{page}@r{revision}.md"
+    folder = area(drama, "cache")
+    path, manifest_path, rel = folder / name, folder / "manifest.json", f".drama/cache/{name}"
+    for file in (path, manifest_path):
+        contained(file, drama)
+    entry = {"path": rel, "pageId": page, "revision": revision, "title": title, "labels": labels,
+             "producer": producers[0] if len(producers) == 1 else None, "sha256": digest, "serverFingerprint": server,
+             "verified": digest == server, "operation": "read_page", "readAt": _now()}
+    with manifest_lock(folder):
+        manifest = _load_manifest(manifest_path)
+        status = "written"
+        if path.exists() or not publish_new(path, content):
+            if path.read_bytes() != content:
+                return _refuse(f"{path} already exists with different bytes")
+            status = "unchanged"
+        same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
+        keys = ("pageId", "revision", "title", "labels", "producer", "sha256", "serverFingerprint", "verified")
+        existing = next((item for item in same if all(item.get(key) == entry[key] for key in keys)), None)
+        if existing is None:  # append-only: a later read with other labels or another title adds an entry, never edits one
+            manifest["entries"].append(entry)
+            atomic_write(manifest_path, (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    returned = existing or entry
+    return {"ok": True, "passed": True, "status": status, "path": str(path), "entry": returned, "manifestAppended": existing is None,
+            "verified": returned["verified"] is True, "warnings": warnings, "remote_verified": False, "adoption_verified": False}
+
+
 def cache(project: str, response_paths: list[str], slot: str | None = None, kind: str | None = None,
-          episode_ref: str | None = None) -> dict:
-    """Cache one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified).
+          episode_ref: str | None = None, title: str | None = None) -> dict:
+    """Cache one page revision from a full read_page sequence (v1.2), or, read-only compatibility for candidates saved before
+    the page model, one artifact revision from a full read_story_artifact sequence (verified) or a get (unverified).
 
     The entry's slotSource says who vouches for the slot: the get record, a local confirmed save receipt, or only the host.
     A call from a stronger source than every entry for the path appends an entry that corrects them: a get record
@@ -659,16 +943,27 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
     differs from the strongest entries is refused.
     """
     drama = drama_dir(project)
-    chunks, records = [], {}
+    chunks, records, pages, meta = [], {}, [], []
     for name in response_paths:
         parsed = _parse(json.loads(Path(name).read_text(encoding="utf-8-sig")), (READ_KEYS, ("record",)), [])
         if not parsed["ok"]:
             raise ValueError(f"{name}: the saved call failed ({parsed['errorCode']}); nothing to cache")
-        if isinstance(parsed["data"].get("record"), dict):
+        if "pageId" in parsed["data"]:
+            pages.append(_page_chunk(parsed["data"], name))
+            meta.append(parsed["data"])
+        elif isinstance(parsed["data"].get("record"), dict):
             record = parsed["data"]["record"]
             records[canonical_json(record)] = record
         else:
             chunks.append(_chunk(parsed["data"], name))
+    if pages:
+        if chunks or records:
+            raise ValueError("read_page chunks cannot be cached together with story artifact responses; pass one page's chunks per call")
+        if slot is not None or kind is not None or episode_ref is not None:
+            raise ValueError("--slot, --kind and --episode-ref belong to story artifacts; a page is identified by its pageId and revision")
+        return cache_page(drama, pages, meta, title)
+    if title is not None:
+        raise ValueError("--title belongs to read_page chunks; story artifacts have slot, kind and episodeRef")
     if len(records) > 1:
         raise ValueError("Pass at most one get_story_artifact response per call")
     record = next(iter(records.values()), None)
@@ -717,12 +1012,8 @@ def cache(project: str, response_paths: list[str], slot: str | None = None, kind
              "revision": revision, "sha256": digest, "serverFingerprint": server, "verified": verified,
              "operation": operation, "readAt": _now(), "slotSource": "record" if record is not None else source}
     with manifest_lock(folder):
-        manifest = {"schemaVersion": MANIFEST, "entries": []}
-        if manifest_path.exists():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST or not isinstance(manifest.get("entries"), list):
-                raise ValueError(f"{manifest_path} is not a {MANIFEST} manifest")
-        same = [item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
+        manifest = _load_manifest(manifest_path)
+        same =[item for item in manifest["entries"] if isinstance(item, dict) and item.get("path") == rel]
         corrected = disputed = False
         for item in effective_entries(same):
             fields = [key for key in SLOT_FIELDS if item.get(key) != entry[key]]
@@ -790,5 +1081,5 @@ def run_receipt(args) -> dict:
     if args.receipt_command == "pending":
         return pending(args.project)
     if args.receipt_command == "cache":
-        return cache(args.project, args.responses, args.slot, args.kind, args.episode_ref)
+        return cache(args.project, args.responses, args.slot, args.kind, args.episode_ref, args.title)
     return show(args.project, args.request_id)

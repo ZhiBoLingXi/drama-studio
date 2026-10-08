@@ -26,7 +26,13 @@
         "list_story_artifacts",
         "read_story_artifact",
         "get_writing_context",
-        "prepare_story_context"
+        "prepare_story_context",
+        "create_page",
+        "update_page",
+        "read_page",
+        "list_page_revisions",
+        "label_page_revision",
+        "restore_page"
       ]
     },
     "requestId": {
@@ -58,6 +64,13 @@
             "string",
             "null"
           ]
+        },
+        "pageId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "mali-story page id (v1.2): stable across revisions; for update/restore/label the addressed page"
         },
         "revision": {
           "type": [
@@ -120,6 +133,7 @@
           "type": "string",
           "enum": [
             "remote_artifact",
+            "remote_page",
             "remote_snapshot",
             "remote_brief",
             "local_file",

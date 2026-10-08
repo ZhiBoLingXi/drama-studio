@@ -1,0 +1,49 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story v0.20.0 (faff8fd) source: api-mcp-server.ts toolResult({status,headers,body}) + tool-output.ts normalizeMcpOutput (mali-tool-result/v1) + page-version-service.ts (read_page -> GET /pages/:pageId/text, readPageText, limit=20; fingerprint = sha256 of the full UTF-8 body; resource_link appended by the read_page handler); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Rd22aB3cD4eF5gH6iJ7k\",\"data\":{\"projectId\":\"2f70c1e9fad74f35ae27f\",\"pageId\":\"5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f\",\"revision\":2,\"isCurrent\":true,\"producer\":\"external_ai\",\"inputSnapshotId\":\"sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225\",\"label\":null,\"fingerprint\":\"sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33\",\"offset\":20,\"offsetUnit\":\"unicode_code_points\",\"text\":\"等来𠮷字号当铺的伙计，雨一直没停。\\n行动\",\"totalCharacters\":79,\"nextOffset\":40,\"atEnd\":false,\"coveredRange\":{\"from\":20,\"to\":40},\"resourceUri\":\"mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/2/fingerprints/4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33/chunks/20\",\"nextResourceUri\":\"mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/2/fingerprints/4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33/chunks/40\",\"contentTrust\":\"reference_data\"},\"error\":null}}"
+    },
+    {
+      "type": "resource_link",
+      "uri": "mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/2/fingerprints/4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33/chunks/20",
+      "name": "Page text chunk",
+      "mimeType": "application/json"
+    }
+  ],
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": true,
+    "transport": {
+      "status": 200
+    },
+    "data": {
+      "projectId": "2f70c1e9fad74f35ae27f",
+      "pageId": "5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f",
+      "revision": 2,
+      "isCurrent": true,
+      "producer": "external_ai",
+      "inputSnapshotId": "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225",
+      "label": null,
+      "fingerprint": "sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33",
+      "offset": 20,
+      "offsetUnit": "unicode_code_points",
+      "text": "等来𠮷字号当铺的伙计，雨一直没停。\n行动",
+      "totalCharacters": 79,
+      "nextOffset": 40,
+      "atEnd": false,
+      "coveredRange": {
+        "from": 20,
+        "to": 40
+      },
+      "resourceUri": "mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/2/fingerprints/4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33/chunks/20",
+      "nextResourceUri": "mali-story://projects/2f70c1e9fad74f35ae27f/pages/5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f/revisions/2/fingerprints/4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33/chunks/40",
+      "contentTrust": "reference_data"
+    },
+    "recovery": {
+      "action": "none",
+      "retrySafe": false
+    }
+  }
+}

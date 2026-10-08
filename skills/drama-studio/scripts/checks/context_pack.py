@@ -1,7 +1,7 @@
 """Assemble a reproducible context-snapshot from a task, a host selection and local cache/knowledge files.
 
 Deterministic assembly only: no semantic selection, no truncation, no network, no model. Reads --task,
---selection, <project>/.drama/cache/ (through its manifest), <project>/knowledge/cards/ and, for local_file
+--selection, <project>/.drama/cache/ (through its manifest v0 or v1: remote_page by pageId@revision, remote_artifact by artifactId), <project>/knowledge/cards/ and, for local_file
 items, files inside <project>/.drama/ (not its cache) or <project>/runs/; writes only
 <project>/.drama/snapshots/, and never overwrites an existing snapshot.
 """
@@ -14,9 +14,8 @@ from pathlib import Path
 import re
 
 from .contract_check import check_contract
-from .receipt import effective_entries
+from .receipt import MANIFESTS, effective_entries
 
-MANIFEST_VERSION = "drama-studio/cache-manifest/v0"
 PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns"]
 LOCAL_ROOTS = (".drama", "runs")  # the only folders a local_file selection item may read from
 
@@ -49,20 +48,24 @@ def _manifest(cache: Path) -> list:
     if not path.is_file():
         return []
     manifest = _load_json(path, "cache manifest")
-    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != MANIFEST_VERSION or not isinstance(manifest.get("entries"), list):
-        raise ValueError(f"cache manifest must be an object with schemaVersion {MANIFEST_VERSION} and an entries list: {path}")
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") not in MANIFESTS or not isinstance(manifest.get("entries"), list):
+        raise ValueError(f"cache manifest must be an object with schemaVersion {' or '.join(MANIFESTS)} and an entries list: {path}")
     return manifest["entries"]
 
 
 def _read_cache(root: Path, cache: Path, entries: list, ref: dict, where: str, allow_unverified: bool,
                 errors: list[str], unknowns: list[str]):
+    """A remote_artifact (by artifactId; slot from its strongest entries) or a remote_page (by pageId, v1.2) cache file."""
+    page = ref["kind"] == "remote_page"
     matches = [entry for entry in entries if isinstance(entry, dict)
-               and entry.get("artifactId") == ref["id"] and type(entry.get("revision")) is int and entry["revision"] == ref["revision"]]
+               and entry.get("pageId" if page else "artifactId") == ref["id"]
+               and type(entry.get("revision")) is int and entry["revision"] == ref["revision"]]
     if not matches:
         return "missing", None
-    slots = {entry.get("slot") for entry in effective_entries(matches)}  # a stronger slot source corrects a weaker entry's slot
+    # a page is its own identity; an artifact's slot comes from its strongest-source entries
+    slots = {ref["id"]} if page else {entry.get("slot") for entry in effective_entries(matches)}
     if len({(entry.get("path"), entry.get("sha256")) for entry in matches}) > 1 or len(slots) > 1:
-        errors.append(f"{where}: cache manifest has conflicting entries for this artifact revision")
+        errors.append(f"{where}: cache manifest has conflicting entries for this {'page' if page else 'artifact'} revision")
         return "error", None
     entry = dict(matches[-1], slot=slots.pop())
     for field in ("path", "slot", "sha256"):
@@ -128,7 +131,7 @@ def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
         raise ValueError(f"{where}: local_file id must be a relative path inside {' or '.join(f'{folder}/' for folder in LOCAL_ROOTS)} "
                          "without '..' (e.g. .drama/reviews/rev-ep45-1.json or runs/ep45/review.md)")
     if parts[:2] == [".drama", "cache"]:
-        raise ValueError(f"{where}: cached artifacts are packed as remote_artifact through the cache manifest, not as local_file")
+        raise ValueError(f"{where}: cached pages and artifacts are packed as remote_page or remote_artifact through the cache manifest, not as local_file")
     if ref["revision"] is not None and not (isinstance(ref["revision"], str) and re.fullmatch(r"sha256:[a-f0-9]{64}", ref["revision"])):
         raise ValueError(f"{where}: a local_file revision must be null or the sha256:<hex> of the file")
     path = root / name
@@ -190,19 +193,19 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
     for folder, what in ((cache, ".drama/cache"), (cards, "knowledge/cards")):
         if folder.exists():
             _inside(folder, root, what)
-    entries, slots, card_revisions = None, {}, {}
+    entries, slots, card_revisions, pages = None, {}, {}, {}
     for index, item in enumerate(chosen["items"]):
         ref = item["ref"]
         where = f"selection.items[{index}] ({_label(ref)})"
-        if ref["kind"] not in ("remote_artifact", "knowledge_card", "local_file"):
-            raise ValueError(f"{where}: kind must be remote_artifact (cache), knowledge_card or local_file (.drama/ or runs/)")
+        if ref["kind"] not in ("remote_page", "remote_artifact", "knowledge_card", "local_file"):
+            raise ValueError(f"{where}: kind must be remote_page or remote_artifact (cache), knowledge_card or local_file (.drama/ or runs/)")
         if ref["kind"] != "local_file" and (not isinstance(ref["revision"], int) or isinstance(ref["revision"], bool)):
-            raise ValueError(f"{where}: revision must pin an integer revision")
+            raise ValueError(f"{where}: revision must pin an integer revision" + (" (a remote_page is pageId + revision)" if ref["kind"] == "remote_page" else ""))
         span = ref.get("range")
         if span and span["start"] > span["end"]:
             raise ValueError(f"{where}: range start {span['start']} is after end {span['end']}")
         clean = {key: ref[key] for key in ("kind", "id", "revision", "sha256", "range") if key in ref}
-        if ref["kind"] == "remote_artifact":
+        if ref["kind"] in ("remote_artifact", "remote_page"):
             entries = _manifest(cache) if entries is None else entries
             status, loaded = _read_cache(root, cache, entries, ref, where, allow_unverified, errors, unknowns)
         elif ref["kind"] == "local_file":
@@ -217,7 +220,12 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         if status == "error":
             continue
         data, detail = loaded
-        if ref["kind"] == "remote_artifact":
+        if ref["kind"] == "remote_page":
+            usage = item.get("usage", "project_text")
+            prior = pages.setdefault(ref["id"], (ref["revision"], index))
+            if prior[0] != ref["revision"]:
+                errors.append(f"{where}: page {ref['id']} is already packed at r{prior[0]} (selection.items[{prior[1]}]); one package cannot mix revisions of a page")
+        elif ref["kind"] == "remote_artifact":
             usage = item.get("usage", "project_text")
             prior = slots.setdefault(detail, (ref["id"], ref["revision"], index))
             if prior[:2] != (ref["id"], ref["revision"]):

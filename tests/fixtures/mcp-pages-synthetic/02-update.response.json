@@ -1,0 +1,29 @@
+{
+  "_synthetic": "synthetic: hand-built from mali-story v0.20.0 (faff8fd) source: api-mcp-server.ts toolResult({status,headers,body}) + tool-output.ts normalizeMcpOutput (mali-tool-result/v1) + page-version-service.ts (update_page -> POST /pages/:pageId/revisions, UpdatePageResult); not a captured live response. Replace with real responses in tests/fixtures/mcp-pages/ once mali-story#2336 is deployed.",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":{\"requestId\":\"Up2bW3eR5tY7uI9oP1aS2\",\"data\":{\"pageId\":\"5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f\",\"revision\":2,\"previousRevision\":1,\"fingerprint\":\"sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33\",\"producer\":\"external_ai\",\"replayed\":false,\"unchanged\":false},\"error\":null}}"
+    }
+  ],
+  "structuredContent": {
+    "schemaVersion": "mali-tool-result/v1",
+    "ok": true,
+    "transport": {
+      "status": 200
+    },
+    "data": {
+      "pageId": "5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f",
+      "revision": 2,
+      "previousRevision": 1,
+      "fingerprint": "sha256:4fc5d89c9358c0ffe784fb99c38a46ee872dfcd8b98331b782af41c045785b33",
+      "producer": "external_ai",
+      "replayed": false,
+      "unchanged": false
+    },
+    "recovery": {
+      "action": "none",
+      "retrySafe": false
+    }
+  }
+}

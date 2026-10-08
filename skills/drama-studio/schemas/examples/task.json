@@ -19,8 +19,8 @@
       "revision": 3
     },
     {
-      "kind": "remote_artifact",
-      "id": "art-ep21-outline",
+      "kind": "remote_page",
+      "id": "page-ep21-outline",
       "revision": 2
     }
   ],
