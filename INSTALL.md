@@ -24,6 +24,20 @@ python3 -B scripts/install.py verify --host codex
 
 安装只写一个 `drama-studio` 技能目录与安装回执，不改 AGENTS.md、CLAUDE.md、模型密钥或整个 MCP 配置。相同内容重复运行不修改。不同版本要升级时用 `--upgrade`；安装器检查原回执、拒绝覆盖用户修改，并保留旧目录。遇到无回执的同名目录或修改冲突时，说明具体位置，保留内容，不能删掉或强制覆盖。
 
+## 2b. 升级已有安装
+
+用户说“升级 drama-studio”或“更新到最新版本”时按这一节做，不重新初始化、不重建任务。
+
+1. **看已有安装**：运行 `python3 -B scripts/install.py verify --host <宿主>`，记下安装位置、版本、文件数和 `matches_checkout`。`matches_checkout: true` 且版本等于仓库 `VERSION` 时，说明已经是当前版本，直接报告，不重复安装。
+2. **更新仓库**：先 `git status --short` 和 `git log --oneline -1`。工作区干净时运行 `git pull --ff-only`；有未提交的修改或不能快进时停下，说明具体文件，让用户决定，不要 stash、reset 或强制拉取。
+3. **升级**：运行 `python3 -B scripts/install.py install --host <宿主> --upgrade`（项目级安装同样加 `--scope project --project <目录>`）。安装器只替换与原回执一致的安装，旧版本移到同目录下的 `.drama-studio-backup-*`；用户改过安装文件时会拒绝并指出文件，此时把文件名告诉用户，不要删改。
+4. **校验**：再次 `verify`，确认 `matches_checkout: true`、版本等于 `VERSION`、`offline_tools.ok` 为 true。报告备份目录位置，回退时把它移回原位即可（安装器没有单独的回滚命令）。
+5. **检查 mali-story 连接**（0.3.0 起需要页面工具）：
+   - 确认宿主的 MCP 配置里有指向 `https://story-api.maliai.art/mcp` 的连接。注意 `video.maliai.art` 等其他 mali 服务不是同一个，不能代替。
+   - 工具列表里应能看到 `create_page`、`update_page`、`read_page`、`list_page_revisions`、`label_page_revision`、`restore_page`。看不到时先让用户重新连接（例如 Claude Code 的 `/mcp`、重启 Codex），仍看不到再检查服务端版本是否为 v0.20.0 及以上。
+   - 缺连接时按第 5 节用宿主原生方式添加，由用户完成登录；不读取、不写入令牌。
+6. **报告**：分开写升级前后版本与文件数、备份位置、校验结果、MCP 连接与页面工具是否可见；没验证的项写明“未验证”。
+
 ## 3. ChatGPT／WorkBuddy 技能包与入口确认
 
 ```sh
