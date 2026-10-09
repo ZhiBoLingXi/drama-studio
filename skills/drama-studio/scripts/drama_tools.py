@@ -18,6 +18,7 @@ from checks.import_project import PRODUCERS, run_apply, run_preview
 from checks.knowledge_store import run_knowledge_search, run_knowledge_show, run_knowledge_validate
 from checks.project_status import render_status, run_impact, run_status
 from checks.reference_check import run_reference_check
+from checks.season_check import run_season_check
 from checks.receipt import EXPECTED as RECEIPT_OPERATIONS, KINDS as ARTIFACT_KINDS, run_receipt
 
 
@@ -121,6 +122,11 @@ def main() -> int:
     status = commands.add_parser("status", help="Next step from local receipts, runs and snapshots; read-only, reads no chat history, proves nothing remote")
     status.add_argument("project")
     status.add_argument("--json", action="store_true", help="Print JSON instead of text whose first line is the next action")
+    season = commands.add_parser("season-check", help="Per-episode evidence that a season run followed the workstation flow; read-only, judges records not writing")
+    season.add_argument("project")
+    season.add_argument("--episodes", required=True, help="N or A-B, e.g. 31-80")
+    season.add_argument("--batch-size", type=int, default=10, help="Most episodes one first read may cover (default 10)")
+    season.add_argument("--allow-offline", action="store_true", help="Only when the user agreed to an offline run: not_sent saves warn instead of fail while no remote project is bound")
     impact = commands.add_parser("impact", help="Mark snapshots and runs stale/unknown/current for a slot or page revision; read-only, implicit content dependencies not assessed")
     impact.add_argument("project")
     impact.add_argument("--slot", help="Target slot; needs --revision")
@@ -165,6 +171,8 @@ def main() -> int:
             if not args.json:
                 print(render_status(result))
                 return 0
+        elif args.command == "season-check":
+            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline)
         elif args.command == "impact":
             result = run_impact(args.project, args.slot, args.revision, args.artifact, args.card, args.page)
         else:

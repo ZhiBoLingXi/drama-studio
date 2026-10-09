@@ -5,22 +5,23 @@
 写正文、续写下一批、查稿后改稿，默认都走这条流程，单集也一样。不能用“一次写完一批、再整体自检一遍”代替。对象格式与命令细节见 [工位协议](workstations/README.md)；一次要写多批（如“写第 31–80 集”）时，另按 [整季分批](workstations/season-run.md) 编排。开始前先按 [两次审批](approval-flow.md) 确认本次允许写到哪一集。
 
 1. **项目目录**：已有项目先运行 `drama_tools.py status <项目>`，按输出第一行处理；没有项目就运行 `drama_tools.py init-project <项目> --title <剧名>`。用户给的集纲、前文、设定（docx 等）转成文本放进项目的 `runs/input/`，不要只放在临时工作区。项目目录不能放在技能安装目录里。
-2. **连接与上下文**：先发现当前会话里实际可用的 mali-story 工具。可用时，用 `get_writing_context` 读到 `nextOffset` 为 null 并记回执；要装进包里的前文页面用 `read_page` 读回，再用 `receipt cache` 存进本地缓存。不可用时按下文 [离线与单代理降级](#离线与单代理降级) 继续，不停工，也不跳过后面的步骤。
+2. **连接与上下文**：先发现当前会话里实际可用的 mali-story 工具。可用时，用 `get_writing_context` 读到 `nextOffset` 为 null 并记回执；要装进包里的前文页面用 `read_page` 读回，再用 `receipt cache` 存进本地缓存。按路线图，mali-story 是正文的唯一存放处：没有 mali-story 工具或还没有远端项目时，先告诉用户并请用户配置连接或确认建项目，不自行改走离线。只有两种情况走下文 [离线与单代理降级](#离线与单代理降级)：已有远端项目但暂时断线（连上后补存），或用户明确同意这次只交本地草稿（把用户原话记进 `PROJECT.md`）。离线也不跳过后面的步骤。
 3. **C4 确认集纲可写**：本集集纲要写明处境、行动目标、阻力、关键选择和出口；入口按前一集的实际正文，不按前一集的计划（见 [C4](workstations/c4-episode-outline.md)）。集纲缺少关键选择时提 C4 变更，不让正文去补这个空缺。
-4. **C5 装包写正文**：写好 `task` 和选材清单（selection），运行 `drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role author --budget <字数>` 生成快照，再按这个包写完整正文（见 [C5](workstations/c5-screenplay.md)）。前文按原场面装，不能只装摘要；超出预算就缩小单元，不静默截断。
+4. **C5 装包写正文**：一集一个作者运行，前一集定稿后再给下一集装包，不一次写完一批。作者包至少有三样：本集集纲或修改单、前一集最新稿的原文、入口状态记录 `runs/state/after-ep-<前一集三位数>.md`（谁知道了什么、承诺与付款到哪一步、关键物件在谁手里、故事第几天）。写好 `task` 和选材清单（selection），运行 `drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role author --budget <字数>` 生成快照，再按这个包写完整正文（见 [C5](workstations/c5-screenplay.md)）。前文按原场面装，不能只装摘要；超出预算就缩小单元，不静默截断。
 5. **C6 两读**（见 [C6](workstations/c6-review.md)）：
-   - 首读：另装一个 `--role reader_effect` 包，只放观众能看到的正文（本集或本批，加前一集；前一集已经精修过就装精修稿），不放集纲和作者说明。首读记录写完立即算 sha256 并记下，之后不再改动，这叫封存。
+   - 首读：在没看过集纲和作者说明的新上下文里做（子代理、新会话，或宿主支持时另起的非交互进程），另装一个 `--role reader_effect` 包，只放观众能看到的正文（本集或本批，加前一集；前一集已经精修过就装精修稿），不放集纲和作者说明。首读记录写完立即算 sha256 并记下，之后不再改动，这叫封存。
    - 次读：再装一个包，加入集纲或修改单、状态与规则，核对目标和事实。次读的结论另写，不回头改首读记录。
    - 审读记录按 `review-record` 写：问题分事实、目标、偏好三类，每条标明该回到哪一层。
 6. **一次定向修订**：属于 C5 的问题，单独装一个包（被修订稿加审读记录，审读记录按 `local_file` 装入）修订一次，修订者是原 C5 作者或同一角色。属于 C4 及以上的问题写进 `run-handoff` 的 `changeProposals`，交用户决定，不在正文里悄悄改上游。修订次数不超过 `task.revisionBudget`，默认为 1；修完仍有的问题保留下来并列出。
 7. **保存为页面修订**：先确认要保存的正文与本地稿逐字一致，再用 `create_page` 或 `update_page` 保存，`receipt record` 记回执，`read_page` 读回比对指纹后执行 `receipt cache`（见 [页面读写](mali-story.md#页面读写版本标签与恢复)）。主创确认后才用 `label_page_revision` 打标签；标签不等于制作采用。离线时回执记为 `not_sent`。
-8. **交接**：把 `run-handoff` 写到 `.drama/runs/<runId>.json`，填写 `finishedAt`、快照 ID、产出、状态变化提案和 `nextAction`；用 `contract-check` 校验任务、选材清单、审读记录、交接和回执。下一集或下一批要等本批保存好（离线时是 `not_sent` 回执写好）之后再装包。
+8. **交接与状态**：把 `run-handoff` 写到 `.drama/runs/<runId>.json`，填写 `finishedAt`、快照 ID、产出、状态变化提案和 `nextAction`；`host.usage` 按本次实测填，没实测就写 `{"source": "unknown"}`，不从别的运行抄。再按本集定稿和状态变化提案写出 `runs/state/after-ep-<本集三位数>.md`，作为下一集的入口。用 `contract-check` 校验任务、选材清单、审读记录、交接和回执。下一集要等本集保存好（离线时是 `not_sent` 回执写好）之后再装包。
+9. **关口**：每批结束和交付前运行 `drama_tools.py season-check <项目> --episodes <起-止>`（用户同意离线时加 `--allow-offline`），把结论原样写进交付说明。不通过的集，补齐证据或重做之前不能写“已按流程完成”。
 
 客观检查（`episode-check`、`dup-check`）在第 4 到第 6 步之间按需运行，见下文 [检查](#检查)。快照 ID、首读 sha256、审读记录、回执和交接都要留在项目里，换会话时靠它们接续。没做的步骤如实写“未执行”及原因。
 
 ## 离线与单代理降级
 
-没有 mali-story 连接、没有写权限，或宿主不能开子代理时，流程照常走，只替换做不到的那一步。装包和两读都不能省。
+已有远端项目但暂时断线、用户明确同意只交本地草稿，或宿主不能开子代理时，流程照常走，只替换做不到的那一步。装包和两读都不能省。没有远端项目时先问用户，见上文第 2 步。
 
 **没有 mali-story 连接**
 
@@ -41,8 +42,8 @@
 **不能开子代理**
 
 - C6 照样分两次装包：先只读 `reader_effect` 包写首读记录，算 sha256 封存，然后再装次读包。
-- 同一会话的作者已经读过集纲和全文，所以 `review-record.context` 写 `serial_self_review`，`claimsIndependence` 不能为 true（`contract-check` 会拒绝）。`firstReadWithoutAuthorNotes` 只有在首读者确实没看过集纲和作者说明时才填 true。
-- 另一种做法：请用户在新会话里只给这个 `reader_effect` 包做首读，把记录交回来。这时可以记 `independent`，交付说明里注明首读者是同一模型家族的新会话。
+- 同一会话的作者已经读过集纲和全文，所以 `review-record.context` 写 `serial_self_review`，`claimsIndependence` 不能为 true（`contract-check` 会拒绝），`firstReadWithoutAuthorNotes` 也只能填 false，这样 `season-check` 会判这一集没有首读。
+- 要有真正的首读，就另起一个没看过集纲的上下文：宿主支持时另起非交互进程，只给它 `reader_effect` 包和首读要求；或请用户在新会话里做首读，把记录交回来。这时 `context` 记 `independent`，`firstReadWithoutAuthorNotes` 记 true，交付说明里注明首读者是同一模型家族的新上下文。
 - 没有子代理不是省掉首读的理由，也不能把整批写完后一次自评充当两读。
 
 **篇幅与时长**

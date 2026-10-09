@@ -12,7 +12,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.3.1` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.3.2` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -232,6 +232,18 @@ python3 -B skills/drama-studio/scripts/drama_tools.py impact ../my-drama --page 
 - 不确定一律标 `unknown`，附原因和“扩大阅读”建议：artifactId 不在 manifest、slot 只是宿主声明、同一 artifactId 最强来源的条目互相矛盾或修订号不一致、引用缺 revision 或与 manifest 不一致、快照损坏、运行找不到所依赖的快照。`current` 只表示没有记录在案的执行依赖指向该 slot 的旧修订；内容层面的隐含依赖未评估。工具不自动重跑，也不改写正文。
 - slot 的可信度记在 manifest 条目的可选字段 `slotSource`：`receipt cache` 带 `get_story_artifact` 响应时为 `record`；只给分块、但本地有该 artifactId 的 confirmed 保存回执且 slot 一致时为 `receipt`（与 `--slot` 不一致则拒绝写入，退出码 2）；经对账确认的重发回执（`localRef.kind` 为 `remote_receipt`，`notes` 记有 `slotCheck` 且 `observedRequestId` 等于原 requestId，原 unknown 回执同项目、同输入指纹）也算，slot 取原回执的 slot；否则为 `host`。`receipt record` 遇到 confirmed 的保存响应且响应里带 `record.slot` 时，会把它与 `--input` 的 slot 比对：不一致即拒绝写回执（退出码 1），一致则在回执 `notes` 里记 `slotCheck`。只有带这条记录的回执才能让缓存条目记为 `receipt`；响应不带 slot 的回执、以及这项检查加入之前写的回执，slot 仍只是输入文件的说法，不算数。工具不联网，这项比对只说明两份保存下来的文件互相一致。`host` 或没有该字段的条目在 `impact` 中按 `unknown` 处理；用 get 响应重新缓存会追加一条 `record` 条目，manifest 只追加，旧条目不改不删。同一产物修订（同一 artifactId 与 revision）有多条条目时以最强来源为准：`record` > `receipt` > `host`，没有 `slotSource` 或取值不在这三者内的按 `host` 算；`receipt cache` 拿这次调用的 `slot`、`kind`、`episodeRef` 三项与来源最强的条目比较；`context-pack`、`impact`、`status` 只从来源最强的条目读 `slot`，不看 kind 与 episodeRef。所以宿主声明的 slot（或 kind、episodeRef）写错了，带 get 响应重新缓存即可纠正：这次调用的来源强于该产物修订已有的全部条目时，工具追加一条纠正条目，并在 `warnings` 里写明改了哪一项；此前已核验的全文照旧算已核验。写错的旧条目留在原处；该产物的 slot 与修订能由更强来源唯一确定时，它不再算作它所写 slot 的条目（条目互相矛盾或修订号不一致时，每条条目所写的 slot 照旧算数，疑点不会因此消失），`context-pack` 的“同一 slot 不能混两个修订”也按纠正后的 slot 判断（纠正之前装好的快照是按旧值检查的）。来源相同或更弱而取值不同的调用被拒绝、不写入（退出码 2），错误信息写明已有条目的来源与取值：宿主声明不能纠正 `receipt` 或 `record`，`receipt` 不能纠正 `record`。保存回执只担保 slot：`receipt` 来源的调用带的 kind 与 episodeRef 仍是宿主给的值，所以它只能纠正宿主声明的 slot；它的 kind 或 episodeRef 与已有条目不同时同样被拒绝、不写入（退出码 2），这两项要带 get 响应才能纠正。`record` 可以纠正 `host` 与 `receipt` 条目的全部三项；它纠正的是 `receipt` 条目的 slot 时，`warnings` 另有一条，写明两份保存下来的服务端响应互相矛盾和该保存回执的 requestId。`impact` 的目标 slot 只被已纠正的条目写过时，`slotInManifest` 为 false，`warnings` 写明那条条目被哪种来源纠正到了哪个 slot，不提示拼写错误。只有最强来源的条目之间互相矛盾才算冲突（`receipt cache` 自己不会写出这种条目）：此时来源相同或更弱的 `receipt cache` 调用被拒绝（来源更强的调用照常纠正），`context-pack` 报条目冲突，`impact` 把对该产物的引用标为 `unknown`。修订号不在纠正之列，同一 artifactId 的条目修订号不一致仍按冲突处理。
 - 退出码 0 表示分析完成，结论读输出里的状态；退出码 1 是输入或执行错误，例如项目没有 `.drama/`、`impact` 的目标参数不成组或 `--card` 与其他目标同时给出、`--revision` 不是不小于 1 的整数、`--slot` 为空、`--artifact` 解析不出可信的 slot。两个命令的 JSON 输出都带 `read_only: true`、`remote_verified: false`，不证明远端状态或采用。合成夹具上的完整命令链、输出与前后 sha256 见 [恢复与失效演示记录](docs/d2/recovery-demo.md)；它不是真实创作产物上的验证。
+
+`season-check` 在每批结束和交付前逐集核对整季流程的证据，只读 `.drama/`（运行、快照、审读、回执）和 `project.json`，不读正文含义、不联网：
+
+```sh
+python3 -B skills/drama-studio/scripts/drama_tools.py season-check ../my-drama --episodes 31-80
+python3 -B skills/drama-studio/scripts/drama_tools.py season-check ../my-drama --episodes 31-40 --batch-size 10 --allow-offline
+```
+
+- 逐集查：有 C1、C2、C3 的交接（早于第一个作者运行），有覆盖本集的 C4 交接；本集的第一个 C5 运行只写这一集，快照是 `author` 包，装了本集集纲、前一集当时的最新稿和入口状态记录 `runs/state/after-ep-<前一集三位数>.md`；前一集有状态变化提案时，入口状态记录必须与上一集用的不同；有封存（`.sha256` 与字节一致）且 `firstReadWithoutAuthorNotes: true` 的首读和另一份次读，一次首读不超过 `--batch-size` 集；有装了本集正文的 `reader_effect` 首读包；最终稿有 confirmed 保存回执。另查快照封存、各记录的契约，以及几次运行的用量完全相同（抄的，不是实测）。
+- 集号从文件名（`ep-031`、`outline-031`、`第31集`）或页面写入回执里的 `episodeRef`、`semantic` 认出；`current_plan` 分区的是集纲，其余是正文。范围第一集缺前一集正文只记警告。
+- 只有 `not_sent` 回执时判不通过；用户明确同意只交本地草稿、且项目没绑定远端时加 `--allow-offline`，改记警告。
+- 退出码 0 为全部通过，2 为有失败（看 `failures`、`failuresByRule`、`failedEpisodes`），1 为输入错误。输出带 `remote_verified: false`：通过只说明记录齐全、彼此一致，不说明正文写得好，也不证明远端已保存。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 
