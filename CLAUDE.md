@@ -29,7 +29,7 @@ python3 -B scripts/install.py verify --host claude-code
 python3 -B scripts/install.py package --host workbuddy   # → dist/drama-studio-workbuddy.zip
 ```
 
-Bundled local tools: `python3 -B skills/drama-studio/scripts/drama_tools.py {doctor|init-project|status|context-pack|contract-check|receipt|impact|episode-check|dup-check|reference-check|knowledge|import-project}` (see README for example invocations; SKILL.md lists every subcommand and `tests/test_skill_routing.py` keeps the two in sync).
+Bundled local tools: `python3 -B skills/drama-studio/scripts/drama_tools.py {doctor|init-project|status|context-pack|contract-check|receipt|impact|season-check|episode-check|dup-check|reference-check|knowledge|import-project}` (see README for example invocations; SKILL.md lists every subcommand and `tests/test_skill_routing.py` keeps the two in sync).
 
 ## Architecture
 
