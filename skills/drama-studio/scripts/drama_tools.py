@@ -124,7 +124,9 @@ def main() -> int:
     status.add_argument("--json", action="store_true", help="Print JSON instead of text whose first line is the next action")
     season = commands.add_parser("season-check", help="Per-episode evidence that a season run followed the workstation flow; read-only, judges records not writing")
     season.add_argument("project")
-    season.add_argument("--episodes", required=True, help="N or A-B, e.g. 31-80")
+    season.add_argument("--episodes", help="Written episodes to check: N or A-B, e.g. 31-80")
+    season.add_argument("--outline", help="Episode outlines to check: N or A-B, e.g. 11-60")
+    season.add_argument("--outline-batch", type=int, default=15, help="Most outlines one C4 run may write (default 15)")
     season.add_argument("--batch-size", type=int, default=10, help="Most episodes one first read may cover (default 10)")
     season.add_argument("--allow-offline", action="store_true", help="Only when the user agreed to an offline run: not_sent saves warn instead of fail while no remote project is bound")
     impact = commands.add_parser("impact", help="Mark snapshots and runs stale/unknown/current for a slot or page revision; read-only, implicit content dependencies not assessed")
@@ -172,7 +174,7 @@ def main() -> int:
                 print(render_status(result))
                 return 0
         elif args.command == "season-check":
-            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline)
+            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch)
         elif args.command == "impact":
             result = run_impact(args.project, args.slot, args.revision, args.artifact, args.card, args.page)
         else:

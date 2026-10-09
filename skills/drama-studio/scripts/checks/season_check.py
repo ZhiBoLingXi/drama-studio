@@ -79,7 +79,8 @@ def _classify(ref: dict, partition: str | None, pages: dict) -> tuple[str, int |
         episode = _episode_of_name(ident)
         if episode is None or ident.startswith(".drama/reviews/"):
             return "other", None
-        return ("plan" if partition == "current_plan" else "text"), episode
+        plan = partition == "current_plan" or "outline" in PurePosixPath(ident).name.lower()
+        return ("plan" if plan else "text"), episode
     if kind == "remote_page":
         info = pages.get(ident)
         if not info or info["episode"] is None:
@@ -106,10 +107,14 @@ def _range(text: str) -> tuple[int, int]:
     return first, last
 
 
-def run_season_check(project: str, episodes: str, batch_size: int = 10, allow_offline: bool = False) -> dict:
-    first, last = _range(episodes)
-    if batch_size < 1:
-        raise ValueError("--batch-size must be at least 1")
+def run_season_check(project: str, episodes: str | None = None, batch_size: int = 10, allow_offline: bool = False,
+                     outline: str | None = None, outline_batch: int = 15) -> dict:
+    if episodes is None and outline is None:
+        raise ValueError("give --episodes (written episodes) and/or --outline (episode outlines) as N or A-B")
+    first, last = _range(episodes) if episodes is not None else (1, 0)
+    outline_range = _range(outline) if outline is not None else None
+    if batch_size < 1 or outline_batch < 1:
+        raise ValueError("--batch-size and --outline-batch must be at least 1")
     drama = drama_dir(project)
     failures: list[dict] = []
     warnings: list[dict] = []
@@ -184,7 +189,7 @@ def run_season_check(project: str, episodes: str, batch_size: int = 10, allow_of
     # upstream: C1-C3 once before the first author run, C4 per episode
     c5_runs = [(when, run) for when, run in ordered if run["workstation"] == "C5"]
     first_author = min((when for when, run in c5_runs if any(first <= n <= last for n in text_outputs(run))), default=None)
-    for station in UPSTREAM:
+    for station in UPSTREAM if episodes is not None else ():
         if not any(run["workstation"] == station and (first_author is None or when <= first_author) for when, run in ordered):
             fail(station, "upstream", f"没有 {station} 的运行交接；从集纲起步也要记录 {station}（采用用户给定材料时写明来源）")
 
@@ -232,7 +237,7 @@ def run_season_check(project: str, episodes: str, batch_size: int = 10, allow_of
                 fail(scope, "author-previous-text", f"作者包没有装第{n - 1}集正文（应装 {newest['id']}）")
             elif not any(_same(item["ref"], newest) for item in packed_prev):
                 fail(scope, "author-previous-text", f"作者包装的第{n - 1}集不是当时的最新稿 {newest['id']}")
-        elif not packed_prev:
+        elif not packed_prev and n > 1:
             (warn if n == first else fail)(scope, "author-previous-text",
                                            f"作者包没有第{n - 1}集正文；前文缺失要在状态记录里写明")
         states = [item for (kind, episode), item in classified if kind == "state" and episode == n - 1]
@@ -284,17 +289,95 @@ def run_season_check(project: str, episodes: str, batch_size: int = 10, allow_of
                    and any(_classify(i["ref"], i["partition"], pages) == ("text", n) for i in snapshot_items(run)[0])]
         if not readers:
             fail(scope, "reader-package", "没有装了本集正文的 C6 首读包（reader_effect）")
-        elif not any(_classify(i["ref"], i["partition"], pages) == ("text", n - 1)
-                     for run in readers for i in snapshot_items(run)[0]):
+        elif n > 1 and not any(_classify(i["ref"], i["partition"], pages) == ("text", n - 1)
+                               for run in readers for i in snapshot_items(run)[0]):
             (warn if n == first else fail)(scope, "reader-previous-text", f"首读包没有第{n - 1}集正文")
 
+    per_outline = _outlines(outline_range, outline_batch, ordered, snapshot_items, reviews, receipts, pages,
+                            remote_project, allow_offline, fail, warn) if outline_range else {}
+
     failed_episodes = sorted({int(re.match(r"第(\d+)集", f["scope"]).group(1)) for f in failures if f["scope"].startswith("第")})
+    failed_outlines = sorted({int(re.match(r"集纲第(\d+)集", f["scope"]).group(1)) for f in failures if f["scope"].startswith("集纲第")})
     by_rule: dict[str, int] = {}
     for item in failures:
         by_rule[item["rule"]] = by_rule.get(item["rule"], 0) + 1
-    return {"ok": True, "command": "season-check", "project": str(drama.parent), "episodes": f"{first}-{last}",
+    return {"ok": True, "command": "season-check", "project": str(drama.parent), "episodes": f"{first}-{last}" if episodes is not None else None,
+            "outline": f"{outline_range[0]}-{outline_range[1]}" if outline_range else None, "outlineBatch": outline_batch,
             "batchSize": batch_size, "allowOffline": allow_offline, "remoteProjectId": remote_project,
             "passed": not failures, "failureCount": len(failures), "failuresByRule": by_rule,
-            "failedEpisodes": failed_episodes, "failures": failures, "warnings": warnings,
+            "failedEpisodes": failed_episodes, "failedOutlines": failed_outlines, "failures": failures, "warnings": warnings,
             "perEpisode": {str(n): per_episode[n] for n in sorted(per_episode)},
+            "perOutline": {str(n): per_outline[n] for n in sorted(per_outline)},
             "network_used": False, "models_called": False, "remote_verified": False, "note": NOTE}
+
+
+def _saved(ref: dict, receipts: list[dict]) -> set[str]:
+    return {r["outcome"] for r in receipts if (r.get("localRef") or {}).get("id") == ref["id"]
+            or ((r.get("remote") or {}).get("pageId") == ref["id"] and r["remote"].get("revision") == ref.get("revision"))}
+
+
+def _outlines(span, batch, ordered, snapshot_items, reviews, receipts, pages, remote_project, allow_offline, fail, warn) -> dict:
+    """Episode outlines (C4): written in order, in segments, from the characters, the structure, the outline before
+    and the state of what is already written; reviewed in a context that did not write them; saved."""
+    def plans(run: dict) -> dict[int, dict]:
+        found = {}
+        for ref in run["outputs"]:
+            kind, episode = _classify(ref, None, pages)
+            if kind == "plan" and episode is not None:
+                found[episode] = ref
+        return found
+
+    def texts(run: dict) -> set[int]:
+        return {episode for kind, episode in (_classify(ref, None, pages) for ref in run["outputs"]) if kind == "text"}
+
+    result: dict[int, dict] = {}
+    c4 = [(when, run) for when, run in ordered if run["workstation"] == "C4"]
+    for n in range(span[0], span[1] + 1):
+        scope, entry = f"集纲第{n}集", result.setdefault(n, {})
+        writers = [(when, run) for when, run in c4 if n in plans(run)]
+        if not writers:
+            fail(scope, "outline-run", "没有产出本集集纲的 C4 运行交接")
+            continue
+        when, author = writers[0]
+        segment = sorted(plans(author))
+        entry.update(run=author["runId"], segment=f"{segment[0]}-{segment[-1]}")
+        if len(segment) > batch:
+            fail(scope, "outline-segment", f"C4 运行 {author['runId']} 一次写了 {len(segment)} 集集纲，超过每段 {batch} 集")
+        items, missing = snapshot_items(author)
+        if missing:
+            fail(scope, "outline-snapshot", f"C4 运行引用的快照不存在：{', '.join(missing)}")
+        refs = [item["ref"] for item in items]
+        for station, rule, what in (("C2", "outline-characters", "人物小传与规则"), ("C3", "outline-structure", "全剧结构")):
+            earlier = [run for at, run in ordered if run["workstation"] == station and at <= when]
+            if not earlier:
+                fail(scope, rule, f"写集纲之前没有 {station} 的运行交接（{what}）")
+            elif not all(any(_same(ref, out) for ref in refs) for out in earlier[-1]["outputs"]):
+                fail(scope, rule, f"集纲包没有装 {station} 最新产出的{what}（{earlier[-1]['runId']} 的产出）")
+        if n == segment[0]:
+            before = [run for at, run in c4 if at < when and n - 1 in plans(run)]
+            if before:
+                newest = plans(before[-1])[n - 1]
+                if not any(_same(ref, newest) for ref in refs):
+                    fail(scope, "outline-previous", f"集纲包没有装第{n - 1}集集纲的最新稿（{newest['id']}）")
+            elif any(n - 1 in plans(run) for _, run in c4):
+                fail(scope, "outline-sequential", f"第{n - 1}集集纲不是在这一段之前写完的；集纲按顺序分段写，不并行")
+            elif n > 1:
+                warn(scope, "outline-previous", f"记录里没有第{n - 1}集集纲")
+            written = max((e for at, run in ordered if at < when and run["workstation"] == "C5" for e in texts(run) if e < n), default=None)
+            if written is not None and not any(_classify(ref, None, pages) == ("state", written) for ref in refs):
+                fail(scope, "outline-entry-state",
+                     f"已写到第{written}集正文，集纲包却没有装 runs/state/after-ep-{written:03d}.md；后面的集纲要从实际正文接")
+        final = plans(writers[-1][1])[n]
+        covering = [review for _, review, _ in reviews
+                    if any(_classify(ref, None, pages) == ("plan", n) for ref in [review["target"], *review.get("additionalTargets", [])])]
+        entry["reviews"] = [review["reviewId"] for review in covering]
+        if not covering:
+            fail(scope, "outline-review", "没有审读本集集纲的审读记录")
+        elif not any(review["context"] in ("independent", "human") for review in covering):
+            fail(scope, "outline-review", "集纲只有作者同一上下文的自审，没有独立上下文或真人的审读")
+        outcomes = _saved(final, receipts)
+        entry["receipt"] = sorted(outcomes) or None
+        if "confirmed" not in outcomes:
+            message = "集纲没有 confirmed 保存回执，未存成 mali-story 页面"
+            (warn if allow_offline and not remote_project else fail)(scope, "outline-saved", message)
+    return result

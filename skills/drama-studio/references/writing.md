@@ -15,7 +15,7 @@
 6. **一次定向修订**：属于 C5 的问题，单独装一个包（被修订稿加审读记录，审读记录按 `local_file` 装入）修订一次，修订者是原 C5 作者或同一角色。属于 C4 及以上的问题写进 `run-handoff` 的 `changeProposals`，交用户决定，不在正文里悄悄改上游。修订次数不超过 `task.revisionBudget`，默认为 1；修完仍有的问题保留下来并列出。
 7. **保存为页面修订**：先确认要保存的正文与本地稿逐字一致，再用 `create_page` 或 `update_page` 保存，`receipt record` 记回执，`read_page` 读回比对指纹后执行 `receipt cache`（见 [页面读写](mali-story.md#页面读写版本标签与恢复)）。主创确认后才用 `label_page_revision` 打标签；标签不等于制作采用。离线时回执记为 `not_sent`。
 8. **交接与状态**：把 `run-handoff` 写到 `.drama/runs/<runId>.json`，填写 `finishedAt`、快照 ID、产出、状态变化提案和 `nextAction`；`host.usage` 按本次实测填，没实测就写 `{"source": "unknown"}`，不从别的运行抄。再按本集定稿和状态变化提案写出 `runs/state/after-ep-<本集三位数>.md`，作为下一集的入口。用 `contract-check` 校验任务、选材清单、审读记录、交接和回执。下一集要等本集保存好（离线时是 `not_sent` 回执写好）之后再装包。
-9. **关口**：每批结束和交付前运行 `drama_tools.py season-check <项目> --episodes <起-止>`（用户同意离线时加 `--allow-offline`），把结论原样写进交付说明。不通过的集，补齐证据或重做之前不能写“已按流程完成”。
+9. **关口**：每批结束和交付前运行 `drama_tools.py season-check <项目> --episodes <起-止>`（用户同意离线时加 `--allow-offline`），写了或改了集纲时加 `--outline <起-止>`。把结论原样写进交付说明。不通过的集，补齐证据或重做之前不能写“已按流程完成”。
 
 客观检查（`episode-check`、`dup-check`）在第 4 到第 6 步之间按需运行，见下文 [检查](#检查)。快照 ID、首读 sha256、审读记录、回执和交接都要留在项目里，换会话时靠它们接续。没做的步骤如实写“未执行”及原因。
 

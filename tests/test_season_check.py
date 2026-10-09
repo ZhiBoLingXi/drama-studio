@@ -109,6 +109,93 @@ class Season:
         self.write(f".drama/receipts/ep{n:03d}-r1.json", json.dumps(doc, ensure_ascii=False))
 
 
+class Outlines:
+    """Outlines 4-5 written after episodes 2-3: one C4 run packing characters, structure, outline 3 and the state after 3."""
+
+    def __init__(self, season: Season, pack=("C2", "C3", "previous", "state"), parallel=False, review="independent", saved=True):
+        s = self.season = season
+        s.write("runs/state/after-ep-003.md", "入口：第3集后")
+        s.write("runs/plan/outline-004.md", "第四集集纲")
+        s.write("runs/plan/outline-005.md", "第五集集纲")
+        names = {"C2": "runs/C2/out.md", "C3": "runs/C3/out.md", "previous": "runs/input/outline-003.md",
+                 "state": "runs/state/after-ep-003.md"}
+        items = [("project_facts", names[key]) for key in pack]
+        if parallel:  # outline 5 is written by a run that finished before the one writing outline 4
+            s.handoff("C4", "c4-seg-b", [("project_facts", names["C2"]), ("project_facts", names["C3"])],
+                      [s.ref("runs/plan/outline-005.md")])
+            s.handoff("C4", "c4-seg-a", items, [s.ref("runs/plan/outline-004.md")])
+        else:
+            s.handoff("C4", "c4-seg-a", items, [s.ref("runs/plan/outline-004.md"), s.ref("runs/plan/outline-005.md")])
+        targets = [s.ref("runs/plan/outline-004.md"), s.ref("runs/plan/outline-005.md")]
+        if review:
+            doc = {"schemaVersion": "drama-studio/review-record/v0", "reviewId": "outline-review", "target": targets[0],
+                   "additionalTargets": targets[1:], "readingScope": targets, "context": review, "claimsIndependence": False,
+                   "firstReadWithoutAuthorNotes": False, "findings": [], "goalAssessments": []}
+            s.write(".drama/reviews/outline-review.json", json.dumps(doc, ensure_ascii=False))
+        for n in (4, 5):
+            if saved:
+                doc = {"schemaVersion": "drama-studio/remote-receipt/v0", "operation": "create_page", "requestId": f"outline{n}",
+                       "inputFingerprint": "sha256:" + "b" * 64, "localRef": s.ref(f"runs/plan/outline-{n:03d}.md"),
+                       "remote": {"projectId": "p1", "pageId": f"plan-{n}", "revision": 1, "inputSnapshotId": None},
+                       "outcome": "confirmed", "retryAllowed": False, "observedAt": "2026-10-09T12:00:00+08:00", "evidence": "测试"}
+                s.write(f".drama/receipts/outline{n}.json", json.dumps(doc, ensure_ascii=False))
+
+
+class OutlineCheckTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "proj"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def check(self, *extra, **options):
+        Outlines(Season(self.root), **options)
+        code, out = run("season-check", self.root, "--outline", "4-5", *extra)
+        return code, out, {f["rule"] for f in out["failures"]}
+
+    def test_compliant_outlines_pass(self):
+        code, out, rules = self.check()
+        self.assertEqual(code, 0, out["failures"])
+        self.assertEqual(out["perOutline"]["5"]["segment"], "4-5")
+        self.assertIsNone(out["episodes"])
+
+    def test_package_must_hold_characters_structure_previous_outline_and_state(self):
+        for missing, rule in (("C2", "outline-characters"), ("C3", "outline-structure"), ("previous", "outline-previous"),
+                              ("state", "outline-entry-state")):
+            with self.subTest(missing=missing):
+                self.tearDown()
+                self.setUp()
+                pack = tuple(key for key in ("C2", "C3", "previous", "state") if key != missing)
+                code, out, rules = self.check(pack=pack)
+                self.assertEqual((code, rules), (2, {rule}))
+
+    def test_parallel_segments_fail(self):
+        code, out, rules = self.check(parallel=True)
+        self.assertIn("outline-sequential", rules)
+
+    def test_outline_needs_an_independent_review(self):
+        code, out, rules = self.check(review="serial_self_review")
+        self.assertEqual(rules, {"outline-review"})
+        self.tearDown()
+        self.setUp()
+        code, out, rules = self.check(review=None)
+        self.assertEqual(rules, {"outline-review"})
+
+    def test_outline_must_be_saved_and_segment_size_is_limited(self):
+        code, out, rules = self.check(saved=False)
+        self.assertEqual(rules, {"outline-saved"})
+        code, out = run("season-check", self.root, "--outline", "4-5", "--allow-offline")
+        self.assertEqual(code, 0)
+        code, out = run("season-check", self.root, "--outline", "4-5", "--allow-offline", "--outline-batch", "1")
+        self.assertEqual({f["rule"] for f in out["failures"]}, {"outline-segment"})
+
+    def test_a_range_is_required(self):
+        Season(self.root)
+        code, out = run("season-check", self.root)
+        self.assertEqual(code, 1)
+
+
 class SeasonCheckTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
