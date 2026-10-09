@@ -39,7 +39,8 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 3. 按因果依赖分批，每集一个页面、一个写者；前一批保存后再给下一批装包（[整季分批](references/workstations/season-run.md)）。
 4. 每集一个作者运行：`context-pack --role author` 装包（本集集纲、前一集最新稿原文、入口状态记录 `runs/state/after-ep-NNN.md`）→ C5 写正文 → C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ C6 次读 → C5 问题定向修订一次，C4 及以上的问题写成变更提案交用户。
 5. 存为页面修订并核对逐字一致 → `receipt record`／`receipt cache`（离线记 `not_sent`）→ `run-handoff` 写进 `.drama/runs/`，更新下一集的入口状态记录。主创确认后才打标签，标签不是采用。
-6. 每批结束和交付前跑 `season-check`，结论原样写进交付说明；不通过不能写“已按流程完成”。
+6. 完整集纲按 [C4 整季集纲](references/workstations/c4-episode-outline.md#整季集纲怎么写) 按顺序分段写、独立审读、存成页面，不并行扩写。
+7. 每批结束和交付前跑 `season-check`（正文 `--episodes`，集纲 `--outline`），结论原样写进交付说明；不通过不能写“已按流程完成”。
 
 完整创作遵循 [两次审批与接续](references/approval-flow.md)：选题未确认时交候选供用户选择；选题确认后一次完成四项送审材料，不在框架、人物、集纲之间反复停下。整套材料未经用户审批，不写第 11 集及后续正文。用户只回复“60 集左右”是在确定篇幅，不是确认选题；“出新剧本”“继续”“自行优化”不自动批准待审版本。明确已有选择和审批可沿用，不重复索要。用户明确调整交付范围或授权代选／免审时，记录其适用范围；模型推荐或评审通过不能代替用户决定。
 
@@ -70,7 +71,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | `drama_tools.py receipt pending <项目>` | 列出结果未知的写入及对账办法 |
 | `drama_tools.py receipt cache <项目> <读回分块…>` | 把 `read_page` 读回的全文核对指纹后存进 `.drama/cache/` |
 | `drama_tools.py receipt show <项目> <requestId>` | 显示一份回执及其校验结果 |
-| `drama_tools.py season-check <项目> --episodes <起-止>` | 逐集核对整季流程证据（上游交接、逐集作者包、入口状态更新、封存首读、次读、保存回执、用量），不通过退出码 2；只看记录，不评正文 |
+| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。不通过退出码 2；只看记录，不评内容 |
 | `drama_tools.py impact <项目> --page <pageId> --revision <n>` | 前文出了新修订后，标出引用旧修订的快照与运行（也支持 `--slot`、`--artifact`、`--card`） |
 | `drama_tools.py episode-check <正文>` | 剧集统计；只有给了 `--config` 或显式阈值才核对规格 |
 | `drama_tools.py dup-check --new <新稿> --source <参考>` | 汉字字面重合统计，不是原创证明 |
