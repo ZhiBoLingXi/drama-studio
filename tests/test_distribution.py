@@ -79,6 +79,9 @@ class DistributionTests(unittest.TestCase):
             result = installer.install(self.args)
             self.assertEqual(result["action"], "upgraded")
             self.assertEqual((Path(result["backup"]) / "SKILL.md").read_bytes(), old)
+            # the old version must not sit in the skills folder, where a host would list it as a second skill
+            self.assertEqual([p.name for p in target.parent.iterdir() if (p / "SKILL.md").is_file()], [target.name])
+            self.assertEqual(Path(result["backup"]).parent, target.parent.parent / ".drama-studio-backups")
             self.assertTrue(installer.verify(self.args)["matches_checkout"])
 
     def test_version_only_change_refreshes_receipt(self):

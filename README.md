@@ -12,7 +12,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.3.3` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.3.4` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -79,7 +79,7 @@ python3 -B scripts/install.py install --host codex
 python3 -B scripts/install.py verify --host codex
 ```
 
-项目级：在上述命令加 `--scope project --project /absolute/path/to/workspace`。升级加 `--upgrade`；只有原安装未被修改才替换，旧版本保存在返回的 backup 路径。
+项目级：在上述命令加 `--scope project --project /absolute/path/to/workspace`。升级加 `--upgrade`；只有原安装未被修改才替换，旧版本移到技能目录旁边的 `.drama-studio-backups/`（返回的 backup 路径），不留在技能目录里。0.3.3 及更早版本把备份放在技能目录内的 `.drama-studio-backup-*`，宿主会把它列成第二个技能，可以移走或删除。
 
 导出技能包：
 

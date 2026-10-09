@@ -158,7 +158,10 @@ def install(args) -> dict:
                                                 "files": files}, indent=2) + "\n", encoding="utf-8")
         if target.exists():
             inspect_target(target)
-            backup = target.parent / (".drama-studio-backup-" + uuid.uuid4().hex)
+            # beside the skills folder, not in it: hosts list every folder under skills/ that has a SKILL.md
+            backups = target.parent.parent / ".drama-studio-backups"
+            backups.mkdir(exist_ok=True)
+            backup = backups / (target.name + "-" + uuid.uuid4().hex)
             target.rename(backup)
         try:
             stage.rename(target)
