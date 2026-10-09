@@ -1,5 +1,7 @@
 # 创作工位契约 v0.1
 
+写正文、续写和改稿默认按这些工位走，步骤见 [工位流程](../writing.md#工位流程)；一次写多批时按 [整季分批](season-run.md) 编排。
+
 六个工位是六种创作责任，不是六个 Agent 或六次人审。每次工位运行都用同一组对象交接，对象格式见 `../../schemas/`，每种对象在 `../../schemas/examples/` 有一份可通过的示例；用 `scripts/drama_tools.py contract-check <对象> <文件>` 校验。无法确知的内容写进 `unknowns`（每种对象都有这个字段），不要在 ID 字段里编造。
 
 引用（`ref`）的 `id` 不能为空。mali-story 页面写 `{"kind": "remote_page", "id": "<pageId>", "revision": <n>}`（架构 v1.2：pageId 跨修订不变，revision 每次写入递增）；迁移前的历史候选仍按 `remote_artifact` 引用。还不存在的页面没有 pageId，写入范围里写 `slot:<名称>`（如 `slot:episode-21`）作占位；完全不知道身份的材料写 `unknown:<简述>`，并在 `unknowns` 说明。
@@ -94,5 +96,6 @@ python3 -B scripts/drama_tools.py knowledge show <项目> <cardId> [--revision N
 | C4 分集集纲 | 本集谁怎样改变局面，留下什么后果 | [c4-episode-outline.md](c4-episode-outline.md) |
 | C5 正文 | 人物此刻怎样做、怎样说、怎样影响对方 | [c5-screenplay.md](c5-screenplay.md) |
 | C6 审读与整合 | 哪些成立、哪里不足、应修哪一层 | [c6-review.md](c6-review.md) |
+| 整季分批 | 多批之间怎样分、怎样交接、怎样对账 | [season-run.md](season-run.md) |
 
 新剧的两个人审点（选题确认、送审包审批）见 [两次审批与接续](../approval-flow.md)，工位完成不等于用户选择或正式采用。

@@ -36,6 +36,12 @@ AI 会自己拉取最新代码、升级并校验；安装器会拒绝覆盖你�
 
 > 继续这个项目，读取编剧修订后的集纲，再写下一批正文。
 
+> 按已审集纲写第 31–40 集正文。
+
+这类请求默认走[工位流程](skills/drama-studio/references/writing.md#工位流程)，不再一次写完一批再整体自检：先 `status` 找到项目，没有项目就 `init-project`，把集纲和前文转成文本放进 `runs/input/`；按因果依赖分批（[整季分批](skills/drama-studio/references/workstations/season-run.md)），每集一个页面、一个写者；每集用 `context-pack --role author` 装包，C5 写正文，C6 先用 `reader_effect` 包首读并封存记录，再次读；C5 层的问题定向修订一次，C4 及以上的问题写成变更提案交编剧决定；正文逐字核对后存为 mali-story 页面修订，`receipt record`／`receipt cache` 记回执，`run-handoff` 写进 `.drama/runs/`；前一批存好后才给下一批装包。
+
+保存页面需要已授权的 mali-story 连接。没有连接时走[离线降级](skills/drama-studio/references/writing.md#离线与单代理降级)：装包与两读照做，材料放在项目 `runs/` 或 `.drama/` 下按 `local_file` 装入，回执记 `not_sent`，交付标“本地草稿，未写入 mali-story”；宿主不能开子代理时，审读记录如实写 `serial_self_review`。单集篇幅按项目规格核对，没有规格先问。
+
 > 在现有方向和制作条件内自主优化。保留当前完整稿，补充有来源的生活材料，探索不同因果的方案，先试关键场面再决定是否扩写；分别报告可编辑性、辨识度和阅读反馈。
 
 工作流：市场研究 → 对标确认 → 优先复用模板／必要时获取视频并调用 mali-story 拉片 → 生活材料与创作立场 → 不同因果选题 → 用户确认选题 → 剧情框架、人物小传、完整集纲和前 10 集正文 → 用户审批通过 → 完成全剧正文 → 审查、交付和反馈修订。已有阶段成果可直接接续。
