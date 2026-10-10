@@ -69,7 +69,7 @@ def main() -> int:
     pack.add_argument("project")
     pack.add_argument("--task", required=True)
     pack.add_argument("--selection", required=True)
-    pack.add_argument("--role", required=True, choices=["author", "reader_effect", "fact_check", "similarity_review", "evaluation"])
+    pack.add_argument("--role", required=True, choices=["author", "dialogue_author", "reader_effect", "dialogue_read", "fact_check", "similarity_review", "evaluation"])
     pack.add_argument("--budget", required=True, type=int, help="Character budget; exceeding it exits 2 without writing")
     pack.add_argument("--dry-run", action="store_true", help="Run every check and print the package; write nothing")
     pack.add_argument("--allow-unverified", action="store_true", help="Accept manifest entries marked verified: false and note them in unknowns")
@@ -128,6 +128,7 @@ def main() -> int:
     season.add_argument("--outline", help="Episode outlines to check: N or A-B, e.g. 11-60")
     season.add_argument("--outline-batch", type=int, default=15, help="Most outlines one C4 run may write (default 15)")
     season.add_argument("--batch-size", type=int, default=10, help="Most episodes one first read may cover (default 10)")
+    season.add_argument("--skip-dialogue", action="store_true", help="Leave out the voice-card, dialogue-pass and dialogue-read checks (recorded in the output)")
     season.add_argument("--allow-offline", action="store_true", help="Only when the user agreed to an offline run: not_sent saves warn instead of fail while no remote project is bound")
     impact = commands.add_parser("impact", help="Mark snapshots and runs stale/unknown/current for a slot or page revision; read-only, implicit content dependencies not assessed")
     impact.add_argument("project")
@@ -174,7 +175,7 @@ def main() -> int:
                 print(render_status(result))
                 return 0
         elif args.command == "season-check":
-            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch)
+            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch, args.skip_dialogue)
         elif args.command == "impact":
             result = run_impact(args.project, args.slot, args.revision, args.artifact, args.card, args.page)
         else:

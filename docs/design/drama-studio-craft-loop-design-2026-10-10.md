@@ -1,6 +1,6 @@
 # 工艺闭环设计：从“台词 AI 味”出发
 
-日期：2026-10-10 · 状态：设计提案，未实施；第 7 节的三项已由主创决定（2026-10-10，同日修订） · 依据：[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)、[知识设计](drama-studio-knowledge-harness-design-2026-09-29.md)、[实施路线图](drama-studio-implementation-roadmap-2026-09-29.md)
+日期：2026-10-10 · 状态：P1（方法与契约）和 P3（关口）已在 0.3.5 实施，P0 试点未做，其余未实施；第 7 节的三项已由主创决定（2026-10-10，同日修订） · 依据：[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)、[知识设计](drama-studio-knowledge-harness-design-2026-09-29.md)、[实施路线图](drama-studio-implementation-roadmap-2026-09-29.md)
 
 ## 1. 问题与结论
 

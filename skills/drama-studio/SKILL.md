@@ -17,6 +17,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | 原创选题、人物与集纲 | [策划](references/planning.md) | 原创方向、设定、蓝图与完整分集纲 |
 | 摆脱换皮、探索不同故事 | [创作开发](references/development-lab.md) | 生活材料、创作立场、不同因果候选及场面试写 |
 | 写作、检查、改稿（含按集纲写正文、续写下一批） | [工位流程](references/writing.md#工位流程)：先读 writing.md 第一节；一次写多批再读 [整季分批](references/workstations/season-run.md) | 经 C5 装包写成、C6 两读、一次定向修订的分集正文，以及快照、审读记录、回执与交接 |
+| 台词 AI 味重、不像人说的话、人物说话分不开 | [台词](references/dialogue.md) | 声音卡、对照卡、只改台词的一遍、台词读 |
 | 行为不贴人设、台词同质、情绪平、剧情靠解释推进 | [人物与情绪改稿](references/character-emotion.md)，结合写作与自主迭代 | 有前文依据的人物写法、关键场面改写、本轮创作目标的正文复核 |
 | 自行测试迭代、提高质量 | [自主创作迭代](references/creative-loop.md) | 原稿与候选比较、证据复核、最佳待审版本 |
 | 继续项目、切换宿主、交付 | [接续与交付](references/recovery.md) | 当前版本、下一动作、可核对交付文件 |
@@ -37,7 +38,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 1. 项目目录：已有项目先 `status`，没有就 `init-project`；用户给的集纲、前文转成文本放进 `runs/input/`。
 2. 发现 mali-story 工具；能用就读写作上下文并缓存前文页面。没有工具或没有远端项目时先问用户，用户明确同意只交本地草稿或只是暂时断线，才走 [离线降级](references/writing.md#离线与单代理降级)。
 3. 按因果依赖分批，每集一个页面、一个写者；前一批保存后再给下一批装包（[整季分批](references/workstations/season-run.md)）。
-4. 每集一个作者运行：`context-pack --role author` 装包（本集集纲、前一集最新稿原文、入口状态记录 `runs/state/after-ep-NNN.md`）→ C5 写正文 → C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ C6 次读 → C5 问题定向修订一次，C4 及以上的问题写成变更提案交用户。
+4. 每集一个作者运行：`context-pack --role author` 装包（本集集纲、前一集最新稿原文、入口状态记录 `runs/state/after-ep-NNN.md`、出场人物的声音卡）→ C5 写场面稿 → 台词遍（`dialogue_author` 包，只改台词行）→ C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ C6 次读、台词读（`dialogue_read` 包）→ C5 问题定向修订一次，C4 及以上的问题写成变更提案交用户。
 5. 存为页面修订并核对逐字一致 → `receipt record`／`receipt cache`（离线记 `not_sent`）→ `run-handoff` 写进 `.drama/runs/`，更新下一集的入口状态记录。主创确认后才打标签，标签不是采用。
 6. 完整集纲按 [C4 整季集纲](references/workstations/c4-episode-outline.md#整季集纲怎么写) 按顺序分段写、独立审读、存成页面，不并行扩写。
 7. 每批结束和交付前跑 `season-check`（正文 `--episodes`，集纲 `--outline`），结论原样写进交付说明；不通过不能写“已按流程完成”。
@@ -71,7 +72,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | `drama_tools.py receipt pending <项目>` | 列出结果未知的写入及对账办法 |
 | `drama_tools.py receipt cache <项目> <读回分块…>` | 把 `read_page` 读回的全文核对指纹后存进 `.drama/cache/` |
 | `drama_tools.py receipt show <项目> <requestId>` | 显示一份回执及其校验结果 |
-| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。不通过退出码 2；只看记录，不评内容 |
+| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、声音卡、台词遍、台词读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。不通过退出码 2；只看记录，不评内容 |
 | `drama_tools.py impact <项目> --page <pageId> --revision <n>` | 前文出了新修订后，标出引用旧修订的快照与运行（也支持 `--slot`、`--artifact`、`--card`） |
 | `drama_tools.py episode-check <正文>` | 剧集统计；只有给了 `--config` 或显式阈值才核对规格 |
 | `drama_tools.py dup-check --new <新稿> --source <参考>` | 汉字字面重合统计，不是原创证明 |

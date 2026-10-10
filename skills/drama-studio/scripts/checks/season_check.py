@@ -22,6 +22,45 @@ NOTE = ("只核对 .drama/ 里的记录是否齐全、彼此一致；不判断�
 EPISODE = re.compile(r"(?:^|[^a-z])(?:ep|episode|outline)[-_]?0*(\d{1,4})(?!\d)|第0*(\d{1,4})集")
 STATE = re.compile(r"^(?:runs|\.drama)/state/after-ep-0*(\d{1,4})\.md$")
 UPSTREAM = ("C1", "C2", "C3")
+# a dialogue line: a short speaker name, an optional bracketed direction, a colon, then the words
+SPEAKER = re.compile(r"^\s*([^\s:：（(#*|>\-△▲【\[]{1,10})\s*(?:[（(][^）)\n]{0,40}[）)])?\s*[:：]\s*\S")
+NOT_SPEAKERS = {"人物", "出场人物", "地点", "时间", "场景", "道具", "字幕", "标题", "备注", "注", "特写", "画面", "镜头", "旁白", "音效", "闪回", "转场"}
+VOICED_FROM = 3  # a speaker with this many lines in an episode needs a voice card
+
+
+def _speaker(line: str) -> str | None:
+    match = SPEAKER.match(line)
+    return match.group(1) if match and match.group(1) not in NOT_SPEAKERS else None
+
+
+def _read_ref(root: Path, ref: dict) -> str | None:
+    """The text a run output points at: a project file, or the cached page revision; None when it cannot be read."""
+    if ref.get("kind") == "local_file":
+        path = root / ref["id"]
+    elif ref.get("kind") == "remote_page" and isinstance(ref.get("revision"), int):
+        path = root / ".drama" / "cache" / f"{ref['id']}@r{ref['revision']}.md"
+    else:
+        return None
+    try:
+        return path.read_text(encoding="utf-8") if path.resolve().is_relative_to(root.resolve()) and path.is_file() else None
+    except (OSError, ValueError):
+        return None
+
+
+def _voice_text(root: Path, items: list[dict]) -> str:
+    """Everything the packed K5 (language and expression) cards say, to look speakers' names up in."""
+    found = []
+    for item in items:
+        ref = item["ref"]
+        if ref.get("kind") != "knowledge_card":
+            continue
+        try:
+            card = json.loads((root / "knowledge" / "cards" / f"{ref['id']}@r{ref['revision']}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if card.get("knowledgeType") == "K5":
+            found.append(json.dumps(card.get("content"), ensure_ascii=False))
+    return "\n".join(found)
 
 
 def _episode_of_name(name: str) -> int | None:
@@ -108,7 +147,7 @@ def _range(text: str) -> tuple[int, int]:
 
 
 def run_season_check(project: str, episodes: str | None = None, batch_size: int = 10, allow_offline: bool = False,
-                     outline: str | None = None, outline_batch: int = 15) -> dict:
+                     outline: str | None = None, outline_batch: int = 15, skip_dialogue: bool = False) -> dict:
     if episodes is None and outline is None:
         raise ValueError("give --episodes (written episodes) and/or --outline (episode outlines) as N or A-B")
     first, last = _range(episodes) if episodes is not None else (1, 0)
@@ -116,6 +155,7 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
     if batch_size < 1 or outline_batch < 1:
         raise ValueError("--batch-size and --outline-batch must be at least 1")
     drama = drama_dir(project)
+    root = drama.parent
     failures: list[dict] = []
     warnings: list[dict] = []
 
@@ -216,8 +256,9 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             fail(scope, "one-episode-per-author-run",
                  f"作者运行 {author['runId']} 一次写了 {len(written)} 集（{written[0]}–{written[-1]}），"
                  "批内应逐集写，前一集定稿后再给下一集装包")
-        if len(writers) > 2:
-            warn(scope, "one-directed-revision", f"作者之后又有 {len(writers) - 1} 次 C5 运行；每批只做一次定向修订，纠错重存除外")
+        polish = [(at, run) for at, run in writers[1:] if role(run) == "dialogue_author"]
+        if len(writers) - len(polish) > 2:
+            warn(scope, "one-directed-revision", f"作者和台词遍之外又有 {len(writers) - len(polish) - 1} 次 C5 运行；每批只做一次定向修订，纠错重存除外")
         if role(author) != "author":
             fail(scope, "author-role", f"作者运行 {author['runId']} 的快照不是 author 包")
         items, missing = snapshot_items(author)
@@ -264,6 +305,8 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             (warn if allow_offline and not remote_project else fail)(scope, "saved", message)
         else:
             fail(scope, "saved", "最终稿没有 confirmed 保存回执" + ("（有未决回执，先对账）" if "unknown" in outcomes else ""))
+        if not skip_dialogue:
+            _dialogue(scope, n, entry, root, writers, polish, ordered, final, items, snapshot_items, role, text_outputs, pages, fail)
         covering = []
         for path, review, data in reviews:
             refs = [review["target"], *review.get("additionalTargets", []), *review["readingScope"]]
@@ -303,7 +346,7 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         by_rule[item["rule"]] = by_rule.get(item["rule"], 0) + 1
     return {"ok": True, "command": "season-check", "project": str(drama.parent), "episodes": f"{first}-{last}" if episodes is not None else None,
             "outline": f"{outline_range[0]}-{outline_range[1]}" if outline_range else None, "outlineBatch": outline_batch,
-            "batchSize": batch_size, "allowOffline": allow_offline, "remoteProjectId": remote_project,
+            "batchSize": batch_size, "allowOffline": allow_offline, "dialogueChecked": not skip_dialogue, "remoteProjectId": remote_project,
             "passed": not failures, "failureCount": len(failures), "failuresByRule": by_rule,
             "failedEpisodes": failed_episodes, "failedOutlines": failed_outlines, "failures": failures, "warnings": warnings,
             "perEpisode": {str(n): per_episode[n] for n in sorted(per_episode)},
@@ -381,3 +424,42 @@ def _outlines(span, batch, ordered, snapshot_items, reviews, receipts, pages, re
             message = "集纲没有 confirmed 保存回执，未存成 mali-story 页面"
             (warn if allow_offline and not remote_project else fail)(scope, "outline-saved", message)
     return result
+
+
+def _dialogue(scope, n, entry, root, writers, polish, ordered, final, author_items, snapshot_items, role, text_outputs, pages, fail) -> None:
+    """Voice cards for the speakers, a dialogue pass that only touches dialogue lines, and a dialogue read."""
+    text = _read_ref(root, final)
+    if text is None:
+        fail(scope, "voice-card", f"读不到最终稿 {final['id']}（本地文件或 .drama/cache/ 里的页面修订），无法核对说话人")
+    else:
+        counts: dict[str, int] = {}
+        for line in text.splitlines():
+            name = _speaker(line)
+            if name:
+                counts[name] = counts.get(name, 0) + 1
+        voices = _voice_text(root, author_items)
+        missing = sorted(name for name, lines in counts.items() if lines >= VOICED_FROM and name not in voices)
+        entry["speakers"] = counts
+        if missing:
+            fail(scope, "voice-card", f"这些人物各有 {VOICED_FROM} 句以上台词，但作者包里没有写到他们的声音卡（K5 知识卡）：{'、'.join(missing)}")
+    if not polish:
+        fail(scope, "dialogue-pass", "没有台词遍：作者运行之后要有一次只改台词的 C5 运行（dialogue_author 包）")
+        return
+    when, run = polish[0]
+    entry["dialogueRun"] = run["runId"]
+    if not _voice_text(root, snapshot_items(run)[0]):
+        fail(scope, "dialogue-pass", f"台词遍 {run['runId']} 的包里没有声音卡")
+    earlier = [r for at, r in writers if at < when]
+    before = _read_ref(root, text_outputs(earlier[-1])[n][-1]) if earlier else None
+    after = _read_ref(root, text_outputs(run)[n][-1])
+    if before is None or after is None:
+        fail(scope, "dialogue-pass", "读不到台词遍前后的两份稿，无法核对它只改了台词")
+    else:
+        keep = lambda body: [line.rstrip() for line in body.splitlines() if line.strip() and not _speaker(line)]
+        if keep(before) != keep(after):
+            fail(scope, "dialogue-pass", f"台词遍 {run['runId']} 改动了台词以外的行（场头、动作或说明）；这一遍只许改台词")
+    readers = [r for at, r in ordered if at > when and r["workstation"] == "C6" and role(r) == "dialogue_read"
+               and any(_classify(i["ref"], i["partition"], pages) == ("text", n) for i in snapshot_items(r)[0])]
+    entry["dialogueRead"] = [r["runId"] for r in readers]
+    if not readers:
+        fail(scope, "dialogue-read", "台词遍之后没有台词读：新上下文里只给正文的 C6 运行（dialogue_read 包）")

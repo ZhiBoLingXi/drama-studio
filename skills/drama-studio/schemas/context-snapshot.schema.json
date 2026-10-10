@@ -51,6 +51,8 @@
           "enum": [
             "author",
             "reader_effect",
+            "dialogue_author",
+            "dialogue_read",
             "fact_check",
             "similarity_review",
             "evaluation"
