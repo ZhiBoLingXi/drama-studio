@@ -137,8 +137,8 @@ def _rules_context_snapshot(doc: dict) -> list[str]:
     missing_required = any(entry["required"] for entry in doc["omitted"])
     if missing_required and doc["completeness"] == "complete":
         errors.append("completeness: a required item was omitted, so the package cannot be complete")
-    if doc["createdFor"]["role"] == "reader_effect" and any(item["partition"] == "current_plan" for item in doc["items"]):
-        errors.append("items: a reader_effect package must not include author plans or explanations")
+    if doc["createdFor"]["role"] in ("reader_effect", "dialogue_read") and any(item["partition"] == "current_plan" for item in doc["items"]):
+        errors.append("items: a reader_effect or dialogue_read package must not include author plans or explanations")
     return errors
 
 

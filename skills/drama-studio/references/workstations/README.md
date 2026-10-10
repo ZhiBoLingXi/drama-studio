@@ -21,7 +21,7 @@
 | 约束 | 层级 | 说明 |
 | --- | --- | --- |
 | 快照不超声明的预算、同一来源不混用多个修订、不带入评估材料、列入 `omitted` 的必需材料使包不完整、区间合法 | S | `contract-check context-snapshot` 拒绝；用 `context-pack` 装包时 `chars` 与 sha256 由工具从本地缓存／知识卡实际截取计算，缺失的引用自动列入 `omitted`；单独运行 `contract-check` 仍只看字段，不核对实际字数，手写快照里没列入 `omitted` 的缺失无法发现（M） |
-| 观众效果（`reader_effect`）包不含作者计划分区 | S | 同上 |
+| 观众效果（`reader_effect`）包和台词读（`dialogue_read`）包不含作者计划分区 | S | 同上 |
 | 知识卡首版只允许项目私有 | S | `contract-check knowledge-card` 拒绝 studio／public |
 | 变更提案只能指向上游工位 | S | `contract-check run-handoff` 拒绝 |
 | 本地字段不能宣称已采用 | S | `contract-check task` 要求 `adoptionEvidence` 为 `remote_receipt` 引用；回执内容真假由服务端核对（R） |

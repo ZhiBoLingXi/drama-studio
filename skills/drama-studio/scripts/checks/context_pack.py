@@ -255,8 +255,8 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             errors.append(f"{where}: evaluation_only material cannot enter the {role} package")
         if usage == "comparison_only" and role not in ("similarity_review", "evaluation"):
             errors.append(f"{where}: comparison_only material is limited to similarity_review/evaluation, not {role}")
-        if role == "reader_effect" and item["partition"] == "current_plan":
-            errors.append(f"{where}: a reader_effect package must not include current_plan (author plans)")
+        if role in ("reader_effect", "dialogue_read") and item["partition"] == "current_plan":
+            errors.append(f"{where}: a {role} package must not include current_plan (author plans)")
         items.append({"ref": clean, "partition": item["partition"], "required": item["required"], "usage": usage,
                       "chars": len(text), "sha256": _sha(text.encode("utf-8")), "reason": item["reason"]})
         item_labels.append(where)

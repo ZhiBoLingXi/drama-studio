@@ -87,10 +87,10 @@ class SkillRoutingTests(unittest.TestCase):
         self.assertEqual(headings[:2], ["## 工位流程", "## 离线与单代理降级"])
         flow = section(text, "## 工位流程")
         steps = [line for line in flow.splitlines() if re.match(r"\d+\. ", line)]
-        self.assertEqual(len(steps), 9)
+        self.assertEqual(len(steps), 10)
         for needle in ("init-project", "drama_tools.py status", "--role author", "reader_effect", "sha256", "changeProposals",
                        "receipt record", "receipt cache", "not_sent", ".drama/runs/", "contract-check", "season-check",
-                       "runs/state/after-ep-", "一集一个作者运行"):
+                       "runs/state/after-ep-", "一集一个作者运行", "dialogue_author", "dialogue_read"):
             self.assertIn(needle, flow, needle)
 
     def test_offline_fallback_names_the_real_constraints(self):

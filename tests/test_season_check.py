@@ -15,14 +15,26 @@ def run(*args):
     return result.returncode, json.loads(result.stdout or result.stderr)
 
 
+DRAFT = "场1-1 冰面 日\n大凤提他后领。\n大凤：走踩实的道儿。\n砚书（低声）：嗯。\n大凤：别回头。\n砚书：知道。\n大凤：跟紧。\n砚书：好。\n"
+
+
 class Season:
     """A two-episode run (2-3) after a given episode 1, built through context-pack like a host would."""
 
     def __init__(self, root: Path, batch_author=False, same_state=False, usage_copied=False, receipt="confirmed",
-                 sealed=True, blind_first=True):
+                 sealed=True, blind_first=True, voice=True, polish="ok", dialogue_read=True):
         self.root, self.clock = root, 0
         subprocess.run(TOOL + ["init-project", str(root), "--title", "季检"], check=True, capture_output=True)
         self.local = json.loads((root / ".drama/project.json").read_text(encoding="utf-8"))["localId"]
+        self.voice, self.polish = voice, polish
+        card = {"schemaVersion": "drama-studio/knowledge-card/v0", "cardId": "voice-main", "revision": 1, "knowledgeType": "K5",
+                "scope": {"level": "project", "projectId": self.local}, "processing": "curated",
+                "evidence": {"nature": "creative_hypothesis", "sources": [{"sourceId": "characters-v1", "location": "runs/C2/out.md", "versionOrDate": "v1"}]},
+                "content": {"problem": "大凤、砚书怎么说话", "situation": "对屯里人", "mechanismOrFact": "短句，带称呼",
+                            "examples": ["哎，你可踩实了！"], "failureConditions": ["句句带口头禅"]},
+                "transfer": {"transferable": "说法", "notTransferable": "原句", "workstations": ["C2", "C5", "C6"]},
+                "limits": {"unverified": ["未经主创单独审"], "judgedBy": "AI 起草"}, "usage": "creative_reference"}
+        self.write("knowledge/cards/voice-main@r1.json", json.dumps(card, ensure_ascii=False))
         self.write("runs/input/ep-001.md", "第一集正文")
         self.write("runs/input/outline-002.md", "第二集集纲")
         self.write("runs/input/outline-003.md", "第三集集纲")
@@ -33,23 +45,40 @@ class Season:
             self.handoff(station, f"{station.lower()}-1", [], [self.ref(f"runs/{station}/out.md")])
         self.handoff("C4", "c4-1", [], [self.ref("runs/input/outline-002.md"), self.ref("runs/input/outline-003.md")])
         usage = {"source": "estimated", "calls": 1, "chars": 900, "tokens": None}
-        self.write("runs/b1/ep-002.md", "第二集正文")
+        self.write("runs/b1/ep-002.md", DRAFT)
         if batch_author:
-            self.write("runs/b1/ep-003.md", "第三集正文")
+            self.write("runs/b1/ep-003.md", DRAFT)
             self.handoff("C5", "c5-ep2", self.items(2), [self.ref("runs/b1/ep-002.md"), self.ref("runs/b1/ep-003.md")],
                          usage=usage, proposals=1)
+            self.polish_run(2)
+            self.polish_run(3)
         else:
             self.handoff("C5", "c5-ep2", self.items(2), [self.ref("runs/b1/ep-002.md")], usage=usage, proposals=1)
-            self.write("runs/b1/ep-003.md", "第三集正文")
+            self.polish_run(2)
+            self.write("runs/b1/ep-003.md", DRAFT)
             self.handoff("C5", "c5-ep3", self.items(3), [self.ref("runs/b1/ep-003.md")],
                          usage=usage if usage_copied else dict(usage, chars=950))
-        reader = [("project_facts", f"runs/{p}.md") for p in ("input/ep-001", "b1/ep-002", "b1/ep-003")]
+            self.polish_run(3)
+        reader = [("project_facts", name) for name in ("runs/input/ep-001.md", self.final(2), self.final(3))]
         self.handoff("C6", "c6-first", reader, [], role="reader_effect")
+        if dialogue_read:
+            self.handoff("C6", "c6-dialogue", reader[1:], [], role="dialogue_read")
         self.review("b1-first", blind_first, sealed)
         self.review("b1-second", False, False)
         for n in (2, 3):
             if receipt:
                 self.receipt(n, receipt)
+
+    def final(self, n):
+        return f"runs/b1/ep-{n:03d}.d.md" if self.polish != "none" else f"runs/b1/ep-{n:03d}.md"
+
+    def polish_run(self, n):
+        if self.polish == "none":
+            return
+        text = DRAFT.replace("走踩实的道儿。", "哎，你可踩实了！")
+        self.write(self.final(n), text.replace("大凤提他后领。", "大凤一把提起他。") if self.polish == "touches_action" else text)
+        self.handoff("C5", f"c5-ep{n}-d", [("project_facts", f"runs/b1/ep-{n:03d}.md"), ("knowledge", "voice-main")],
+                     [self.ref(self.final(n))], role="dialogue_author")
 
     def write(self, name, text):
         path = self.root / name
@@ -61,9 +90,9 @@ class Season:
         return {"kind": "local_file", "id": name, "revision": None}
 
     def items(self, n):
-        prev = "runs/input/ep-001.md" if n == 2 else "runs/b1/ep-002.md"
+        prev = "runs/input/ep-001.md" if n == 2 else self.final(2)
         return [("current_plan", f"runs/input/outline-{n:03d}.md"), ("project_facts", prev),
-                ("project_facts", f"runs/state/after-ep-{n - 1:03d}.md")]
+                ("project_facts", f"runs/state/after-ep-{n - 1:03d}.md")] + ([("knowledge", "voice-main")] if self.voice else [])
 
     def handoff(self, station, run_id, items, outputs, role="author", usage=None, proposals=0):
         self.clock += 1
@@ -72,7 +101,8 @@ class Season:
                 "readScope": [], "writeScope": [], "authorization": {"source": "user_message", "scope": "测试"},
                 "revisionBudget": 1, "status": {"run": "finished", "goal": "met", "adoption": "none"}}
         selection = {"schemaVersion": "drama-studio/selection/v0", "sourceSnapshotId": None, "unknowns": [],
-                     "items": [{"ref": self.ref(name), "partition": part, "required": True, "reason": "测试"} for part, name in items]}
+                     "items": [{"ref": {"kind": "knowledge_card", "id": name, "revision": 1} if part == "knowledge" else self.ref(name),
+                                "partition": part, "required": True, "reason": "测试"} for part, name in items]}
         self.write(f"runs/tasks/{run_id}.task.json", json.dumps(task, ensure_ascii=False))
         self.write(f"runs/tasks/{run_id}.selection.json", json.dumps(selection, ensure_ascii=False))
         code, out = run("context-pack", self.root, "--task", self.root / f"runs/tasks/{run_id}.task.json",
@@ -88,7 +118,7 @@ class Season:
         self.write(f".drama/runs/{run_id}.json", json.dumps(doc, ensure_ascii=False))
 
     def review(self, review_id, blind, sealed):
-        targets = [self.ref("runs/b1/ep-002.md"), self.ref("runs/b1/ep-003.md")]
+        targets = [self.ref(self.final(2)), self.ref(self.final(3))]
         doc = {"schemaVersion": "drama-studio/review-record/v0", "reviewId": review_id, "target": targets[0],
                "additionalTargets": targets[1:], "readingScope": [self.ref("runs/input/ep-001.md"), *targets],
                "context": "independent", "claimsIndependence": False, "firstReadWithoutAuthorNotes": blind,
@@ -101,7 +131,7 @@ class Season:
 
     def receipt(self, n, outcome):
         doc = {"schemaVersion": "drama-studio/remote-receipt/v0", "operation": "create_page", "requestId": f"ep{n:03d}-r1",
-               "inputFingerprint": "sha256:" + "a" * 64, "localRef": self.ref(f"runs/b1/ep-{n:03d}.md"),
+               "inputFingerprint": "sha256:" + "a" * 64, "localRef": self.ref(self.final(n)),
                "remote": {"projectId": None, "pageId": None, "revision": None, "inputSnapshotId": None},
                "outcome": outcome, "retryAllowed": False, "observedAt": "2026-10-09T11:00:00+08:00", "evidence": "测试"}
         if outcome == "confirmed":
@@ -257,6 +287,35 @@ class SeasonCheckTests(unittest.TestCase):
         self.root = Path(self.tmp.name) / "proj"
         code, out = self.check(blind_first=False)
         self.assertEqual(self.rules(out), {"first-read"})
+
+    def test_speakers_need_a_voice_card_in_the_package(self):
+        code, out = self.check(voice=False)
+        self.assertEqual(self.rules(out), {"voice-card"})
+        self.assertIn("大凤", out["failures"][0]["message"])
+
+    def test_dialogue_pass_is_required_and_may_only_change_dialogue(self):
+        code, out = self.check(polish="none")
+        self.assertEqual(self.rules(out), {"dialogue-pass"})
+        self.tearDown()
+        self.setUp()
+        code, out = self.check(polish="touches_action")
+        self.assertEqual(self.rules(out), {"dialogue-pass"})
+        self.assertIn("台词以外", out["failures"][0]["message"])
+
+    def test_dialogue_read_is_required_unless_skipped(self):
+        code, out = self.check(dialogue_read=False)
+        self.assertEqual(self.rules(out), {"dialogue-read"})
+        code, out = run("season-check", self.root, "--episodes", "2-3", "--skip-dialogue")
+        self.assertEqual((code, out["dialogueChecked"]), (0, False))
+
+    def test_a_dialogue_read_package_takes_no_plan(self):
+        s = Season(self.root)
+        selection = {"schemaVersion": "drama-studio/selection/v0", "sourceSnapshotId": None, "unknowns": [],
+                     "items": [{"ref": s.ref("runs/input/outline-002.md"), "partition": "current_plan", "required": True, "reason": "测试"}]}
+        s.write("runs/tasks/x.selection.json", json.dumps(selection, ensure_ascii=False))
+        code, out = run("context-pack", self.root, "--task", self.root / "runs/tasks/c6-first.task.json",
+                        "--selection", self.root / "runs/tasks/x.selection.json", "--role", "dialogue_read", "--budget", 5000)
+        self.assertEqual(code, 2)
 
     def test_missing_upstream_and_c4_fail(self):
         Season(self.root)
