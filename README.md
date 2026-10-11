@@ -12,7 +12,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.3.5` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.3.6` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -244,8 +244,11 @@ python3 -B skills/drama-studio/scripts/drama_tools.py season-check ../my-drama -
 - 逐集查：有 C1、C2、C3 的交接（早于第一个作者运行），有覆盖本集的 C4 交接；本集的第一个 C5 运行只写这一集，快照是 `author` 包，装了本集集纲、前一集当时的最新稿和入口状态记录 `runs/state/after-ep-<前一集三位数>.md`；前一集有状态变化提案时，入口状态记录必须与上一集用的不同；有封存（`.sha256` 与字节一致）且 `firstReadWithoutAuthorNotes: true` 的首读和另一份次读，一次首读不超过 `--batch-size` 集；有装了本集正文的 `reader_effect` 首读包；最终稿有 confirmed 保存回执。另查快照封存、各记录的契约，以及几次运行的用量完全相同（抄的，不是实测）。
 - 集号从文件名（`ep-031`、`outline-031`、`第31集`）或页面写入回执里的 `episodeRef`、`semantic` 认出；`current_plan` 分区的是集纲，其余是正文。范围第一集缺前一集正文只记警告。
 - `--outline <起-止>` 查集纲（可与 `--episodes` 同用，至少给一个）：每集集纲有 C4 运行产出；一个 C4 运行不超过 `--outline-batch` 集（默认 15）；集纲包装了此前最近一次 C2、C3 运行的全部产出；一段的第一集装了前一集集纲的最新稿，前一集集纲若由更晚的运行写出则判并行（`outline-sequential`）；此前已有正文时装了 `runs/state/after-ep-<已写到的集>.md`；有 `context` 为 `independent` 或 `human` 的审读记录指向该集集纲；集纲最终稿有 confirmed 保存回执。文件名含 `outline` 的本地文件一律认作集纲。结果在 `perOutline`、`failedOutlines`。
-- 台词三条（默认查，`--skip-dialogue` 关闭并在输出记 `dialogueChecked: false`）：`voice-card`，最终稿里台词达到 3 句的每个说话人，名字出现在作者包装入的某张 K5 知识卡里；`dialogue-pass`，作者运行之后有一次 `dialogue_author` 运行，包里有 K5 卡，且它前后两稿除台词行外逐行相同；`dialogue-read`，台词遍之后有一次装了本集正文的 `dialogue_read` 运行。台词行指“人物：话”（名字不超过 10 个字，可带括注）；稿子从本地文件或 `.drama/cache/<pageId>@r<n>.md` 读，读不到判不通过。方法见 [台词](skills/drama-studio/references/dialogue.md)。脚本不判断台词自不自然。
+- 台词三条（默认查，`--skip-dialogue` 关闭并在输出记 `dialogueChecked: false`）：`voice-card`，最终稿里台词达到 3 句的每个说话人，名字出现在作者包装入的某张 K5 知识卡里；`dialogue-pass`，作者运行之后有一次 `dialogue_author` 运行，包里有 K5 卡，且它前后两稿的集标题和场头行逐行相同（台词、括注和动作行可以改）；`dialogue-read`，台词遍之后有一次装了本集正文的 `dialogue_read` 运行。台词行指“人物：话”（名字不超过 10 个字，可带括注）；稿子从本地文件或 `.drama/cache/<pageId>@r<n>.md` 读，读不到判不通过。方法见 [台词](skills/drama-studio/references/dialogue.md)。脚本不判断台词自不自然。
 - `context-pack --role` 新增 `dialogue_author`、`dialogue_read`；`dialogue_read` 包和 `reader_effect` 一样不能含 `current_plan`。
+- `--revise`：对已有全稿做反馈改稿时用。不查“一集一个作者运行”、前一集正文、入口状态与状态更新；C4 只要求第一个作者运行之前有一次 C4 运行（修改单），作者包只要求有 `current_plan` 分区的材料。其余照查。
+- `--since <ISO 时间>`：只把这个时间及之后完成的 C4–C6 运行算进来，用于同一项目改过几版；C1–C3 仍在全部历史里找。审读记录没有时间，不受它过滤。
+- 首读有多份时，至少一份封存即可，其余未封存的记警告。
 - 只有 `not_sent` 回执时判不通过；用户明确同意只交本地草稿、且项目没绑定远端时加 `--allow-offline`，改记警告。
 - 退出码 0 为全部通过，2 为有失败（看 `failures`、`failuresByRule`、`failedEpisodes`），1 为输入错误。输出带 `remote_verified: false`：通过只说明记录齐全、彼此一致，不说明正文写得好，也不证明远端已保存。
 

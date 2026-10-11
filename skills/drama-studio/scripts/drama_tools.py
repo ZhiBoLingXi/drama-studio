@@ -129,6 +129,8 @@ def main() -> int:
     season.add_argument("--outline-batch", type=int, default=15, help="Most outlines one C4 run may write (default 15)")
     season.add_argument("--batch-size", type=int, default=10, help="Most episodes one first read may cover (default 10)")
     season.add_argument("--skip-dialogue", action="store_true", help="Leave out the voice-card, dialogue-pass and dialogue-read checks (recorded in the output)")
+    season.add_argument("--revise", action="store_true", help="A feedback revision of an existing full draft: batches may share one author run and the entry-state rules do not apply")
+    season.add_argument("--since", help="Only count C4-C6 runs finished at or after this ISO time (one version of a project revised several times)")
     season.add_argument("--allow-offline", action="store_true", help="Only when the user agreed to an offline run: not_sent saves warn instead of fail while no remote project is bound")
     impact = commands.add_parser("impact", help="Mark snapshots and runs stale/unknown/current for a slot or page revision; read-only, implicit content dependencies not assessed")
     impact.add_argument("project")
@@ -175,7 +177,7 @@ def main() -> int:
                 print(render_status(result))
                 return 0
         elif args.command == "season-check":
-            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch, args.skip_dialogue)
+            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch, args.skip_dialogue, args.revise, args.since)
         elif args.command == "impact":
             result = run_impact(args.project, args.slot, args.revision, args.artifact, args.card, args.page)
         else:
