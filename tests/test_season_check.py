@@ -76,7 +76,11 @@ class Season:
         if self.polish == "none":
             return
         text = DRAFT.replace("走踩实的道儿。", "哎，你可踩实了！")
-        self.write(self.final(n), text.replace("大凤提他后领。", "大凤一把提起他。") if self.polish == "touches_action" else text)
+        if self.polish == "touches_action":
+            text = text.replace("大凤提他后领。", "△大凤一把提起他，回头瞪了一眼。")
+        if self.polish == "touches_heading":
+            text = text.replace("场1-1 冰面 日", "场1-1 岸边 夜")
+        self.write(self.final(n), text)
         self.handoff("C5", f"c5-ep{n}-d", [("project_facts", f"runs/b1/ep-{n:03d}.md"), ("knowledge", "voice-main")],
                      [self.ref(self.final(n))], role="dialogue_author")
 
@@ -293,14 +297,38 @@ class SeasonCheckTests(unittest.TestCase):
         self.assertEqual(self.rules(out), {"voice-card"})
         self.assertIn("大凤", out["failures"][0]["message"])
 
-    def test_dialogue_pass_is_required_and_may_only_change_dialogue(self):
+    def test_dialogue_pass_is_required_and_may_not_change_scene_headings(self):
         code, out = self.check(polish="none")
         self.assertEqual(self.rules(out), {"dialogue-pass"})
         self.tearDown()
         self.setUp()
-        code, out = self.check(polish="touches_action")
+        code, out = self.check(polish="touches_action")  # performance beats belong to this pass
+        self.assertEqual(code, 0, out["failures"])
+        self.tearDown()
+        self.setUp()
+        code, out = self.check(polish="touches_heading")
         self.assertEqual(self.rules(out), {"dialogue-pass"})
-        self.assertIn("台词以外", out["failures"][0]["message"])
+        self.assertIn("场头", out["failures"][0]["message"])
+
+    def test_revise_mode_allows_one_author_run_for_a_batch(self):
+        code, out = self.check(batch_author=True)
+        self.assertIn("one-episode-per-author-run", self.rules(out))
+        code, out = run("season-check", self.root, "--episodes", "2-3", "--revise")
+        self.assertEqual((code, out["revise"]), (0, True), out["failures"])
+
+    def test_since_leaves_out_an_earlier_version(self):
+        Season(self.root)
+        code, out = run("season-check", self.root, "--episodes", "2-3", "--since", "2026-10-09T23:00:00+08:00")
+        self.assertEqual(self.rules(out), {"c4", "author"})  # nothing was written that late; upstream still counts
+        code, out = run("season-check", self.root, "--episodes", "2-3", "--since", "yesterday")
+        self.assertEqual(code, 1)
+
+    def test_an_old_unsealed_first_read_is_only_a_warning(self):
+        s = Season(self.root)
+        s.review("old-first", True, False)
+        code, out = run("season-check", self.root, "--episodes", "2-3")
+        self.assertEqual(code, 0, out["failures"])
+        self.assertIn("first-read-sealed", {w["rule"] for w in out["warnings"]})
 
     def test_dialogue_read_is_required_unless_skipped(self):
         code, out = self.check(dialogue_read=False)

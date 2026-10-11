@@ -24,6 +24,7 @@ STATE = re.compile(r"^(?:runs|\.drama)/state/after-ep-0*(\d{1,4})\.md$")
 UPSTREAM = ("C1", "C2", "C3")
 # a dialogue line: a short speaker name, an optional bracketed direction, a colon, then the words
 SPEAKER = re.compile(r"^\s*([^\s:：（(#*|>\-△▲【\[]{1,10})\s*(?:[（(][^）)\n]{0,40}[）)])?\s*[:：]\s*\S")
+HEADING = re.compile(r"^\s*(#{1,6}\s|场\s*\d|[｜|])")  # episode titles and scene headings
 NOT_SPEAKERS = {"人物", "出场人物", "地点", "时间", "场景", "道具", "字幕", "标题", "备注", "注", "特写", "画面", "镜头", "旁白", "音效", "闪回", "转场"}
 VOICED_FROM = 3  # a speaker with this many lines in an episode needs a voice card
 
@@ -147,7 +148,8 @@ def _range(text: str) -> tuple[int, int]:
 
 
 def run_season_check(project: str, episodes: str | None = None, batch_size: int = 10, allow_offline: bool = False,
-                     outline: str | None = None, outline_batch: int = 15, skip_dialogue: bool = False) -> dict:
+                     outline: str | None = None, outline_batch: int = 15, skip_dialogue: bool = False,
+                     revise: bool = False, since: str | None = None) -> dict:
     if episodes is None and outline is None:
         raise ValueError("give --episodes (written episodes) and/or --outline (episode outlines) as N or A-B")
     first, last = _range(episodes) if episodes is not None else (1, 0)
@@ -186,6 +188,12 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             continue
         ordered.append((when, doc))
     ordered.sort(key=lambda pair: pair[0])
+    everything = ordered  # C1-C3 are looked up in the whole history; --since narrows the rest to one version's runs
+    if since is not None:
+        start = finished_at(since)
+        if start is None:
+            raise ValueError("--since must be an ISO 8601 time with an offset, e.g. 2026-10-11T19:00:00+08:00")
+        ordered = [(when, doc) for when, doc in ordered if when >= start]
 
     # snapshot integrity: the .sha256 sidecar must match the bytes
     for snap_id, (path, doc, data) in snaps.items():
@@ -230,7 +238,7 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
     c5_runs = [(when, run) for when, run in ordered if run["workstation"] == "C5"]
     first_author = min((when for when, run in c5_runs if any(first <= n <= last for n in text_outputs(run))), default=None)
     for station in UPSTREAM if episodes is not None else ():
-        if not any(run["workstation"] == station and (first_author is None or when <= first_author) for when, run in ordered):
+        if not any(run["workstation"] == station and (first_author is None or when <= first_author) for when, run in everything):
             fail(station, "upstream", f"没有 {station} 的运行交接；从集纲起步也要记录 {station}（采用用户给定材料时写明来源）")
 
     per_episode: dict[int, dict] = {}
@@ -240,7 +248,7 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         entry = per_episode.setdefault(n, {})
         writers = [(when, run) for when, run in c5_runs if n in text_outputs(run)]
         c4 = [run["runId"] for when, run in ordered if run["workstation"] == "C4"
-              and any(_classify(ref, None, pages)[1] == n for ref in run["outputs"])
+              and (revise or any(_classify(ref, None, pages)[1] == n for ref in run["outputs"]))
               and (not writers or when <= writers[0][0])]
         entry["c4Runs"] = c4
         if not c4:
@@ -252,7 +260,7 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         entry["authorRun"] = author["runId"]
         entry["revisionRuns"] = [run["runId"] for _, run in writers[1:]]
         written = sorted(text_outputs(author))
-        if len(written) > 1:
+        if len(written) > 1 and not revise:
             fail(scope, "one-episode-per-author-run",
                  f"作者运行 {author['runId']} 一次写了 {len(written)} 集（{written[0]}–{written[-1]}），"
                  "批内应逐集写，前一集定稿后再给下一集装包")
@@ -265,13 +273,14 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         if missing:
             fail(scope, "author-snapshot", f"作者运行引用的快照不存在：{', '.join(missing)}")
         classified = [(_classify(item["ref"], item["partition"], pages), item) for item in items]
-        if not any(kind == "plan" and episode == n for (kind, episode), _ in classified):
+        if not any(kind == "plan" and episode == n for (kind, episode), _ in classified) and not (
+                revise and any(item["partition"] == "current_plan" for item in items)):
             fail(scope, "author-plan", "作者包里没有本集的集纲或修改单")
         # the newest text of n-1 that existed when the author started
         earlier = [run for when, run in ordered if when < author_when and n - 1 in text_outputs(run)]
         packed_prev = [item for (kind, episode), item in classified if kind == "text" and episode == n - 1]
-        if n - 1 in written:
-            pass  # written in the same run: already reported by one-episode-per-author-run
+        if n - 1 in written or revise:
+            pass  # same run: reported by one-episode-per-author-run; a revision of a full draft has a fixed entry
         elif earlier:
             newest = text_outputs(earlier[-1])[n - 1][-1]
             if not packed_prev:
@@ -282,7 +291,9 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             (warn if n == first else fail)(scope, "author-previous-text",
                                            f"作者包没有第{n - 1}集正文；前文缺失要在状态记录里写明")
         states = [item for (kind, episode), item in classified if kind == "state" and episode == n - 1]
-        if not states:
+        if revise:
+            pass  # the entry is the existing draft, not a state carried from the episode before
+        elif not states:
             fail(scope, "author-state", f"作者包没有入口状态记录 runs/state/after-ep-{n - 1:03d}.md（谁知道什么、承诺与付款、物件、故事日）")
         else:
             previous_state_sha[n] = states[0]["sha256"]
@@ -318,14 +329,19 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         entry["secondRead"] = [c[1]["reviewId"] for c in seconds]
         if not firsts:
             fail(scope, "first-read", "没有首读记录（firstReadWithoutAuthorNotes: true）")
+        unsealed = []
         for path, review, data in firsts:
             sidecar = path.with_suffix(".sha256")
             if not sidecar.is_file() or sidecar.read_text(encoding="utf-8").split()[:1] != [hashlib.sha256(data).hexdigest()]:
-                fail(scope, "first-read-sealed", f"首读 {review['reviewId']} 没有封存或 .sha256 与字节不符")
+                unsealed.append(review["reviewId"])
             targets = [review["target"], *review.get("additionalTargets", [])]
             size = len({_classify(ref, None, pages)[1] for ref in targets} - {None})
             if size > batch_size:
                 fail(scope, "batch-size", f"首读 {review['reviewId']} 一次审 {size} 集，超过每批 {batch_size} 集")
+        if firsts and len(unsealed) == len(firsts):
+            fail(scope, "first-read-sealed", f"首读 {'、'.join(unsealed)} 没有封存或 .sha256 与字节不符")
+        elif unsealed:
+            warn(scope, "first-read-sealed", f"另有未封存的首读记录：{'、'.join(unsealed)}（多为旧版本的记录）")
         if not seconds:
             fail(scope, "second-read", "没有次读记录（带集纲、规则和状态记录的第二次审读）")
         readers = [run for _, run in ordered if run["workstation"] == "C6" and role(run) == "reader_effect"
@@ -346,7 +362,7 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         by_rule[item["rule"]] = by_rule.get(item["rule"], 0) + 1
     return {"ok": True, "command": "season-check", "project": str(drama.parent), "episodes": f"{first}-{last}" if episodes is not None else None,
             "outline": f"{outline_range[0]}-{outline_range[1]}" if outline_range else None, "outlineBatch": outline_batch,
-            "batchSize": batch_size, "allowOffline": allow_offline, "dialogueChecked": not skip_dialogue, "remoteProjectId": remote_project,
+            "batchSize": batch_size, "allowOffline": allow_offline, "dialogueChecked": not skip_dialogue, "revise": revise, "since": since, "remoteProjectId": remote_project,
             "passed": not failures, "failureCount": len(failures), "failuresByRule": by_rule,
             "failedEpisodes": failed_episodes, "failedOutlines": failed_outlines, "failures": failures, "warnings": warnings,
             "perEpisode": {str(n): per_episode[n] for n in sorted(per_episode)},
@@ -443,7 +459,7 @@ def _dialogue(scope, n, entry, root, writers, polish, ordered, final, author_ite
         if missing:
             fail(scope, "voice-card", f"这些人物各有 {VOICED_FROM} 句以上台词，但作者包里没有写到他们的声音卡（K5 知识卡）：{'、'.join(missing)}")
     if not polish:
-        fail(scope, "dialogue-pass", "没有台词遍：作者运行之后要有一次只改台词的 C5 运行（dialogue_author 包）")
+        fail(scope, "dialogue-pass", "没有台词与表演遍：作者运行之后要有一次只改台词、括注和动作的 C5 运行（dialogue_author 包）")
         return
     when, run = polish[0]
     entry["dialogueRun"] = run["runId"]
@@ -453,11 +469,11 @@ def _dialogue(scope, n, entry, root, writers, polish, ordered, final, author_ite
     before = _read_ref(root, text_outputs(earlier[-1])[n][-1]) if earlier else None
     after = _read_ref(root, text_outputs(run)[n][-1])
     if before is None or after is None:
-        fail(scope, "dialogue-pass", "读不到台词遍前后的两份稿，无法核对它只改了台词")
+        fail(scope, "dialogue-pass", "读不到台词遍前后的两份稿，无法核对它没有动场次")
     else:
-        keep = lambda body: [line.rstrip() for line in body.splitlines() if line.strip() and not _speaker(line)]
+        keep = lambda body: [line.strip() for line in body.splitlines() if HEADING.match(line)]
         if keep(before) != keep(after):
-            fail(scope, "dialogue-pass", f"台词遍 {run['runId']} 改动了台词以外的行（场头、动作或说明）；这一遍只许改台词")
+            fail(scope, "dialogue-pass", f"台词遍 {run['runId']} 增删或改写了场头；这一遍改台词、表演括注和动作，不动场次")
     readers = [r for at, r in ordered if at > when and r["workstation"] == "C6" and role(r) == "dialogue_read"
                and any(_classify(i["ref"], i["partition"], pages) == ("text", n) for i in snapshot_items(r)[0])]
     entry["dialogueRead"] = [r["runId"] for r in readers]
