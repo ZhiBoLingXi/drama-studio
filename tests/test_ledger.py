@@ -160,16 +160,25 @@ class LedgerCheckRules(unittest.TestCase):
         self.assertEqual(self.rule(self.check(None, "--delta", good)[1], "knowledge-monotonic")["status"], "pass")
 
     def test_money_closed_empty_fields_register_not_exempt(self):
+        # D6-2 decision §5 #6 changed this on purpose: a field listed in emptyFields used to fail money-closed; now it is
+        # accounted for, passes and stays listed under registeredEmpty. An empty field not listed still fails.
         entries = base_entries()
         entries[3].update(trace=None, emptyFields=["trace"])
         code, out = self.check(entries)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.rule(out, "money-closed")["status"], "pass")
+        self.assertEqual(self.rule(out, "money-closed")["registeredEmpty"], ["L-money-001: trace"])
+        self.assertEqual(self.rule(out, "schema-basic")["status"], "pass")
+        entries[3].update(emptyFields=[])
+        code, out = self.check(entries)
         self.assertEqual(code, 2)
         self.assertEqual(self.rule(out, "money-closed")["status"], "fail")
-        self.assertEqual(self.rule(out, "schema-basic")["status"], "pass")
         code, out = self.check(entries, "--stage", "pre-select")
         self.assertEqual(self.rule(out, "money-closed")["status"], "report")
         entries[3].update(trace="no_trace", traceReason="现金没有凭据", emptyFields=[])
         self.assertEqual(self.rule(self.check(entries)[1], "money-closed")["status"], "pass")
+        entries[3].update(traceReason="")
+        self.assertEqual(self.rule(self.check(entries)[1], "money-closed")["status"], "fail")
 
     def test_planned_vs_actual_lists_differences_only(self):
         p = self.ws.delta("p.json", 3, [write("L-obj-001", {"state": "开了"})])

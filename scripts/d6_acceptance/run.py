@@ -1,4 +1,5 @@
-"""D6-1 local acceptance, the single entry point: collect the four stream segments, add the integration checks, print one table.
+"""D6-1/D6-2 local acceptance, the single entry point: collect the stream segments (D6-2 adds d62: the outline-layer
+artifacts moved into a project), add the integration checks, print one table.
 
     python3 -B scripts/d6_acceptance/run.py [V]
 
@@ -25,7 +26,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 CHECKS = TOOL.parent / "checks"
-SEGMENTS = ("schemas", "ledger", "checks", "corpus")
+SEGMENTS = ("schemas", "ledger", "checks", "corpus", "d62")
 PROJECTS = ("yuanxinsuo", "qige-xiongdi")  # real projects with 0.3.6-era records and no D6 records
 LOCK_ARGS = ("--episodes 1-60", "--outline 1-60", "--episodes 1-10 --outline 1-60 --allow-offline", "--episodes 1-60 --revise",
              "--episodes 1-10 --skip-dialogue", "--episodes 1-60 --since 2026-10-01T00:00:00+08:00")
@@ -241,6 +242,10 @@ def requirements(rows):
         requirement("capacity 对 006A 分集计划与 g2 正文与临时脚本 ±1 秒", rows, names("capacity-episode-006A", "capacity-text-g2")),
         requirement("season-check 对《渊心锁》与本项目旧记录与 0.3.6 逐字节一致", rows, names("season-check legacy lock")),
         requirement("validate.py 随包检查；test_skill_routing；install verify", rows, names("validate.py", "test_skill_routing", "install plan")),
+        requirement("D6-2：season-check --outline 对搬成项目记录形态的 D6-0 产物（集纲层七条）", rows,
+                    lambda r: r["stream"] == "d62" and ("集纲层七条" in r["name"] or "变异" in r["name"] or "旧规则" in r["name"])),
+        requirement("D6-2：context-pack --role author（C4）缺季编排、底账或功能地图退出码 2", rows, names("context-pack --role author（C4）")),
+        requirement("D6-2：搬运只读 V、不改 V", rows, names("搬成项目记录形态", "V 未被改动")),
     ]
 
 

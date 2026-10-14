@@ -111,9 +111,11 @@ class Capacity(unittest.TestCase):
         self.assertEqual([f["estimateSecB"] for f in out["finalSequence"]], [14.0, 20.0])
         self.assert_no_verdict(out)
 
-    def test_missing_corpus_and_median_is_input_error(self):
+    def test_missing_corpus_and_median_uses_the_bundled_default(self):
+        # D6-2 decision §5 #2 changed this on purpose: it was an input error (exit 1); a new project has no corpus yet
         code, out = self.run_tool("episode", self.write("p.json", {"episode": 1}), "--media", self.media)
-        self.assertEqual((code, out["ok"]), (1, False))
+        self.assertEqual((code, out["ok"]), (0, True))
+        self.assertEqual((out["basis"]["status"], out["basis"]["defaults"]), ("default_unmeasured", ["exchangeMedianSec"]))
 
     def test_runs_with_network_disabled(self):
         sys.dont_write_bytecode = True  # never leave .pyc files inside the bundle

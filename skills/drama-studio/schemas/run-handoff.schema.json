@@ -47,8 +47,17 @@
       "minLength": 1
     },
     "contextSnapshotId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "null only for C1/C2 runs, which pack no context (D6-2); they say why in noSnapshotReason"
+    },
+    "noSnapshotReason": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Required when contextSnapshotId is null (C1/C2 only)"
     },
     "additionalSnapshotIds": {
       "type": "array",

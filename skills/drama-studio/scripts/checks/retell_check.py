@@ -100,8 +100,13 @@ def check_closing_event(episode_plan: dict, retell: dict) -> dict:
         return {"status": "beatRef_not_found", "beatRef": beat_ref}
     stops_at = retell.get("stopsAt") or ""
     hit = [t for t in TOKEN_SPLIT_RE.split(beat_text) if len(t) >= 2 and t in stops_at]
-    return {"status": "retold" if hit else "partial" if stops_at else "missing", "beatRef": beat_ref,
-            "beatText": beat_text, "stopsAt": stops_at, "tokensHit": hit, "signalQuality": "low"}
+    # a cold reader retells in their own words: also count the beat's two-character pieces found in stopsAt (D6-2 §5 #24)
+    pairs = [part[i:i + 2] for part in TOKEN_SPLIT_RE.split(beat_text) for i in range(len(part) - 1)]
+    shared = [pair for pair in pairs if pair in stops_at]
+    retold = bool(hit) or (pairs and len(shared) * 2 >= len(pairs))
+    return {"status": "retold" if retold else "partial" if stops_at else "missing", "beatRef": beat_ref,
+            "beatText": beat_text, "stopsAt": stops_at, "tokensHit": hit,
+            "pairsShared": f"{len(shared)}/{len(pairs)}", "signalQuality": "low"}
 
 
 def run_retell_check(retell_path, plan_path, episode_plan_path=None, factrefs_path=None) -> dict:
@@ -124,8 +129,10 @@ def run_retell_check(retell_path, plan_path, episode_plan_path=None, factrefs_pa
     if target.get("kind") not in TARGET_KINDS:
         notes.append(f"target.kind={target.get('kind')!r} 不在 {sorted(TARGET_KINDS)}")
     scope = retell.get("readingScope")
-    if scope is not None and scope != [target.get("kind")]:
-        notes.append(f"readingScope={scope!r} 应只有一项且与 target.kind 一致")
+    # one item: the target kind itself, or the one file the reader read (D6-2 §5 #24: a file path is not a second item)
+    if scope is not None and (not isinstance(scope, list) or len(scope) != 1
+                              or (scope[0] in TARGET_KINDS and scope[0] != target.get("kind"))):
+        notes.append(f"readingScope={scope!r} 应只有一项（target.kind 或读的那一个文件）且与 target.kind 一致")
     if not is_nonempty(retell.get("promptVersion")):
         notes.append("记录没有 promptVersion（冷读用的提示词版本）；版本不同的两次冷读不直接比")
     text = retell_text(retell)

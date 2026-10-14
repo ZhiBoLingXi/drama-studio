@@ -181,7 +181,8 @@ class PlanCheck(unittest.TestCase):
         # 仓管 is named in knownByInStory, but has no ledger id of his own and fact.ledgerRef is 老陈's entry
         p["infoLedger"][0]["knownByInStoryRefs"] = [{"who": "仓管", "ledgerRef": None}, {"who": "老陈", "ledgerRef": "L-kn-3b"}]
         out = self.status(p, "speaker-knows")
-        self.assertEqual(out["status"], "pass", out)
+        # D6-2 decision §5 #25 changed this on purpose: it was "pass"; a pass with unjudged lines now says so
+        self.assertEqual(out["status"], "pass_with_not_evaluable", out)
         self.assertEqual([(x["beat"], x["speaker"]) for x in out["notEvaluable"]], [("3-1.b1", "仓管")])
 
     def test_reality_refs_contested(self):

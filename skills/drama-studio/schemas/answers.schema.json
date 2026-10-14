@@ -27,7 +27,8 @@
       "properties": {
         "kind": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "What was asked about (candidate, move, premise …); errata_check marks a re-check that only confirms map errata (answers may be empty)"
         },
         "id": {
           "type": "string",
@@ -43,6 +44,14 @@
             "string"
           ],
           "description": "集号：整数，或拆集后的「6A」这类字符串"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Optional (D6-2): the move or candidate ids one record covers; with two or more, every answer names its subject"
         }
       }
     },
@@ -64,7 +73,7 @@
       "items": {
         "$ref": "#/$defs/answer"
       },
-      "minItems": 1
+      "description": "At least one answer, except a target.kind errata_check record that only carries errataConfirmed (contract-check rule)"
     },
     "outcome": {
       "type": "string",
@@ -115,8 +124,21 @@
     "mapErrata": {
       "type": "array",
       "items": {
-        "type": "object"
-      }
+        "type": "object",
+        "properties": {
+          "errataId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "where": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Function-map transcription errors found while answering; each is cleared only by another record's errataConfirmed (D6-2)"
     },
     "unverifiedList": {
       "type": "array",
@@ -169,6 +191,30 @@
         "type": "string"
       },
       "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    },
+    "errataConfirmed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ref",
+          "fixed"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "<checkId>#<errataId or index> of the erratum"
+          },
+          "fixed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Optional (D6-2): a re-check in a new context confirming that earlier records' mapErrata were fixed in the map"
     }
   },
   "$defs": {
@@ -354,6 +400,11 @@
         },
         "targetClause": {
           "type": "string"
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional (D6-2): the move id or candidate id this answer is about; required when target.ids lists two or more"
         }
       }
     },

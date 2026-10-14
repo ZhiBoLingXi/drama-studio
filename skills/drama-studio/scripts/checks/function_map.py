@@ -17,7 +17,10 @@
       license(_pending) -> a ledger entry license_pending/accepted_license (a retired entry is followed
       through retiresInto; --ref-remap maps an id moved without a retiresInto trail); confirmed(_gone)
       / retires_with -> a non-empty ref; leaves_open is not a place for a load-bearing gap.
-      Records supersede others through their `supersedes` field (a path or checkId).
+      Records supersede others through their `supersedes` field (a path or checkId). Every mapErrata item of
+      a record is confirmed fixed by another record's errataConfirmed {ref: "<checkId>#<i or errataId>",
+      fixed: true} (D6-2 §5 #18: errata are cleared by a re-check, not by the author); a superseded
+      record's errata are not asked for and are listed in counts.skippedSuperseded.
   merge <T-*.json files or dirs>... --out F    one map from per-thread files (no content change)
   topics <function-map> [--include-rejected]   retrieval topics merged from ledgerDeps of kind procedure
       and of assertion required_unstated (d6-1 decision #6), with the functions, candidates and
@@ -277,9 +280,35 @@ def run_check(doc, args):
                         errors.append(err)
         counts["loadBearingNotHoldsChecked"] = checked
         counts["supersededCheckIds"] = sorted(superseded_by)
+        unconfirmed, total, skipped = errata_unconfirmed(records, superseded_by)
+        counts["mapErrata"], counts["mapErrataUnconfirmed"], counts["skippedSuperseded"] = total, len(unconfirmed), skipped
+        errors += [f"{ref}: 功能地图勘误（{what}）没有后续复核记录确认已改（另一份记录的 errataConfirmed 写 {{ref, fixed: true}}）"
+                   for ref, what in unconfirmed]
         if decisions is None or ledger_by_id is None:
             notes.append("未给 --decisions 或 --ledger：disposition 对应那半的引用存在性与状态未核，只核了 to 与 ref 非空")
     return errors, notes, counts
+
+
+def errata_unconfirmed(records, superseded_by=None):
+    """D6-2 §5 #18: an erratum (mapErrata[i] of a record; id <checkId>#<errataId or i>) is cleared only when another
+    record, written in a new context after the map was fixed, lists it in errataConfirmed with fixed: true. The author's
+    say-so is not evidence. A superseded record (another record's supersedes points at it, or it carries supersededBy)
+    is no longer current, so its errata are not asked for and are listed as skipped instead.
+    Returns ([(ref, what)] unconfirmed, total errata of current records, [checkId] skipped superseded records)."""
+    errata, confirmed, skipped = [], set(), []
+    for cid, (rec, _) in records.items():
+        if rec.get("mapErrata") and (cid in (superseded_by or {}) or rec.get("supersededBy")):
+            skipped.append(cid)
+        for index, item in enumerate(rec.get("mapErrata") if isinstance(rec.get("mapErrata"), list) and cid not in skipped else []):
+            if isinstance(item, dict):
+                what = item.get("what") or item.get("error") or item.get("where") or ""
+                errata.append((cid, {f"{cid}#{index}", f"{cid}#{item.get('errataId')}"}, f"{cid}#{item.get('errataId') or index}", str(what)[:40]))
+        for item in rec.get("errataConfirmed") or []:
+            if isinstance(item, dict) and item.get("fixed") is True and isinstance(item.get("ref"), str):
+                confirmed.add((cid, item["ref"]))
+    unconfirmed = [(label, what) for origin, refs, label, what in errata
+                   if not any(by != origin and ref in refs for by, ref in confirmed)]
+    return unconfirmed, len(errata), sorted(skipped)
 
 
 def origin_problem(cand):
@@ -374,14 +403,28 @@ def episodes_of(fn):
     return list(eps if isinstance(eps, list) else fn.get("currentEpisodes") or [])
 
 
+SEARCHABLE_UNSTATED = ("money", "object")  # required_unstated deps of these kinds may rest on a real-world rule
+
+
+def searchable(dep: dict) -> bool:
+    """A dep a retrieval agent can look up (D6-2 §5 #15): every procedure dep, and a required_unstated money or object dep
+    unless it says realWorldRule: false. knowledge, agenda and timeline deps are about the story's people, not the
+    world, so they yield no topic (no empty card is owed for them)."""
+    if dep.get("kind") == "procedure":
+        return True
+    return dep.get("kind") in SEARCHABLE_UNSTATED and dep.get("assertion") == "required_unstated" and dep.get("realWorldRule") is not False
+
+
 def cmd_topics(args):
     doc = L.load_json(args.function_map, "功能地图")
-    topics, index = [], {}
+    topics, index, skipped = [], {}, {}
     for thread, fn, cand in L.iter_candidates(doc):
         if cand.get("status") == "rejected" and not args.include_rejected:
             continue
         for dep in cand.get("ledgerDeps") or []:
-            if dep.get("kind") != "procedure" and dep.get("assertion") != "required_unstated":
+            if not searchable(dep):
+                if dep.get("assertion") == "required_unstated":
+                    skipped[dep.get("kind")] = skipped.get(dep.get("kind"), 0) + 1
                 continue
             key = ("entry", dep["entryId"]) if L.is_nonempty(dep.get("entryId")) else ("claim", L.normalize_title(dep.get("claim")))
             topic = index.get(key)
@@ -402,7 +445,10 @@ def cmd_topics(args):
         t["episodes"].sort(key=lambda e: L.ep_key(e) or (10 ** 9, str(e)))
     L.emit({"ok": True, "topics": topics, "counts": {"topics": len(topics), "fromEntry": sum(1 for t in topics if t["entryId"]),
                                                        "fromClaimOnly": sum(1 for t in topics if not t["entryId"])},
-            "note": "只归并，不检索；同一底账条目归一题，没有 entryId 的按断言文字归并", "reproduceCommand": args.reproduce})
+            "notSearchable": dict(sorted(skipped.items(), key=lambda kv: str(kv[0]))),
+            "note": "只归并，不检索；同一底账条目归一题，没有 entryId 的按断言文字归并。只出能检索的题：procedure，以及 money／object 的 "
+                    "required_unstated（标 realWorldRule: false 的除外）；knowledge、agenda、timeline 不出题，数目列在 notSearchable",
+            "reproduceCommand": args.reproduce})
     return 0
 
 

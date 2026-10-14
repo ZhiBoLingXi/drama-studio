@@ -129,8 +129,8 @@ def _rules_context_snapshot(doc: dict) -> list[str]:
         total += item["chars"]
         if item["usage"] == "evaluation_only" and role != "evaluation":
             errors.append(f"{where}: evaluation_only material cannot enter the {role} package")
-        if item["usage"] == "comparison_only" and role not in ("similarity_review", "evaluation"):
-            errors.append(f"{where}: comparison_only material is limited to similarity review")
+        if item["usage"] == "comparison_only" and role not in COMPARISON_ROLES:
+            errors.append(f"{where}: comparison_only material is limited to {'/'.join(COMPARISON_ROLES)}")
         if item["partition"] == "knowledge" and item["ref"]["kind"] != "knowledge_card":
             errors.append(f"{where}: knowledge partition only takes knowledge_card references")
         if item["partition"] == "project_facts" and item["ref"]["kind"] == "knowledge_card":
@@ -167,6 +167,12 @@ def _cold_reader_package(role, items, where) -> list[str]:
     return errors
 
 
+# comparison_only material is for comparing against: similarity and evaluation, and (D6-2) the reality check, which
+# compares a move with K1 cards on the real world
+COMPARISON_ROLES = ("similarity_review", "evaluation", "fact_check")
+PLAN_FOLDER = "planning/episodes/"  # where C4 writes episode plans (docs/d6/d6-2-decisions.md §1)
+
+
 def _rules_review_record(doc: dict) -> list[str]:
     errors = []
     for index, finding in enumerate(doc["findings"]):
@@ -174,8 +180,14 @@ def _rules_review_record(doc: dict) -> list[str]:
             errors.append(f"findings[{index}]: a fact finding needs quoted evidence")
     if doc["context"] == "serial_self_review" and doc.get("claimsIndependence"):
         errors.append("claimsIndependence: serial self review cannot claim independence")
+    # D6-2: a review of an episode plan in the planning/episodes/ layout cites what every finding rests on
+    plan_review = any(ref.get("kind") == "local_file" and str(ref.get("id", "")).startswith(PLAN_FOLDER)
+                      for ref in [doc["target"], *doc.get("additionalTargets", [])])
     for index, finding in enumerate(doc["findings"]):
-        if ("cites" in finding or "kind" in finding) and not finding.get("cites") and finding.get("kind") != "preference":
+        if plan_review and not finding.get("cites") and finding.get("kind") != "preference":
+            errors.append(f"findings[{index}]: a review of an episode plan ({PLAN_FOLDER}) needs cites "
+                          "(functionId/ledgerId/targetClause/factEvidence) on every finding, or kind: preference")
+        elif ("cites" in finding or "kind" in finding) and not finding.get("cites") and finding.get("kind") != "preference":
             errors.append(f"findings[{index}]: cites none of functionId/ledgerId/targetClause/factEvidence, so it must be kind: preference")
     known = {finding["id"] for finding in doc["findings"]}
     for index, item in enumerate(doc.get("adjudications", [])):
@@ -183,6 +195,9 @@ def _rules_review_record(doc: dict) -> list[str]:
         if missing:
             errors.append(f"adjudications[{index}]: unknown finding ids {missing}")
     return errors
+
+
+NO_PACK_WORKSTATIONS = ("C1", "C2")  # their runs may record no context snapshot (D6-2 §5 #8)
 
 
 def _rules_run_handoff(doc: dict) -> list[str]:
@@ -197,8 +212,15 @@ def _rules_run_handoff(doc: dict) -> list[str]:
     usage = doc["host"]["usage"]
     if usage["source"] != "host_reported" and usage.get("tokens") is not None:
         errors.append("host.usage.tokens: only host-reported usage may state tokens")
+    if doc["contextSnapshotId"] is None:  # D6-2 §5 #8: C1 and C2 pack no context; every other workstation does
+        if doc["workstation"] not in NO_PACK_WORKSTATIONS:
+            errors.append(f"contextSnapshotId: only {'/'.join(NO_PACK_WORKSTATIONS)} runs may have none; {doc['workstation']} runs from a package")
+        if not (doc.get("noSnapshotReason") or "").strip():
+            errors.append("noSnapshotReason: a run without a context snapshot says why")
+    elif "noSnapshotReason" in doc:
+        errors.append("noSnapshotReason: only a run whose contextSnapshotId is null gives one")
     extra = doc.get("additionalSnapshotIds", [])
-    if doc["contextSnapshotId"] in extra or len(set(extra)) != len(extra):
+    if doc["contextSnapshotId"] is not None and doc["contextSnapshotId"] in extra or len(set(extra)) != len(extra):
         errors.append("additionalSnapshotIds: list each further snapshot once, and not the contextSnapshotId itself")
     if "finishedAt" in doc and finished_at(doc["finishedAt"]) is None:
         errors.append("finishedAt: not a valid ISO 8601 date-time with a UTC offset")
@@ -248,6 +270,9 @@ def _rules_remote_receipt(doc: dict) -> list[str]:
     return errors
 
 
+OUTLINE_REVIEW_KINDS = ("episode_plan", "function_map", "ledger", "season_plan")  # C6 reads of the outline layer (D6-2)
+
+
 def _rules_task(doc: dict) -> list[str]:
     errors = []
     evidence = doc.get("adoptionEvidence")
@@ -260,7 +285,8 @@ def _rules_task(doc: dict) -> list[str]:
             errors.append(f"constraints[{index}]: hits the {category} blocklist ({hit!r}); rejected whatever the origin ({constraint['origin']})")
         if constraint["origin"] == "orchestrator" and not constraint.get("cite"):
             errors.append(f"constraints[{index}]: an orchestrator constraint must cite the target clause it rests on")
-    if doc.get("layer") in ("C5a", "C5b", "C6") and "dialogueTarget" not in doc:
+    outline_read = doc.get("layer") == "C6" and (doc.get("target") or {}).get("kind") in OUTLINE_REVIEW_KINDS
+    if doc.get("layer") in ("C5a", "C5b", "C6") and "dialogueTarget" not in doc and not outline_read:
         errors.append(f"dialogueTarget: a {doc['layer']} task must cite the dialogue-target targetId@revision it follows")
     return errors
 
@@ -477,6 +503,9 @@ def _rules_answers(doc: dict, ctx=None, notes=None) -> list[str]:
     unknown_subset = sorted(set(doc.get("askedSubset", [])) - set(kinds)) if qset else []
     if unknown_subset:
         errors.append(f"askedSubset: {unknown_subset} are not questions of {doc['questionsVersion']}")
+    # answers may be empty only in an errata re-check, which confirms map errata fixed and answers no question (re-run N3)
+    if not doc["answers"] and not ((doc.get("target") or {}).get("kind") == "errata_check" and doc.get("errataConfirmed")):
+        errors.append("answers: empty; only a target.kind errata_check record with errataConfirmed answers no question")
     anchors = {("landsOn" in a) + 2 * ("quoteRef" in a) for a in doc["answers"]}
     cards = (ctx or {}).get("cards")
     if cards is None:
@@ -516,12 +545,10 @@ def _rules_answers(doc: dict, ctx=None, notes=None) -> list[str]:
             counted["not_evaluable"] += 1
     if len(anchors) > 1:
         errors.append("answers: one record uses one anchor kind throughout (landsOn or quoteRef)")
-    if counted["notHolds"]:
-        expected = "fail_inherited" if all(a.get("inheritedFrom") for a in counted["notHolds"]) else "fail"
-    else:
-        expected = "pass_with_unverified" if counted["not_evaluable"] else "pass"
-    if doc["outcome"] != expected:
-        errors.append(f"outcome: {doc['outcome']} disagrees with the answers ({expected}; informational questions do not count)")
+    expected = allowed_outcomes(counted["notHolds"], counted["not_evaluable"])
+    if doc["outcome"] not in expected:
+        errors.append(f"outcome: {doc['outcome']} disagrees with the answers ({' or '.join(sorted(expected))}; informational questions do not count)")
+    errors += subject_errors(doc)
     for c_index, close in enumerate(doc.get("closes", [])):
         if not close.get("confirmedBy"):
             errors.append(f"closes[{c_index}]: a closed defect counts only with confirmedBy (a fresh-context check record)")
@@ -529,6 +556,34 @@ def _rules_answers(doc: dict, ctx=None, notes=None) -> list[str]:
     for c_index, close in enumerate(doc.get("closes", [])):
         if close["defectId"] in patched:
             errors.append(f"closes[{c_index}]: {close['defectId']} was answered with a patch, so it does not count as closed")
+    return errors
+
+
+def allowed_outcomes(not_holds: list, not_evaluable: int, inherited_may_say_fail: bool = False) -> set:
+    """The outcomes a record's counted answers allow. D6-2 §5 #19: when every notHolds is not load-bearing the record may
+    also say pass_with_unverified (the gaps stay in leavesOpen); a load-bearing one keeps it at fail. All-inherited gaps
+    say fail_inherited (check-answers also takes fail there, as before)."""
+    if not_holds:
+        if all(a.get("inheritedFrom") for a in not_holds):
+            failed = {"fail_inherited", "fail"} if inherited_may_say_fail else {"fail_inherited"}
+        else:
+            failed = {"fail"}
+        if all(a.get("loadBearing") is not True for a in not_holds):
+            failed.add("pass_with_unverified")
+        return failed
+    return {"pass_with_unverified"} if not_evaluable else {"pass"}
+
+
+def subject_errors(doc: dict) -> list[str]:
+    """D6-2 §5 #20: a record covering two or more moves or candidates (target.ids) says per answer which (subject)."""
+    ids = (doc.get("target") or {}).get("ids") or []
+    errors = []
+    for index, answer in enumerate(doc.get("answers") or []):
+        subject = answer.get("subject") if isinstance(answer, dict) else None
+        if len(ids) > 1 and not subject:
+            errors.append(f"answers[{index}]: the record covers {len(ids)} subjects (target.ids), so each answer names its subject")
+        elif subject and ids and subject not in ids:
+            errors.append(f"answers[{index}]: subject {subject!r} is not one of target.ids {ids}")
     return errors
 
 

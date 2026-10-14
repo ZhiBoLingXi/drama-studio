@@ -243,6 +243,32 @@
         }
       },
       "description": "Optional: the dialogue-target targetId@revision this task follows"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "episode_text",
+            "episode_plan",
+            "function_map",
+            "ledger",
+            "season_plan"
+          ]
+        },
+        "episode": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      },
+      "description": "Optional (D6-2): what a C6 task reviews; an outline-side read (episode_plan, function_map, ledger, season_plan) needs no dialogueTarget"
     }
   },
   "$defs": {

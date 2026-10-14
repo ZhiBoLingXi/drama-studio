@@ -37,11 +37,16 @@ KIND_FIELDS = {
     "procedure": ["name", "realWorldRule", "nextNecessaryMove", "realityRef", "usedIn"],
     "agenda": ["party", "goal", "means", "constraints", "nextMove", "validFrom", "validTo"],
 }
-STATE_FIELDS = ["stateOf", "state", "validFrom", "validTo", "knownTo"]  # timeline subtype: state
+STATE_FIELDS = ["stateOf", "state", "validFrom", "validTo"]  # timeline subtype: state; knownTo optional (D6-2 §5 #5)
 SUBTYPES = {"timeline": {"state"}}
 VALID_KINDS = set(KIND_FIELDS)
-VALID_ORIGINS = {"user_given", "user_given_modified", "designed", "derived_from_text"}
-VALID_STATUSES = {"asserted", "verified", "unverified", "contested", "retired", "license_pending", "accepted_license"}
+# one set of required fields and enums with contract-check ledger-entry: read from the bundled schema (D6-2 §5 #5)
+_ENTRY_SCHEMA = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "schemas",
+                                            "ledger-entry.schema.json"), encoding="utf-8"))["$defs"]["entry"]
+COMMON_REQUIRED = list(_ENTRY_SCHEMA["required"])
+VALID_ORIGINS = set(_ENTRY_SCHEMA["properties"]["origin"]["enum"])
+VALID_STATUSES = set(_ENTRY_SCHEMA["properties"]["status"]["enum"])
+OPEN_ENDED = {"validTo"}  # a null end means the state or agenda still holds
 VALID_TRACKS = ("planned", "actual")
 RETIRE_EVENTS = {"deceived", "forgot", "corrected"}
 RETIRED_BY_VOCAB = {"layer_choice"}
@@ -348,17 +353,22 @@ def _justified(e, empty_fields, f):
 
 
 def required_fields(entry):
+    """Kind fields that must be present as keys. Only the state subtype keeps this (stateOf, state, validFrom, validTo:
+    a state without its span cannot be replayed by episode); other kinds need what the schema needs, and their own
+    fields are judged by content below (did or didNot, why or a reason it is missing, nulls registered)."""
     if entry.get("kind") == "timeline" and entry.get("subtype") == "state":
         return STATE_FIELDS
-    return KIND_FIELDS.get(entry.get("kind"), [])
+    return []
 
 
 def entry_problems(eid, e):
-    """schema-basic for one entry. Calibrated on the D6-0 pilot ledgers: timeline needs did or didNot
-    (where may be null; why needs whyMissing/whyNotApplicable/whyPartial); procedure realWorldRule
-    may be null only when unverified with notFound; money's six fields accept only emptyFields;
-    a knowledge entry that records only notKnows exempts knows and how."""
-    items = []
+    """schema-basic for one entry: the schema's required fields and enums (the same as contract-check ledger-entry),
+    then content rules calibrated on the D6-0 pilot ledgers: timeline needs did or didNot (where may be null; a missing
+    or null why needs whyMissing/whyNotApplicable/whyPartial); the state subtype has its five fields; procedure
+    realWorldRule may be null only when unverified with notFound; money's six fields accept only emptyFields; a knowledge
+    entry that records only notKnows exempts knows and how; any other null field is registered (emptyFields, whyMissing,
+    whyNotApplicable), except an open-ended validTo."""
+    items = [{"id": eid, "problem": f"缺必填字段 {f}"} for f in COMMON_REQUIRED if f not in e]
     kind = e.get("kind")
     if kind not in VALID_KINDS:
         items.append({"id": eid, "problem": f"kind={kind!r} 不合法"})
@@ -412,7 +422,7 @@ def entry_problems(eid, e):
                           "entryFields": {f: e.get(f) for f in KIND_FIELDS["knowledge"]},
                           "entryFlags": {k: e.get(k) for k in diag if k in e}})
     else:
-        null_unjustified(KIND_FIELDS[kind])
+        null_unjustified([f for f in KIND_FIELDS[kind] if f not in OPEN_ENDED])
     return items
 
 
@@ -509,26 +519,27 @@ def rule_knowledge_monotonic(entries_by_id, deltas):
 
 
 def rule_money_closed(entries_by_id, stage="default"):
-    """from/to/whoCanMove non-empty; account and trace non-empty or `no_trace` with a reason
-    (accountReason/traceReason). A field listed in emptyFields is a registration, not an exemption:
-    it is still reported. amount is not checked (a card gives a rule's magnitude, not the sum)."""
-    items = []
+    """from/to/whoCanMove/account/trace each non-empty, or accounted for: listed in emptyFields (the material does not
+    say; D6-2 §5 #6), or, for account and trace, `no_trace` with a reason (accountReason/traceReason). Registered empties
+    pass and are listed under registeredEmpty so they stay visible. amount is not checked (a card gives a rule's
+    magnitude, not the sum)."""
+    items, registered = [], []
     for eid, e in entries_by_id.items():
         if e.get("kind") != "money" or e.get("status") == "retired":
             continue
-        for f in ("from", "to", "whoCanMove"):
-            if not is_nonempty(e.get(f)):
-                items.append(f"{eid}: {f} 为空")
-        for f, reason in (("account", "accountReason"), ("trace", "traceReason")):
+        empty = set(e.get("emptyFields") or [])
+        for f in ("from", "to", "whoCanMove", "account", "trace"):
             v = e.get(f)
-            if v == "no_trace":
-                if not is_nonempty(e.get(reason)):
-                    items.append(f"{eid}: {f}=no_trace 但 {reason} 为空")
+            if f in ("account", "trace") and v == "no_trace":
+                if not is_nonempty(e.get(f + "Reason")):
+                    items.append(f"{eid}: {f}=no_trace 但 {f}Reason 为空")
             elif not is_nonempty(v):
-                items.append(f"{eid}: {f} 为空且未标 no_trace")
-    if stage == "pre-select":
-        return {"status": "report", "items": items}
-    return {"status": "fail" if items else "pass", "items": items}
+                if f in empty:
+                    registered.append(f"{eid}: {f}")
+                else:
+                    items.append(f"{eid}: {f} 为空，既没列进 emptyFields" + ("，也没标 no_trace" if f in ("account", "trace") else ""))
+    status = "report" if stage == "pre-select" else ("fail" if items else "pass")
+    return {"status": status, "items": items, "registeredEmpty": registered}
 
 
 def presence_vs_timeline(entries_by_id, scenes):
@@ -1318,9 +1329,34 @@ def render_state_md(rev, entries_by_id):
     return "\n".join(lines)
 
 
+def delta_paths(args_delta):
+    """--delta values: files as given; a folder stands for its delta-*.json files (plan_replay orders them by episode)."""
+    paths = []
+    for arg in args_delta or []:
+        if os.path.isdir(arg):
+            found = sorted(glob.glob(os.path.join(arg, "delta-*.json")))
+            if not found:
+                raise InputError(f"--delta 目录 {arg} 里没有 delta-*.json")
+            paths += found
+        else:
+            paths.append(arg)
+    return paths
+
+
+def replay_notes_md(fallback, errors):
+    """What a --md export must not hide: actual-track episodes that used their planned delta, and apply errors."""
+    if not fallback and not errors:
+        return []
+    lines = ["## 重放说明", ""]
+    if fallback:
+        lines += [f"- 实际轨缺 delta、用了计划轨的集（plannedFallback）：{'、'.join(map(str, fallback))}"]
+    lines += [f"- 应用出错：{error}" for error in errors]
+    return lines + [""]
+
+
 def cmd_replay(args):
     doc, entries_by_id, _ = load_ledger(args.ledger)
-    deltas = [(p, load_delta(p)) for p in args.delta or []]
+    deltas = [(p, load_delta(p)) for p in delta_paths(args.delta)]
     season_doc = load_json(args.season, "季编排") if args.season else None
     chosen, fallback, skipped = plan_replay(deltas, args.at, args.track, season_doc)
     errors, steps = [], []
@@ -1334,7 +1370,11 @@ def cmd_replay(args):
     if args.out:
         write_json(args.out, out_doc)
     if args.md:
-        print(render_state_md(rev, entries_by_id))
+        # the export says how it was made: fallbacks and errors go into the Markdown, errors also to stderr with exit 2
+        body = render_state_md(rev, entries_by_id).split("\n")
+        print("\n".join(body[:4] + replay_notes_md(fallback, errors) + body[4:]))
+        if errors:
+            print(json.dumps({"ok": True, "passed": False, "plannedFallback": fallback, "errors": errors}, ensure_ascii=False), file=sys.stderr)
     else:
         emit({"ok": True, "passed": not errors, "rev": rev, "from": doc.get("rev"), "at": args.at, "track": args.track,
               "steps": steps, "plannedFallback": fallback, "notReplayed": skipped, "entries": len(entries_by_id),
@@ -1377,14 +1417,49 @@ def cmd_knows(args):
     return 0
 
 
+def view_from_function_map(doc, args):
+    """C3a stage, before the ledger exists: the candidates' ledgerDeps (procedure aside) by thread. ledgerDeps carry no
+    「who」, so the view is by thread, not by party; once C3b has written the ledger, view the ledger instead."""
+    lines = ["# 空白期总账（C3a 阶段：功能地图的 ledgerDeps，按线分组）", "",
+             "ledgerDeps 不带「谁」，这里按线列；底账写出后用 `ledger view <底账> --blank-period` 出逐方视图。", ""]
+    threads, count = [], 0
+    for thread in doc.get("threads") or []:
+        rows = [(fn.get("functionId"), cand.get("candidateId"), cand.get("status"), dep)
+                for fn in thread.get("functions") or [] for cand in fn.get("candidates") or []
+                for dep in cand.get("ledgerDeps") or [] if isinstance(dep, dict) and dep.get("kind") != "procedure"]
+        if not rows:
+            continue
+        threads.append(thread.get("threadId"))
+        count += len(rows)
+        lines += [f"## {thread.get('threadId')} {thread.get('title') or ''}".rstrip(), "",
+                  "| depId | 类 | 断言 | 写明与否 | 候选 | 底账条目 |", "| --- | --- | --- | --- | --- | --- |"]
+        for function_id, candidate_id, status, dep in rows:
+            cells = [dep.get("depId"), dep.get("kind"), dep.get("claim"), dep.get("assertion") or "",
+                     f"{candidate_id}（{status}）", dep.get("entryId") or ""]
+            lines.append("| " + " | ".join(str(c or "").replace("|", "\\|").replace("\n", " ") for c in cells) + " |")
+        lines.append("")
+    markdown = "\n".join(lines)
+    if args.md:
+        print(markdown)
+    else:
+        emit({"ok": True, "source": "function_map", "threads": threads, "ledgerDeps": count, "markdown": markdown,
+              "reproduceCommand": args.reproduce})
+    return 0
+
+
 def cmd_view(args):
-    _, entries_by_id, _ = load_ledger(args.ledger)
     if not args.blank_period:
         raise InputError("view 目前只支持 --blank-period")
+    doc = load_json(args.ledger, "底账或功能地图")
+    if isinstance(doc, dict) and "entries" not in doc and isinstance(doc.get("threads"), list):
+        return view_from_function_map(doc, args)
+    _, entries_by_id, _ = load_ledger(args.ledger)
     by_who = {}
     for e in entries_by_id.values():
         if e.get("kind") == "timeline":
-            by_who.setdefault(e.get("who") or "（未写 who）", []).append(e)
+            # a state entry belongs to whom it is the state of
+            owner = e.get("who") or (e.get("stateOf") if e.get("subtype") == "state" else None)
+            by_who.setdefault(owner or "（未写 who）", []).append(e)
     lines = ["# 空白期总账（按「谁」分组的时间线账）", ""]
     for who in sorted(by_who):
         lines += [f"## {who}", "", "| when | did | didNot | why | whyMissing |", "| --- | --- | --- | --- | --- |"]
@@ -1464,12 +1539,12 @@ def build_parser(prog=None):
     p.set_defaults(func=cmd_apply)
     p = sub.add_parser("replay", help="从 ep000 按集序重放到第 N 集（planned 或 actual 轨）")
     p.add_argument("ledger")
-    p.add_argument("--delta", action="append", default=[])
+    p.add_argument("--delta", action="append", default=[], help="delta 文件，或含 delta-*.json 的目录（按集序重放）")
     p.add_argument("--at", required=True)
     p.add_argument("--track", choices=VALID_TRACKS, default="planned")
     p.add_argument("--season", default=None, help="季编排；给了按 finalSequence 排集序")
     p.add_argument("--out", default=None)
-    p.add_argument("--md", action="store_true", help="打印可读入口状态 Markdown（不打 JSON）")
+    p.add_argument("--md", action="store_true", help="打印可读入口状态 Markdown（不打 JSON）；plannedFallback 与应用错误写在「重放说明」一节，有错误时另打到 stderr 并退出 2")
     p.set_defaults(func=cmd_replay)
     p = sub.add_parser("diff", help="两份修订的条目差异")
     p.add_argument("a")
@@ -1483,7 +1558,7 @@ def build_parser(prog=None):
     p.add_argument("--episode-plan", default=None)
     p.set_defaults(func=cmd_knows)
     p = sub.add_parser("view", help="总账视图")
-    p.add_argument("ledger")
+    p.add_argument("ledger", help="底账；C3a 阶段底账还没写时可给功能地图（按线列 ledgerDeps）")
     p.add_argument("--blank-period", action="store_true")
     p.add_argument("--md", action="store_true")
     p.set_defaults(func=cmd_view)

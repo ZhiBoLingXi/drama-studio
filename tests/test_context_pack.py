@@ -469,7 +469,8 @@ class ContextPackTests(unittest.TestCase):
         (self.project / "planning").mkdir()
         (self.project / "planning/secret.md").write_text("不该装入", encoding="utf-8")
         (self.project / "runs").mkdir()
-        for name in ("planning/secret.md", "notes.md", "/etc/hosts", "../proj/runs/x.md", ".drama/../planning/secret.md", "runs/../planning/secret.md",
+        # planning/ itself is allowed since D6-2 (test_context_pack_d62); escaping into it through '..' is still refused
+        for name in ("notes.md", "/etc/hosts", "../proj/runs/x.md", ".drama/../planning/secret.md", "runs/../planning/secret.md",
                      "runs\\x.md", "runs", ".drama/cache/art-ep01@r1.md", "runs/./x.md"):
             with self.subTest(name):
                 items = [self.local_ref(name)]

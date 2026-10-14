@@ -1,7 +1,7 @@
 """Shared parsing for mali-story deconstruction-template rawMd (Storyline / Visible Text /
 Speakers and Transcript). Parsing and description statistics only -- never a judgment call.
 
-Ported from the阶段 A手工脚本（projects/qige-xiongdi/runs/pilot-ep006/tools/corpus_lib.py）so the
+Ported from the阶段 A手工脚本（D6-0 试点的 corpus_lib.py）so the
 formal corpus/* commands reproduce the same real numbers; extended with a Storyline-paragraph
 parser used by label.py's `speakerAttributionSuspect` heuristic (stage-a-report.md §8 #1).
 

@@ -21,6 +21,7 @@ import sys
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from checks.contract_check import allowed_outcomes, subject_errors
 from checks.text_lines import InputError, abspath, is_nonempty, load_json, reproduce_command, run_cli
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "schemas" / "data"
@@ -28,6 +29,7 @@ DEFAULT_STATES = ["holds", "notHolds", "not_evaluable", "n/a"]
 OUTCOMES = {"pass", "fail", "fail_inherited", "pass_with_unverified"}
 LOAD_BEARING_BASIS = {"stated_in_record", "has_downstream", "function_sentence_step"}
 DISPOSITION_TO = {"confirmed_gone", "license", "decision", "leaves_open"}
+ERRATA_CHECK = "errata_check"  # a re-check that only confirms map errata fixed: answers may be empty
 LICENSE_STATUSES = {"license_pending", "accepted_license"}
 COVERAGE_DEP_KINDS = {"procedure", "object", "money"}
 LANDING_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:[-.][A-Za-z0-9]+)+")
@@ -84,11 +86,8 @@ def asked_subset(doc: dict, cli_subset):
 def expected_outcome(answers: list, informational: set) -> set:
     counted = [a for a in answers if isinstance(a, dict) and a.get("q") not in informational]
     not_holds = [a for a in counted if a.get("holds") == "notHolds"]
-    if not_holds:
-        return {"fail", "fail_inherited"} if all(is_nonempty(a.get("inheritedFrom")) for a in not_holds) else {"fail"}
-    if any(a.get("holds") == "not_evaluable" for a in counted):
-        return {"pass_with_unverified"}
-    return {"pass"}
+    inherited = [dict(a, inheritedFrom=a.get("inheritedFrom") if is_nonempty(a.get("inheritedFrom")) else None) for a in not_holds]
+    return allowed_outcomes(inherited, sum(a.get("holds") == "not_evaluable" for a in counted), inherited_may_say_fail=True)
 
 
 def load_ref_sources(decisions, ledger, records) -> dict:
@@ -101,16 +100,45 @@ def load_ref_sources(decisions, ledger, records) -> dict:
         sources["license"] = {e.get("id") for e in doc.get("entries", []) or []
                               if isinstance(e, dict) and e.get("status") in LICENSE_STATUSES}
     if records:
-        ids = set()
-        for path in records:
-            doc = load_json(path, "核对记录")
-            if isinstance(doc, dict) and doc.get("checkId"):
-                ids.add(doc["checkId"])
-        sources["confirmed_gone"] = ids
+        docs, skipped = {}, []
+        for path, from_folder in record_files(records):
+            try:
+                doc = load_json(path, "核对记录")
+            except InputError:
+                if not from_folder:
+                    raise
+                skipped.append({"file": path, "why": "不是合法 JSON"})
+                continue
+            if is_answer_record(doc):
+                docs[doc["checkId"]] = doc
+            elif from_folder:  # a folder may hold command outputs and other records; only answer records are read
+                skipped.append({"file": path, "why": "不是回答记录（没有 checkId 与 answers）"})
+        sources["confirmed_gone"] = set(docs)
+        sources["records"] = docs
+        sources["recordsSkipped"] = skipped
     return sources
 
 
-def check_disposition(answer: dict, where: str, ref_sources: dict, errors: list, unresolved: list) -> None:
+def is_answer_record(doc) -> bool:
+    """An answer record: checkId and an answers list (empty only for an errata re-check)."""
+    return isinstance(doc, dict) and is_nonempty(doc.get("checkId")) and isinstance(doc.get("answers"), list)
+
+
+def record_files(paths) -> list[tuple[str, bool]]:
+    """--records values as (path, from a folder): files as given; a folder stands for the *.json files directly inside
+    it (D6-2 §5 #7), of which only answer records are read and the rest listed as skipped (re-run N6)."""
+    found = []
+    for path in paths:
+        folder = Path(path)
+        found += [(str(p), True) for p in sorted(folder.glob("*.json"))] if folder.is_dir() else [(path, False)]
+    return found
+
+
+def check_disposition(answer: dict, where: str, ref_sources: dict, errors: list, unresolved: list, own_id=None) -> None:
+    """A disposition and its reference. confirmed_gone may be backfilled after the fact (D6-2 §5 #13: the author fixes
+    the plan within budget, a fresh context re-checks, the orchestrator fills in disposition only): its ref must be
+    another record, and that record must not still answer the same defectKey notHolds. A confirmed_gone citing another
+    record is always filled in after that re-check, so it names who filled it in (backfilledBy; re-run N2)."""
     disposition = answer.get("disposition")
     if not isinstance(disposition, dict):
         errors.append(f"{where}: 承重的 notHolds 没有 disposition（去处：{sorted(DISPOSITION_TO)}）")
@@ -125,18 +153,30 @@ def check_disposition(answer: dict, where: str, ref_sources: dict, errors: list,
     if not is_nonempty(ref):
         errors.append(f"{where}: disposition.to={to!r} 没有 ref（确认消失的核对记录、戏剧假定条目或决定队列条目）")
         return
+    refs = [str(one).split("#")[0] for one in (ref if isinstance(ref, list) else [ref])]
+    if to == "confirmed_gone" and any(r != own_id for r in refs) and not is_nonempty(disposition.get("backfilledBy")):
+        errors.append(f"{where}: confirmed_gone 引用别的复核记录，是事后回填的，要写 backfilledBy（谁回填的）")
     known = ref_sources.get(to)
     if known is None:
         unresolved.append({"where": where, "to": to, "ref": ref})
         return
     for one in ref if isinstance(ref, list) else [ref]:
-        if str(one).split("#")[0] not in known:
+        record_id = str(one).split("#")[0]
+        if record_id not in known:
             errors.append(f"{where}: disposition.ref={one!r} 在给定的{to}来源里找不到")
+        elif to == "confirmed_gone" and record_id == own_id:
+            errors.append(f"{where}: confirmed_gone 引用的是本记录；确认消失要新上下文的复核记录")
+
+        elif to == "confirmed_gone":
+            again = [a for a in (ref_sources.get("records", {}).get(record_id) or {}).get("answers") or []
+                     if isinstance(a, dict) and a.get("defectKey") and a.get("defectKey") == answer.get("defectKey")]
+            if any(a.get("holds") == "notHolds" for a in again):
+                errors.append(f"{where}: 复核记录 {record_id} 对 {answer.get('defectKey')} 仍判 notHolds，不能算确认消失")
 
 
 def check_record(doc: dict, questions: dict, subset_cli=None, ref_sources=None) -> dict:
     ref_sources = ref_sources or {}
-    errors, reports, unresolved = [], [], []
+    errors, reports, unresolved, backfilled = [], [], [], []
     kind = record_kind(doc, questions)
     field = lands_on_field(kind)
     states = questions.get("answerStates") or DEFAULT_STATES
@@ -184,12 +224,19 @@ def check_record(doc: dict, questions: dict, subset_cli=None, ref_sources=None) 
                               f"{'…' if len(basis) > 30 else ''} 不在 {sorted(LOAD_BEARING_BASIS)}")
             if not is_nonempty(answer.get("loadBearingWhy")):
                 errors.append(f"{where}: 承重的 notHolds 缺 loadBearingWhy")
-            check_disposition(answer, where, ref_sources, errors, unresolved)
+            check_disposition(answer, where, ref_sources, errors, unresolved, doc.get("checkId"))
+            if isinstance(answer.get("disposition"), dict) and answer["disposition"].get("backfilledBy"):
+                backfilled.append({"where": where, "to": answer["disposition"].get("to"), "ref": answer["disposition"].get("ref"),
+                                   "by": answer["disposition"]["backfilledBy"]})
     subset, subset_source = asked_subset(doc, subset_cli)
     required = (subset & question_ids) if subset else question_ids
     missing = sorted(q for q in required - answered if q is not None)
-    if missing:
+    errata_check = (doc.get("target") or {}).get("kind") == ERRATA_CHECK
+    if errata_check and not doc.get("errataConfirmed"):
+        errors.append(f"target.kind={ERRATA_CHECK} 的记录要有 errataConfirmed")
+    if missing and not (errata_check and not answers):  # an errata re-check answers no question (re-run N3)
         errors.append(f"以下问题一条回答都没有：{missing}")
+    errors += subject_errors(doc)
     allowed = expected_outcome(answers, informational)
     outcome = doc.get("outcome")
     if outcome not in OUTCOMES:
@@ -199,7 +246,7 @@ def check_record(doc: dict, questions: dict, subset_cli=None, ref_sources=None) 
     return {"kind": kind, "checkId": doc.get("checkId"), "landsOnField": field, "counts": counts,
             "askedSubset": sorted(subset) if subset else None, "askedSubsetSource": subset_source,
             "informationalQuestions": sorted(informational), "errors": errors, "reports": reports,
-            "dispositionRefsNotChecked": unresolved}
+            "dispositionRefsNotChecked": unresolved, "backfilledDispositions": backfilled}
 
 
 def find_candidate(function_map: dict, candidate_id: str):
@@ -280,6 +327,8 @@ def run_answers_check(paths, questions_path=None, subset=None, function_map_path
         results.append(result)
     passed = not any(r["errors"] for r in results)
     out = {"ok": True, "passed": passed, "records": results}
+    if "recordsSkipped" in ref_sources:
+        out["recordsSkipped"] = ref_sources["recordsSkipped"]
     if cross:
         out["cross"] = cross_report(docs)
     return out
@@ -294,7 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cross", action="store_true", help="多份记录同一落点三态是否一致（只报不拦）")
     parser.add_argument("--decisions", help="决定队列：核 disposition.to=decision 的引用")
     parser.add_argument("--ledger", help="底账：核 disposition.to=license 的引用（条目状态须是戏剧假定）")
-    parser.add_argument("--records", nargs="+", help="核对记录：核 disposition.to=confirmed_gone 的引用")
+    parser.add_argument("--records", nargs="+", help="核对记录（文件或目录）：核 disposition.to=confirmed_gone 的引用")
     return parser
 
 

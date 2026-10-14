@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "drama-studio/episode-plan-events/v0",
+  "episode": 3,
+  "source": {
+    "file": "episode-plan-003.json",
+    "sha256": "sha256:cbb718870cf410fa1d7841649f7fbad94deeea1dc6c2f510938456af01a7da05"
+  },
+  "events": {
+    "scenes": [
+      {
+        "sceneId": "3-1",
+        "time": "上午",
+        "place": "镇口小卖部",
+        "present": [
+          "老陈",
+          "刘叔"
+        ],
+        "beats": [
+          {
+            "beatId": "3-1.b1",
+            "who": "刘叔",
+            "text": "提起仓库在清退三年没人取的件",
+            "quote": "你那箱子，该不会也在里头？",
+            "offscreen": false
+          }
+        ]
+      },
+      {
+        "sceneId": "3-2",
+        "time": "中午",
+        "place": "镇仓库柜台",
+        "present": [
+          "老陈",
+          "仓管"
+        ],
+        "beats": [
+          {
+            "beatId": "3-2.b1",
+            "who": "仓管",
+            "text": "翻出登记簿指给老陈看",
+            "quote": "三年前就退了，签收的是你家里人"
+          }
+        ]
+      }
+    ]
+  }
+}

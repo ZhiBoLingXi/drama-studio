@@ -9,7 +9,7 @@ season plan's finalSequence, never by comparing raw episode ids), capacity statu
 decisions. Passing proves the structure and the ledger bookkeeping only; whether a move is
 motivated, a reason holds or a fact is really needed is model work (M) and is not judged here.
 
-speaker-knows: a beat whose quote says a fact (`saysFact`: a factId or a ledger knowledge id)
+speaker-knows (status pass_with_not_evaluable when it passed but some lines had no ledger id to judge): a beat whose quote says a fact (`saysFact`: a factId or a ledger knowledge id)
 needs the speaker to know it by then. A factId is matched by ledger ids only — the speaker's own
 `knownByInStoryRefs[]` item plus the fact's `ledgerRef[]` entries that are about the speaker —
 never by text; a fact with no such id is listed under notEvaluable. Known means one of: (a) known
@@ -20,6 +20,14 @@ earlier beat of this scene (or at this beat marked 「之前」); (c) the
 speaker is the actor: this scene writes a knowledge entry of the same id for the speaker with how
 「自己做的」/「在场」, timed no later than the beat. (b) and (c) are listed as exemptions.
 
+characters-prehistory (`--characters <character pack>`, report only, never changes `passed`): every prehistory event
+the character pack states must have a timeline ledger entry (C2: "小传里的前史事件必须有时间线账条目"). C2 has no
+structured pack yet, so two minimal shapes are read. JSON: `{"characters": [{"name", "prehistory": [{"text",
+"ledgerRef": "L-…" | ["L-…"], "pending": true?}]}]}`. Markdown: under any heading containing 「前史」, each list item or
+paragraph line is one event; ledger ids are the `L-…` tokens in it and 「待定」 marks it pending. Reported: events
+with no ledger id (pending ones as notes, they are C3b's to register), ids not in the entry ledger, and ids that are not
+timeline entries. Whether a sentence is a prehistory event at all is model work (M).
+
 Read-only; never goes online or calls a model. Exit codes: 0 no rule failed; 1 input error;
 2 a rule failed.
 """
@@ -27,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 
 try:
@@ -317,6 +326,8 @@ def check_speaker_knows(plan, entries_by_id):
                 heard.setdefault(person, set()).update(says if isinstance(says, list) else [says])
     out = result(items)
     out.update({"notEvaluable": not_evaluable, "exemptions": exemptions})
+    if out["status"] == "pass" and not_evaluable:  # D6-2 §5 #25: a pass with unjudged lines says so (still not a fail)
+        out["status"] = "pass_with_not_evaluable"
     return out
 
 
@@ -422,7 +433,58 @@ def check_summary(plan):
     return {"status": "report", "items": items}
 
 
-def run_plan_check(plan, entries_by_id, season_doc=None, function_map_doc=None, decisions_doc=None):
+LEDGER_ID = re.compile(r"(?<![A-Za-z0-9-])L-[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]")  # Han text around it is \w too
+MD_HEADING = re.compile(r"^\s*#{1,6}\s+(.*)$")
+
+
+def prehistory_events(path):
+    """[(character or None, text, [ledger ids], pending)] from a character pack (JSON or Markdown, see the module doc)."""
+    with open(path, encoding="utf-8") as handle:
+        raw = handle.read()
+    events = []
+    if path.endswith(".json"):
+        try:
+            doc = json.loads(raw)
+        except ValueError as error:
+            raise L.InputError(f"人物包不是合法 JSON：{path}: {error}") from error
+        for person in (doc.get("characters") if isinstance(doc, dict) else None) or []:
+            for item in (person.get("prehistory") if isinstance(person, dict) else None) or []:
+                if isinstance(item, str):
+                    item = {"text": item}
+                if not isinstance(item, dict):
+                    continue
+                refs = item.get("ledgerRef")
+                refs = [refs] if isinstance(refs, str) else [r for r in refs or [] if isinstance(r, str)]
+                events.append((person.get("name"), str(item.get("text") or ""), refs, bool(item.get("pending"))))
+        return events
+    inside = False
+    for line in raw.splitlines():
+        heading = MD_HEADING.match(line)
+        if heading:
+            inside = "前史" in heading.group(1)
+            continue
+        text = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+", "", line).strip()
+        if inside and text:
+            events.append((None, text, LEDGER_ID.findall(text), "待定" in text))
+    return events
+
+
+def check_characters(events, entries_by_id):
+    items = []
+    for who, text, refs, pending in events:
+        label = f"{who + '：' if who else ''}{text[:40]}"
+        if not refs:
+            items.append(f"（待定，交 C3b 登记）{label}" if pending else f"前史事件没有时间线账条目：{label}")
+        for ref in refs:
+            entry = entries_by_id.get(ref)
+            if entry is None:
+                items.append(f"{ref} 不在入口底账里：{label}")
+            elif entry.get("kind") != "timeline":
+                items.append(f"{ref} 是 {entry.get('kind')} 条目，不是时间线：{label}")
+    return {"status": "report" if items else "pass", "items": items, "events": len(events)}
+
+
+def run_plan_check(plan, entries_by_id, season_doc=None, function_map_doc=None, decisions_doc=None, character_events=None):
     scene_ids, beat_ids = collect_scene_beat_ids(plan)
     in_season = season_doc is None or season_episode(season_doc, plan.get("episode")) is not None
     rules = {
@@ -441,6 +503,8 @@ def run_plan_check(plan, entries_by_id, season_doc=None, function_map_doc=None, 
         "pending": check_pending(plan, decisions_doc),
         "summary": check_summary(plan),
     }
+    if character_events is not None:  # report only: never a fail, so never part of passed
+        rules["characters-prehistory"] = check_characters(character_events, entries_by_id)
     return rules, not any(r["status"] == "fail" for r in rules.values())
 
 
@@ -452,6 +516,7 @@ def main(argv=None, prog=None):
     ap.add_argument("--season", default=None)
     ap.add_argument("--function-map", default=None)
     ap.add_argument("--decisions", action="append", default=[], help="决定队列文件，可给多个")
+    ap.add_argument("--characters", default=None, help="人物包（JSON 或 Markdown）：前史事件有没有时间线账条目，只报不拦")
     args = ap.parse_args(argv)
     try:
         plan = L.load_json(args.episode_plan, "分集计划")
@@ -461,10 +526,11 @@ def main(argv=None, prog=None):
         season_doc = L.load_json(args.season, "季编排") if args.season else None
         function_map_doc = L.load_json(args.function_map, "功能地图") if args.function_map else None
         decisions_doc = L.merge_decision_docs([L.load_json(p, "决定队列") for p in args.decisions]) if args.decisions else None
+        character_events = prehistory_events(args.characters) if args.characters else None
     except (L.InputError, OSError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 1
-    rules, passed = run_plan_check(plan, entries_by_id, season_doc, function_map_doc, decisions_doc)
+    rules, passed = run_plan_check(plan, entries_by_id, season_doc, function_map_doc, decisions_doc, character_events)
     L.emit({"ok": True, "passed": passed, "episode": plan.get("episode"), "rules": rules,
             "reproduceCommand": L.reproduce_command(__file__, argv)})
     return 0 if passed else 2

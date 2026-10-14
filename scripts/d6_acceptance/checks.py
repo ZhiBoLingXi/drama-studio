@@ -86,9 +86,14 @@ def acceptance_retell(V):
         code, out, cmd = cli("retell_check", f"r15/{record}.json", "--plan", plan, cwd=V)
         if name:
             ref = old(V, name)
-            same = [f["status"] for f in out["facts"]] == [f["status"] for f in ref["facts"]] and \
-                out["closingEvent"]["status"] == ref["closingEvent"]["status"]
-            rows.append(row(f"retell-check {record} (keywords)", cmd, same and code == 0, counts=out["counts"]))
+            facts_same = [f["status"] for f in out["facts"]] == [f["status"] for f in ref["facts"]]
+            same = facts_same and out["closingEvent"]["status"] == ref["closingEvent"]["status"]
+            # D6-2 §5 #24: the closing beat also counts its shared two-character pieces; a paraphrased stop the D6-0
+            # script read as partial is retold now
+            paraphrase = facts_same and (ref["closingEvent"]["status"], out["closingEvent"]["status"]) == ("partial", "retold")
+            rows.append(row(f"retell-check {record} (keywords)", cmd, same and code == 0, counts=out["counts"],
+                            **({"explanation": f"收尾拍：临时脚本 partial，现在 retold（复述换了说法，两字片段共有 "
+                                                f"{out['closingEvent'].get('pairsShared')}；D6-2 决定 §5 #24）"} if paraphrase and not same else {})))
         code, out, cmd = cli("retell_check", f"r15/{record}.json", "--plan", plan, "--factrefs", f"r15/factrefs-{record}.json", cwd=V)
         expected = summary.get(f"factrefs-{record}.json")
         rows.append(row(f"retell-check {record} (factRefs)", cmd, out.get("counts") == expected and code == 0,

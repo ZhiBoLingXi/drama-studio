@@ -406,6 +406,10 @@
         },
         "where": {
           "type": "string"
+        },
+        "realWorldRule": {
+          "type": "boolean",
+          "description": "Optional (D6-2): false marks a required_unstated money/object dep that rests on no real-world rule, so function-map topics asks no search for it"
         }
       }
     },

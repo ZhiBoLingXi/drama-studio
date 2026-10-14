@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "drama-studio/media-profile/v0",
+  "id": "default-media-profile",
+  "version": "v1",
+  "description": "随包默认媒介档案：项目还没有自己的媒介档案或语料时，capacity 用它，输出标 basis.status: default_unmeasured。数值是 D6-0 从 mali-story 三部短剧（真人 2 部 32 集、漫剧 1 部 8 集）量出的统计，不是本项目的测量；有了项目语料或项目媒介档案就换掉。",
+  "format": "live",
+  "formatSource": "default",
+  "formatDefault": {
+    "live": {
+      "speechRateCharsPerMin": 329.9,
+      "pauseShare": 0.314,
+      "speechCharsPerEpisodeMin": 208.3,
+      "targetSecondsDefault": 58.0,
+      "pictureBeatSec": {
+        "value": 2.0,
+        "source": "assumed"
+      },
+      "source": "measured_corpus"
+    },
+    "anime": {
+      "speechRateCharsPerMin": 245.3,
+      "pauseShare": 0.511,
+      "speechCharsPerEpisodeMin": 118.9,
+      "targetSecondsDefault": 57.9,
+      "pictureBeatSec": {
+        "value": 2.0,
+        "source": "assumed"
+      },
+      "source": "measured_corpus"
+    }
+  },
+  "exchangeMedianSec": {
+    "live": {
+      "value": 10.8,
+      "n": 138,
+      "source": "measured_corpus"
+    },
+    "anime": {
+      "value": null,
+      "n": 0,
+      "source": "not_measured"
+    }
+  },
+  "calibration": "uncalibrated",
+  "unknowns": [
+    "漫剧没有量过语料交换中位时长；--format anime 且不给语料时要 --exchange-median-sec",
+    "画面拍 2 秒是约定值，没有测量"
+  ]
+}

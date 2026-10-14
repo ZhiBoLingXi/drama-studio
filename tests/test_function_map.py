@@ -189,8 +189,11 @@ class FunctionMap(unittest.TestCase):
         by_entry = {t["entryId"]: t for t in out["topics"]}
         self.assertEqual(sorted(by_entry["L-proc-001"]["candidates"]), ["F-box-1.B", "F-box-2.A"])  # rejected A left out
         self.assertEqual(by_entry["L-proc-001"]["episodes"], [3, "4A"])
-        self.assertEqual(by_entry[None]["assertions"], ["required_unstated"])
-        self.assertEqual(out["counts"]["topics"], 2)
+        # D6-2 decision §5 #15 changed this on purpose: the knowledge dep (仓管记得签收人) used to be a second topic;
+        # knowledge deps are about the story's people, not the world, so they yield no search topic now
+        self.assertNotIn(None, by_entry)
+        self.assertEqual(out["counts"]["topics"], 1)
+        self.assertEqual(out["notSearchable"], {"knowledge": 2})
         code, out = self.run_tool("topics", self.write("fm.json", doc), "--include-rejected")
         self.assertIn("F-box-1.A", {c for t in out["topics"] for c in t["candidates"]})
 

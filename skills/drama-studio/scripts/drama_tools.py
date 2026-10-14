@@ -35,6 +35,10 @@ def initialize(path: Path, title: str) -> dict:
     path.mkdir(parents=True, exist_ok=False)
     for folder in (".drama", "research", "reference", "planning", "episodes", "reviews", "deliveries"):
         (path / folder).mkdir()
+    # D6-2 layout (decisions §1, §5 #23). .drama/ keeps only project.json: status reads an empty .drama/ as a new
+    # project, so .drama/runs/ appears with the first run-handoff
+    for folder in ("planning/ledger", "planning/episodes", "runs", "knowledge"):
+        (path / folder).mkdir()
     state = {"schemaVersion": 1, "localId": str(uuid.uuid4()), "title": title,
              "remoteProjectId": None, "remoteTaskIds": [], "templateIds": [],
              "status": "local_workspace_only", "remoteVerification": "not_checked",
@@ -48,6 +52,7 @@ def initialize(path: Path, title: str) -> dict:
 DELEGATED = {
     "ledger": ("checks.ledger", "Ledger: init/merge/apply/replay/check/diff/knows/view/stats; S rules only"),
     "plan-check": ("checks.plan_check", "Episode-plan S check (presence, speaker-knows, delta support); --characters reports, never blocks"),
+    "plan-events": ("checks.plan_events", "Export an episode plan's events only (no saysFact or design fields) for the cold_reader package"),
     "season-plan-check": ("checks.season_plan_check", "Season-plan S check against the function map, capacity and decision queue"),
     "capacity": ("checks.capacity", "Capacity season/episode/text: one formula, both bases reported; exceeding writes a proposal and still exits 0"),
     "decision": ("checks.decision", "Decision queue add/list/decide/check; every pending entry carries a default, decide needs humanWords"),

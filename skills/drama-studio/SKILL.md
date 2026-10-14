@@ -14,7 +14,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | 初始化工作室、修改设置、检查配置 | [初始化](references/initialization.md) | 用户选择、可核对配置、采集与调度各自的实际状态 |
 | 研究市场、选择对标 | [市场研究](references/market.md)；已有红果榜单时读 [可选数据源](references/hongguo-rank.md) | 有来源和日期的比较、推荐及缺口 |
 | 找模板、下载视频、拉片 | [资料与拉片](references/mali-story.md)；需要下载时再读 [夸克适配](references/quark.md) | 可追溯的模板、任务、集序与证据 |
-| 原创选题、人物与集纲 | [策划](references/planning.md) | 原创方向、设定、蓝图与完整分集纲 |
+| 原创选题、人物与集纲 | [策划](references/planning.md)；写框架、底账与集纲时再读 [集纲层](references/outline-layer.md) | 原创方向、人物、功能地图、底账、季编排与逐集分集计划 |
 | 摆脱换皮、探索不同故事 | [创作开发](references/development-lab.md) | 生活材料、创作立场、不同因果候选及场面试写 |
 | 写作、检查、改稿（含按集纲写正文、续写下一批） | [工位流程](references/writing.md#工位流程)：先读 writing.md 第一节；一次写多批再读 [整季分批](references/workstations/season-run.md) | 经 C5 装包写成、C6 两读、一次定向修订的分集正文，以及快照、审读记录、回执与交接 |
 | 台词 AI 味重、不像人说的话、人物说话分不开 | [台词](references/dialogue.md) | 前文校核、取自人写正文的声音卡、台词与表演遍、台词读 |
@@ -40,7 +40,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 3. 按因果依赖分批，每集一个页面、一个写者；前一批保存后再给下一批装包（[整季分批](references/workstations/season-run.md)）。
 4. 每集一个作者运行：`context-pack --role author` 装包（主创给过前文或样集时先做 [前文校核](references/dialogue.md#8-有人写的正文时前文校核)；本集集纲、前一集最新稿原文、入口状态记录 `runs/state/after-ep-NNN.md`、出场人物的声音卡）→ C5 写场面稿 → 台词与表演遍（`dialogue_author` 包，不动场头）→ C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ C6 次读、台词读（`dialogue_read` 包）→ C5 问题定向修订一次，C4 及以上的问题写成变更提案交用户。
 5. 存为页面修订并核对逐字一致 → `receipt record`／`receipt cache`（离线记 `not_sent`）→ `run-handoff` 写进 `.drama/runs/`，更新下一集的入口状态记录。主创确认后才打标签，标签不是采用。
-6. 完整集纲按 [C4 整季集纲](references/workstations/c4-episode-outline.md#整季集纲怎么写) 按顺序分段写、独立审读、存成页面，不并行扩写。
+6. 完整集纲按 [集纲层](references/outline-layer.md) 走 C3a 功能地图（候选实现过追问单，承重缺口换实现、登记为戏剧假定或进决定队列）→ C3b 底账（检索代理写 K1 卡、`ledger check`）→ C3c 季编排（`capacity season`，装不下在这里重排或拆集）→ C4 分集计划（按 [C4 整季集纲](references/workstations/c4-episode-outline.md#整季集纲怎么写) 按顺序分段写，`plan-check`、冷读复述，存成页面），不并行扩写。等人定的事进决定队列并带默认，流程不停。
 7. 每批结束和交付前跑 `season-check`（正文 `--episodes`，集纲 `--outline`），结论原样写进交付说明；不通过不能写“已按流程完成”。
 
 完整创作遵循 [两次审批与接续](references/approval-flow.md)：选题未确认时交候选供用户选择；选题确认后一次完成四项送审材料，不在框架、人物、集纲之间反复停下。整套材料未经用户审批，不写第 11 集及后续正文。用户只回复“60 集左右”是在确定篇幅，不是确认选题；“出新剧本”“继续”“自行优化”不自动批准待审版本。明确已有选择和审批可沿用，不重复索要。用户明确调整交付范围或授权代选／免审时，记录其适用范围；模型推荐或评审通过不能代替用户决定。
@@ -84,6 +84,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | `drama_tools.py import-project apply <项目> --listing … --out …` | 按预览生成逐条保存输入，不调用 mali-story |
 | `drama_tools.py ledger {init\|merge\|apply\|replay\|check\|diff\|knows\|view\|stats} …` | 底账：建、分段合并、应用 delta、按集重放、一致性规则、两版差异、某人到某集知道什么、总账视图、统计 |
 | `drama_tools.py plan-check <分集计划> --ledger …` | 分集计划的脚本规则（在场、说话人知情、delta 有场拍支撑）；`--characters` 只报不拦 |
+| `drama_tools.py plan-events <分集计划> --out …` | 只导出分集计划的 events（去掉 saysFact 等设计字段），冷读包只收这份导出 |
 | `drama_tools.py season-plan-check <季编排> --function-map …` | 季编排对功能地图、容量与决定队列的脚本规则 |
 | `drama_tools.py capacity {season\|episode\|text} …` | 季编排粗估、分集计划复核、正文精估，一套公式两口径并报；超出写提案占位，退出码 0 |
 | `drama_tools.py decision {add\|list\|decide\|check} …` | 决定队列：登记（带默认）、列出、记主创决定（须原话）、核对 |

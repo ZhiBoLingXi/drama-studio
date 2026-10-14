@@ -12,7 +12,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.4.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.5.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -144,7 +144,7 @@ python3 -B skills/drama-studio/scripts/drama_tools.py context-pack ../my-drama -
 - 缓存或知识卡不存在 → 记入 `omitted`（reason `missing`），必需项缺失时 `completeness: incomplete`，退出码仍为 0；退役知识卡记为 `not_relevant`。
 - 页面（架构 v1.2）用 `{"kind": "remote_page", "id": "<pageId>", "revision": <n>}` 引用，按 manifest 里 `pageId` 与 `revision` 都相同的条目读取 `.drama/cache/<pageId>@r<n>.md`；revision 必须是整数，否则退出码 1。迁移前的历史候选仍按 `remote_artifact` 引用。manifest 的 v0 与 v1 都能读。
 - 退出码 2（不写任何文件，错误指出选材序号与引用）：超预算（按分区报告字数与超出量，不截断）、缓存字节与 manifest 的 sha256 不符、manifest 标 `verified: false`、同一页面出现两个修订、同一 slot 出现两个修订（slot 取该产物修订来源最强的 manifest 条目，见下文 `slotSource`）或同一知识卡两个修订、`evaluation_only`／`comparison_only` 进入不允许的角色、`reader_effect` 带 `current_plan`、最终快照未通过 `contract-check`。退出码 1：输入错误，如区间越界（指出引用与文本长度）、引用类型不是 `remote_page`／`remote_artifact`／`knowledge_card`／`local_file`、修订为空、任务未指定工位。
-- `local_file` 用于定向修订时装入审读记录、修改单等本地文件：`ref.id` 写项目内相对路径，只能在 `.drama/`（不含 `.drama/cache/`）或 `runs/` 之内，例如 `{"kind": "local_file", "id": ".drama/reviews/rev-ep45-1.json", "revision": null}`；绝对路径、`..`、反斜杠退出码 1，符号链接解析到目录之外退出码 2。`revision` 为 `null` 或钉住的 `sha256:<hex>`（与文件不符退出码 2）；工具把文件的实际 sha256 写进快照的 `revision` 与 `sha256`，文件不存在时列入 `omitted`。`impact` 不评估这类依赖，报 `unknown`。方法见 [定向修订单独装包](skills/drama-studio/references/workstations/README.md#定向修订单独装包)。
+- `local_file` 用于定向修订时装入审读记录、修改单等本地文件：`ref.id` 写项目内相对路径，只能在 `.drama/`（不含 `.drama/cache/`）、`runs/` 或 `planning/`（0.5.0 起）之内，例如 `{"kind": "local_file", "id": ".drama/reviews/rev-ep45-1.json", "revision": null}`；绝对路径、`..`、反斜杠退出码 1，符号链接解析到目录之外退出码 2。`revision` 为 `null` 或钉住的 `sha256:<hex>`（与文件不符退出码 2）；工具把文件的实际 sha256 写进快照的 `revision` 与 `sha256`，文件不存在时列入 `omitted`。`impact` 不评估这类依赖，报 `unknown`。方法见 [定向修订单独装包](skills/drama-studio/references/workstations/README.md#定向修订单独装包)。
 - `.drama/cache/`、`knowledge/cards/`、`.drama/snapshots/` 若是指向项目外的符号链接，退出码 1；知识卡的 `scope.projectId` 必须等于任务的 `project.localId`，否则退出码 2。写入先落临时文件再硬链接到位，中断不会留下半截快照。
 - `--dry-run` 执行全部检查（含已存在快照的冲突检查）并打印将装入的项、字数与遗漏，输出 `would_write` 而非 `snapshot_path`，不写文件。`--allow-unverified` 允许装入服务端指纹未核验的缓存，并在快照 `unknowns` 写明 `服务端指纹未核验：<artifactId>@r<修订>`。
 
@@ -263,32 +263,64 @@ python3 -B skills/drama-studio/scripts/drama_tools.py season-check ../my-drama -
 T=skills/drama-studio/scripts/drama_tools.py
 python3 -B $T ledger check planning/ledger/ledger-ep000.json            # 底账规则；另有 init/merge/apply/replay/diff/knows/view/stats
 python3 -B $T ledger replay planning/ledger/ledger-ep000.json --delta d5.json --delta d6.json --at 6
-python3 -B $T function-map check planning/function-map.json --records planning/reality-check/*.json
+python3 -B $T function-map check planning/function-map.json --records .drama/checks/*.json
 python3 -B $T function-map topics planning/function-map.json           # 检索题目归并，只归并不检索
-python3 -B $T defects build --records planning/reality-check/*.json    # 缺口登记表由回答记录生成
-python3 -B $T check-answers planning/reality-check/RC-1.json --cross
+python3 -B $T defects build --records .drama/checks/*.json    # 缺口登记表由回答记录生成
+python3 -B $T check-answers .drama/checks/RC-1.json --cross
 python3 -B $T season-plan-check planning/season-plan.json --function-map planning/function-map.json --media planning/media-profile.json
-python3 -B $T plan-check planning/episode-plans/ep-006.json --ledger planning/ledger/ledger-ep005.json
-python3 -B $T capacity episode planning/episode-plans/ep-006.json --media planning/media-profile.json --corpus corpus/exchanges.jsonl
+python3 -B $T plan-check planning/episodes/episode-plan-006.json --ledger planning/ledger/ledger-ep005.json
+python3 -B $T capacity episode planning/episodes/episode-plan-006.json --media planning/media-profile.json --corpus corpus/exchanges.jsonl
 python3 -B $T capacity text episodes/ep-006.md --media planning/media-profile.json
 python3 -B $T decision check planning/decisions.json                     # 另有 add/list/decide
-python3 -B $T retell-check .drama/checks/retell-plan-006.json --plan planning/episode-plans/ep-006.json
-python3 -B $T dialogue-plan-check planning/dialogue-plans/ep-006.json --episode-plan planning/episode-plans/ep-006.json --knows knows-ep006.json
-python3 -B $T plan-text-consistency plan-text-map-006.json --dialogue-plan planning/dialogue-plans/ep-006.json --episode-plan planning/episode-plans/ep-006.json
+python3 -B $T retell-check .drama/checks/retell-plan-006.json --plan planning/episodes/episode-plan-006.json
+python3 -B $T dialogue-plan-check planning/dialogue-plans/ep-006.json --episode-plan planning/episodes/episode-plan-006.json --knows knows-ep006.json
+python3 -B $T plan-text-consistency plan-text-map-006.json --dialogue-plan planning/dialogue-plans/ep-006.json --episode-plan planning/episodes/episode-plan-006.json
 python3 -B $T dialogue-diagnose episodes/ep-006.md --plan-text-map plan-text-map-006.json
 python3 -B $T answers-consistency .drama/checks/check-006-a.json .drama/checks/check-006-b.json
 python3 -B $T feedback-ingest feedback/comments.json
 python3 -B $T corpus segment raw/*.md                                   # 另有 label/filter/lexicon/rate；fetch 在 D6-4
 python3 -B $T dup-check --list-hits --k 8 --new episodes/ep-006.md --source-dialogue-plan planning/dialogue-plans/ep-006.json
 python3 -B $T episode-check episodes/ep-006.md --speech                 # 口播汉字数，不估时
-python3 -B $T contract-check function-map planning/function-map.json --records planning/reality-check/*.json
-python3 -B $T contract-check answers planning/reality-check/RC-1.json --cards knowledge/cards
+python3 -B $T contract-check function-map planning/function-map.json --records .drama/checks/*.json
+python3 -B $T contract-check answers .drama/checks/RC-1.json --cards knowledge/cards
 ```
 
 - `contract-check` 的跨文件规则要给上下文才核，没给时在 `notEvaluated` 里写明：`--records`（功能地图选定候选引用的回答记录里不能有没有去处的承重缺口）、`--defects`（回答记录或缺口登记表，供底账戏剧假定条目查缺口类型）、`--cards`（知识卡文件或目录，空卡不能当 `holds` 的出处）、`--questions`（项目问题单）、`--base-questions`（项目问题单只能增问不能删问）。
 - `capacity` 超出时写决定队列的提案占位，退出码仍是 0；所有输出没有 within／outside 一类的区间判定字段。
 - `context-pack --role` 新增 `function_mapper`、`ledger_keeper`、`season_planner`、`dialogue_designer`（C5a）、`situation_checker`、`cold_reader`。`cold_reader` 包只能有一项 `project_facts`（本集正文或本集分集计划的 events），不能有 `current_plan` 与知识卡；`dialogue_designer` 包要装本集分集计划，其 `capacity.status` 为 `fits`，或 `proposal:<id>` 且该提案（装入的或 `planning/` 下的决定队列）有 `default`；任务 `layer` 为 `C5b` 时包里要有通过 `contract-check dialogue-plan` 的对话表。违反都是退出码 2。
 - `context-pack --exemplars <exchanges.jsonl> --contrast-pairs <contrast-pairs.jsonl>`（只用于 C5a 与 C5b，文件须在项目的 `.drama/`、`runs/` 或 `knowledge/` 里）：按装入的对话表各话题引用的样本装包，每话题至多 2 个语料正例和 1 个对照对；先装各话题第一个正例，再装对照对，再装第二个正例，装到预算为止，装不下的整条记入 `omitted`（`reason: budget`），从不截断单条。样本以 `local_file` 加字符区间进 `current_plan` 分区；输出 `samples` 记装了几条、因预算留下几条、对话表引用了却在文件里找不到的样本。
+
+### 切换集纲层（0.5.0）
+
+新项目默认走 C3a 功能地图 → C3b 底账 → C3c 季编排 → C4 分集计划，记录都是本地 JSON，按下面的目录放（[D6-2 决定 §1](docs/d6/d6-2-decisions.md)）：`planning/function-map.json`、`planning/ledger/ledger-ep000.json` 与 `delta-ep<NNN>.planned.json`／`.actual.json`、`planning/season-plan.json`、`planning/episodes/episode-plan-<NNN>.json`、`planning/decisions.json`；回答记录、冷读复述与命令输出放 `.drama/checks/`。集号三位数字，拆集写 `006A`。
+
+```sh
+T=skills/drama-studio/scripts/drama_tools.py
+python3 -B $T init-project ../my-drama --title '我的新剧'      # 另建空的 planning/ledger/、planning/episodes/
+python3 -B $T context-pack ../my-drama --task c4-task.json --selection c4-selection.json --role author --budget 200000
+python3 -B $T season-check ../my-drama --outline 1-10
+python3 -B $T contract-check task c4-task.json
+```
+
+- `init-project` 多建 `planning/ledger/` 与 `planning/episodes/` 两个空目录；`status` 不看它们，旧项目没有也不报错。
+- `context-pack` 的 `local_file` 可以取 `planning/` 下的文件（同样拒绝绝对路径、`..` 与指向目录外的符号链接）。
+- `context-pack --role author` 给 C4 装包（任务 `workstation` 或 `layer` 为 `C4`）时，如果项目已经开始用集纲层，包里必须有季编排（`season-plan` 记录）和底账（`ledger-entry` 记录：`ledger-ep000` 或 `ledger replay --out` 写出的修订），缺一项退出码 2，对应 `season-check` 的 `outline-season-assigned` 与 `outline-ledger-delta`。「已经开始用集纲层」指有 `planning/season-plan.json` 或 `planning/function-map.json`，或者 `planning/ledger/`、`planning/episodes/` 下有 JSON 记录；`init-project` 刚建的空目录不算。0.3.6 时代的项目一项都没有，C4 包的行为不变。
+- `contract-check task` 逐条扫描 `constraints[].text`，命中 `schemas/data/constraint-blocklist.json`（v3）的任一类就拒绝，不论 `origin`，退出码 2。一类是「不动集数／标题／★、只改一次、不拆集」：v2 起也认「不要改集数」「别动标题」「禁止改★」「只能修改一次」「不要拆成两集」这类说法。另一类是数值型台词约束：带数字的（「少40字」「删两句」「台词压到五行」「每句不超过十个字」），把度量当目标的（「控制字数」「压缩台词量」「精简句数」），以及「换人数」「换人次数」。v3 起「字数」「行数」「句数」「台词量」不再按裸词拦，「字数统计仅供参考」「行数按正文实际统计」放行。说集数与拆集由季编排决定的约束不受影响。
+- `season-check --outline`：有 `planning/season-plan.json` 的项目跑集纲层七条（0.4.0 已实现），旧的工位交接规则照旧；没有季编排的项目输出与 0.3.6 逐字节相同。七条只看季编排，因为它们按季编排的分配核每一集，C3c 之前没法跑。旧规则（`outline-run`、`outline-review`、`outline-saved` 等）在已经开始用集纲层的项目里（判据同上，与 `context-pack` 共用一个函数）也认 `planning/` 下带 `episode-plan` 标记的 JSON 分集计划：C4 运行产出它、审读记录以它为对象、回执保存它，都算本集集纲。旧项目没有这类记录，结果不变。
+- `plan-check --characters <人物包>`：小传里的前史事件有没有时间线账条目，只报不拦（`rules.characters-prehistory`，不影响 `passed` 与退出码）。人物包两种最小格式：JSON `{"characters": [{"name", "prehistory": [{"text", "ledgerRef", "pending"}]}]}`；Markdown 里标题含「前史」的一节，每个列表项或段落行算一件事，`L-…` 是底账 id，写「待定」的标为待定。列出没有底账 id 的事件（待定的作提示）、入口底账里没有的 id、不是时间线条目的 id。
+- `ledger replay --delta <目录>`：目录代表其中的 `delta-*.json`，按集序重放（与逐个给文件结果相同）；目录里没有 delta 时退出码 1。`--md` 导出时，实际轨借用计划轨的集（`plannedFallback`）和应用错误写在开头的「重放说明」一节；有错误时另把错误以 JSON 打到 stderr，退出码 2。
+- `task` 新增可选字段 `target`（`kind`：`episode_text`、`episode_plan`、`function_map`、`ledger`、`season_plan`；可带 `episode`）。`layer: C6` 的任务审的是集纲侧（`target.kind` 为后四者之一）时不要求 `dialogueTarget`；审正文或没写 `target` 的 C6 任务照旧要求。
+- `contract-check review-record`：审读对象（`target` 或 `additionalTargets`）是 `planning/episodes/` 下的分集计划时，每条不是 `kind: preference` 的 finding 都要有 `cites`，否则退出码 2。审读其他对象的记录照旧。
+- 走通演示之后（[D6-2 决定 §5](docs/d6/d6-2-decisions.md)）：
+  - `plan-events <分集计划> --out .drama/checks/events-ep<NNN>.json`：新命令，只导出 events（每拍留 beatId、who、text、quote、offscreen，去掉 saysFact、picture 等设计字段）。`context-pack --role cold_reader` 只收这份导出，整份分集计划退出码 2。
+  - `capacity` 不给 `--media` 用随包 `schemas/data/default-media-profile.json`，不给 `--corpus`／`--exchange-median-sec` 用其中的交换中位时长（真人剧 10.8 秒，D6-0 语料 138 条；漫剧没量过，要自己给）；输出 `basis.status: default_unmeasured`，退出码 0。
+  - `ledger view <功能地图> --blank-period`：C3a 阶段底账还没写时，按线列各候选的 ledgerDeps（procedure 除外）；状态子型条目按 `stateOf` 归人。
+  - `ledger check` 的 `schema-basic` 与 `contract-check ledger-entry` 用同一套必填（读 schema）；`whyNotApplicable` 可以代替 `why`；`money-closed` 里列进 `emptyFields` 的空字段算已交代，列在 `registeredEmpty`。
+  - `check-answers --records` 收目录（目录里只读回答记录，其余文件跳过并列在 `recordsSkipped`）；回填的 `confirmed_gone` 要写 `backfilledBy`、不能引用本记录，被引用的复核记录对同一 `defectKey` 不能仍判 `notHolds`；只有不承重的 `notHolds` 时 `outcome` 也可以写 `pass_with_unverified`；`target.ids` 列了两个以上对象时，每答要写 `subject`。
+  - `function-map check --stage v1`：每条 `mapErrata` 要有另一份记录的 `errataConfirmed`（`{ref: "<checkId>#<序号>", fixed: true}`）确认已改，被取代的记录不要求（`skippedSuperseded`）；只做勘误复核的记录写 `target.kind: errata_check`，可以不答题；`function-map topics` 只出能检索的题（procedure，以及 money／object 的 required_unstated）。
+  - `context-pack`：`fact_check` 包可以装 `comparison_only` 的卡；随包问题单按 id 装（`{"kind": "local_file", "id": "question-set:reality-check-questions@v1"}`）；C4 作者包的清单是季编排、底账、功能地图，`season-check` 的 `outline-structure` 对写 episode-plan 记录的 C4 运行按同一张清单核。
+  - `run-handoff`：C1、C2 可以 `contextSnapshotId: null`，同时写 `noSnapshotReason`。`init-project` 另建 `runs/`、`knowledge/`。
+  - `season-check` 在 `ruleSet: outline-layer` 下输出 `outlineLayerRules`（每条集纲层规则 passed／failed／not_evaluated 与核过的范围）；`plan-check` 的 `speaker-knows` 有 `notEvaluable` 时写 `pass_with_not_evaluable`；`status` 把已结束、留有未完成项的运行与未结束的分开。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 

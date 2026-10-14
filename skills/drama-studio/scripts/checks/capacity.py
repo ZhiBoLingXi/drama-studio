@@ -15,6 +15,10 @@ text (dialogue-structure design §3.3):
   speech chars: Han characters of dialogue lines ("人名（括注）：台词"), parentheticals removed;
   scene headings (场6-1 / 场6A-1 / ### 6A-1 ...), cast lines, △ action lines and titles excluded.
 
+Defaults (D6-2): without --media the bundled schemas/data/default-media-profile.json is used, and without --corpus or
+--exchange-median-sec its exchangeMedianSec for the format; either way basis.status is default_unmeasured and
+basis.defaults names what was taken from it (a new project has no corpus yet). Given values make it given.
+
 Both bases are always reported. The tool only computes and reports: the output carries no
 within/outside/fits/exceeds verdict and the exit code is 0 whatever the numbers are (numbers are
 not judges; a capacity proposal is a decision-queue entry, not a failure). An unreadable input is
@@ -24,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import statistics
 import sys
@@ -34,6 +39,7 @@ except ImportError:  # run as a script
     import ledger as L
 
 DEFAULT_PICTURE_BEAT_SEC = 2.0
+DEFAULT_MEDIA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "schemas", "data", "default-media-profile.json")
 FORMULA_SEASON_A = "infoCount × exchangeMedianSec + pictureBeats × pictureBeatSec"
 FORMULA_SEASON_B = "dialogueFacts × exchangeMedianSec + (pictureFacts + pictureBeats) × pictureBeatSec"
 FORMULA_EPISODE_B = "dialogueFacts × exchangeMedianSec + pictureBeats × pictureBeatSec（画面拍已含承载事实的拍）"
@@ -89,7 +95,7 @@ def parse_lines(md_text):
 
 
 def load_media(path, fmt):
-    doc = L.load_json(path, "媒介档案")
+    doc = L.load_json(path or DEFAULT_MEDIA, "媒介档案")
     fd = ((doc or {}).get("formatDefault") or {}).get(fmt)
     if not isinstance(fd, dict):
         raise L.InputError(f"媒介档案里没有形态 {fmt!r}（有 {sorted(((doc or {}).get('formatDefault') or {}).keys())}）")
@@ -137,6 +143,14 @@ def exchange_stats(corpus_path):
             "interLineGapMedianSec": round(statistics.median(gaps), 2) if gaps else None, "interLineGapN": len(gaps)}
 
 
+def default_exchange(fmt):
+    entry = (L.load_json(DEFAULT_MEDIA, "默认媒介档案").get("exchangeMedianSec") or {}).get(fmt) or {}
+    if not isinstance(entry.get("value"), (int, float)):
+        raise L.InputError(f"随包默认媒介档案没有 {fmt} 的交换中位时长；给 --corpus 或 --exchange-median-sec")
+    return {"n": entry.get("n"), "medianSec": float(entry["value"]), "interLineGapMedianSec": None, "interLineGapN": None,
+            "source": "default_unmeasured"}
+
+
 def outline_basis(args):
     media_doc, media_fd = load_media(args.media, args.format)
     if args.exchange_median_sec is not None:
@@ -145,13 +159,19 @@ def outline_basis(args):
     elif args.corpus:
         stats = dict(exchange_stats(args.corpus), source="corpus")
     else:
-        raise L.InputError("要 --corpus（算语料交换中位时长）或 --exchange-median-sec")
+        stats = default_exchange(args.format)
     pbs, pbs_source = picture_beat_sec(media_doc, media_fd, args.picture_beat_sec)
     basis = {"format": args.format, "calibration": (media_doc or {}).get("calibration"),
              "exchangeMedianSec": stats["medianSec"], "exchangeMedianSource": stats["source"], "exchangeSampleN": stats["n"],
              "interLineGapMedianSec": stats["interLineGapMedianSec"], "interLineGapNote": "同一来回内两句台词的间隙中位数，只作旁证，不进公式",
              "pictureBeatSec": pbs, "pictureBeatSecSource": pbs_source}
+    basis.update(defaults(args, stats["source"] == "default_unmeasured"))
     return basis, media_fd
+
+
+def defaults(args, exchange_defaulted=False):
+    used = (["media"] if not args.media else []) + (["exchangeMedianSec"] if exchange_defaulted else [])
+    return {"status": "default_unmeasured" if used else "given", "defaults": used}
 
 
 def estimate(facts, pictures, basis):
@@ -278,6 +298,7 @@ def cmd_text(args):
             "estimateSecA": a, "estimateSecB": b, "formulas": {"A": FORMULA_TEXT_A, "B": FORMULA_TEXT_B},
             "media": {"format": args.format, "speechRateCharsPerMin": rate, "pauseShare": pause, "grossCharsPerMinute": gross,
                       "targetSecondsDefault": media_fd.get("targetSecondsDefault")},
+            "basis": defaults(args),
             "notes": notes, "reproduceCommand": args.reproduce})
     return 0
 
@@ -288,15 +309,15 @@ def build_parser(prog=None):
     for name, target, func in (("season", "season_plan", cmd_season), ("episode", "episode_plan", cmd_episode)):
         p = sub.add_parser(name)
         p.add_argument(target)
-        p.add_argument("--media", required=True)
+        p.add_argument("--media", default=None, help="媒介档案；不给用随包默认档案（basis.status: default_unmeasured）")
         p.add_argument("--corpus", default=None, help="exchanges.jsonl；算语料交换中位时长")
-        p.add_argument("--exchange-median-sec", type=float, default=None, help="不给语料时直接给中位时长")
+        p.add_argument("--exchange-median-sec", type=float, default=None, help="不给语料时直接给中位时长；两者都不给用随包默认值")
         p.add_argument("--format", default="live")
         p.add_argument("--picture-beat-sec", type=float, default=None)
         p.set_defaults(func=func)
     p = sub.add_parser("text")
     p.add_argument("text_file")
-    p.add_argument("--media", required=True)
+    p.add_argument("--media", default=None, help="媒介档案；不给用随包默认档案（basis.status: default_unmeasured）")
     p.add_argument("--format", default="live")
     p.set_defaults(func=cmd_text)
     return ap

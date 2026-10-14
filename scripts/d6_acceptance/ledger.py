@@ -57,7 +57,9 @@ def same_rules(new_rules, old_rules, ignore=("presence-vs-timeline",)):
         new = new_rules.get(name)
         if name in ignore:
             continue
-        if new is None or new.get("status") != old.get("status") or new.get("items") != old.get("items"):
+        # D6-2 §5 #25: speaker-knows says pass_with_not_evaluable where the D6-0 script said pass; same verdict
+        status = "pass" if new is not None and new.get("status") == "pass_with_not_evaluable" else (new or {}).get("status")
+        if new is None or status != old.get("status") or new.get("items") != old.get("items"):
             diffs.append(name)
     return diffs
 
@@ -77,8 +79,17 @@ def ledger_checks(V):
         diffs = same_rules(out["rules"], old["rules"])
         diffs = [d for d in diffs if not (d == "why-missing" and out["rules"][d]["items"] == old["rules"][d]["items"])]
         ok = out["passed"] == old["ok"] and not diffs
-        rows.append(row(name, cmd, code, "match" if ok else "mismatch",
-                        f"passed={out['passed']}（临时脚本 ok={old['ok']}）；规则状态与条目逐条相同" if ok else f"不同的规则：{diffs}"))
+        money = out["rules"].get("money-closed", {})
+        # D6-2 §5 #6: a money field listed in emptyFields is accounted for; the old items that went away are exactly those
+        moved = sorted(set(old["rules"].get("money-closed", {}).get("items", [])) - set(money.get("items", [])))
+        registered = set(money.get("registeredEmpty", []))
+        money_only = diffs == ["money-closed"] and moved and all(item.split(" 为空")[0] in registered for item in moved) \
+            and set(money.get("items", [])) <= set(old["rules"]["money-closed"]["items"])
+        result = "match" if ok else "explained_difference" if money_only else "mismatch"
+        rows.append(row(name, cmd, code, result,
+                        f"passed={out['passed']}（临时脚本 ok={old['ok']}）；规则状态与条目逐条相同" if ok else
+                        f"money-closed：临时脚本的 {len(moved)} 条（字段已列进 emptyFields）现在算已交代，列在 registeredEmpty；"
+                        f"其余规则逐条相同（D6-2 决定 §5 #6）" if money_only else f"不同的规则：{diffs}"))
     args = ["check", "r15/ledger-ep000.v1.2.json", "--scope", "r1/scope-ep001-012.json", "--cards", "knowledge/cards",
             "--function-map", "r15/function-map-v1.2.json", "--decisions", "r15/decisions-merged.v2.json"]
     for d in PLAN_DELTAS:
@@ -146,12 +157,22 @@ def function_map_rows(V):
     code, out, cmd, err = call(V, "function_map.py", args)
     old = stored(V, "02-fm-check-v1.2")
     old_counts = {k: v for k, v in (old or {}).get("counts", {}).items() if k != "loadBearingNotHoldsMissingDisposition"}
+    counts = {k: v for k, v in (out or {}).get("counts", {}).items() if k not in ("mapErrata", "mapErrataUnconfirmed", "skippedSuperseded")} if isinstance(out, dict) else {}
+    errata_only = isinstance(out, dict) and old is not None and counts == old_counts and out["errors"] and \
+        all("功能地图勘误" in e for e in out["errors"]) and old["ok"] and not out["passed"]
     ok = isinstance(out, dict) and old is not None and out["passed"] == old["ok"] and out["counts"] == old_counts
-    rows.append(row("02-fm-check-v1.2", cmd, code, "explained_difference" if ok else "mismatch",
-                    "passed 与计数和临时脚本相同；临时脚本里写死的 STALE_LEDGER_REF_REMAP 两条改为：L-proc-001 按底账 retiresInto 自动追到 "
-                    "L-proc-001a，L-proc-016→L-proc-A1 由 --ref-remap 传入（底账里没有这条迁移的痕迹）；RC-B/RC-B2 的取代改按记录的 "
-                    "supersedes 字段，不按文件名。notes 另列 3 条非 selected 候选的 origin 与步骤 origin 不一致（决定 #4，只报）"
-                    if ok else f"不同：{out and out.get('errors')} {out and out.get('counts')} vs {old_counts}"))
+    if errata_only:
+        rows.append(row("02-fm-check-v1.2", cmd, code, "explained_difference",
+                        f"计数与临时脚本相同；新规则（D6-2 决定 §5 #18）报 {out['counts']['mapErrataUnconfirmed']} 条勘误没有复核记录确认"
+                        f"（被取代的记录 {out['counts']['skippedSuperseded']} 不要求确认）。"
+                        "D6-0 的记录早于 errataConfirmed 字段；临时脚本 maperrata-count 比对 r1→r2 地图，16 条都已改进地图，"
+                        "但没有新上下文的复核记录确认，按新规则仍不算清零"))
+    else:
+        rows.append(row("02-fm-check-v1.2", cmd, code, "explained_difference" if ok else "mismatch",
+                        "passed 与计数和临时脚本相同；临时脚本里写死的 STALE_LEDGER_REF_REMAP 两条改为：L-proc-001 按底账 retiresInto 自动追到 "
+                        "L-proc-001a，L-proc-016→L-proc-A1 由 --ref-remap 传入（底账里没有这条迁移的痕迹）；RC-B/RC-B2 的取代改按记录的 "
+                        "supersedes 字段，不按文件名。notes 另列 3 条非 selected 候选的 origin 与步骤 origin 不一致（决定 #4，只报）"
+                        if ok else f"不同：{out and out.get('errors')} {out and out.get('counts')} vs {old_counts}"))
     code, out, cmd, err = call(V, "function_map.py", ["topics", "r15/function-map-v1.2.json"])
     rows.append(row("fm-topics-v1.2", cmd, code, "match" if code == 0 else "mismatch",
                     f"{out['counts']}（新命令，临时阶段是编排方手工归并，没有对照）" if isinstance(out, dict) else err))
@@ -179,7 +200,7 @@ def plan_rows(V):
         sk = out["rules"]["speaker-knows"] if isinstance(out, dict) else {}
         if not diffs:
             result, detail = "match", f"14 条规则与临时脚本相同；speaker-knows notEvaluable {len(sk['notEvaluable'])}，豁免 {[(e['beat'], e['basis']) for e in sk['exemptions']]}"
-        elif ep in ("005",) and diffs == ["speaker-knows"] and sk["status"] == "pass":
+        elif ep in ("005",) and diffs == ["speaker-knows"] and sk["status"] in ("pass", "pass_with_not_evaluable"):
             result, detail = "explained_difference", "speaker-knows 改按底账 id 判（不再按 knownByInStory 人名）：仍 pass"
         else:
             result, detail = "mismatch", f"不同的规则：{diffs}；{sk}"

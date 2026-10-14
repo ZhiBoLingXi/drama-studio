@@ -161,7 +161,7 @@ C6：首读 · 次读 · 追问单复核 · 底账一致性 · 冷读复述 · �
 | [`references/writing.md`](../../skills/drama-studio/references/writing.md) | 工位流程第 3–7 步改写（C4 分集计划可写 → C5a → C5b → C6 五读 → 修订）；「避免用解释性台词替代人物行动」改为「信息由对白承载；谁知道什么由 `listenerKnows` 定；重复须有处境理由」 | D6-3 |
 | [`references/dialogue.md`](../../skills/drama-studio/references/dialogue.md) → `dialogue-structure.md` | 重写；§8 前文校核、§9 改稿任务怎么写保留 | D6-3 |
 | 新 `references/corpus.md` | 取用、切分、过滤、处境标注、结构说明、缓存、快照、计费观察 | D6-4 |
-| [`workstations/c3-structure.md`](../../skills/drama-studio/references/workstations/c3-structure.md) | 拆为 `c3a-function-map.md`、`c3b-ledger.md`、`c3c-season-plan.md`；「删掉一段，后续是否仍原样发生」移到 c3c；c3a 带写作任务书的随包条款（四种不允许的修法、三条规矩、预算到顶后的动作，集纲方案 §8.1、§8.3） | D6-2 |
+| `workstations/c3-structure.md`（D6-2 已拆，原文件删除） | 拆为 `c3a-function-map.md`、`c3b-ledger.md`、`c3c-season-plan.md`；「删掉一段，后续是否仍原样发生」移到 c3c；c3a 带写作任务书的随包条款（四种不允许的修法、三条规矩、预算到顶后的动作，集纲方案 §8.1、§8.3） | D6-2 |
 | [`workstations/c4-episode-outline.md`](../../skills/drama-studio/references/workstations/c4-episode-outline.md) | 产出项改为 14 字段；「整季集纲怎么写」六步保留，装的东西换成季编排＋底账；审读项换成追问单复核、底账一致性、冷读；「每集有没有主角的关键选择」硬项废除 | D6-2 |
 | [`workstations/c5-screenplay.md`](../../skills/drama-studio/references/workstations/c5-screenplay.md) | 拆为 `c5a-dialogue-plan.md`、`c5b-text.md` | D6-3 |
 | [`workstations/c6-review.md`](../../skills/drama-studio/references/workstations/c6-review.md) | 加五读；finding 必带 `cites` | D6-2（集纲侧三读）、D6-3（正文侧两读） |

@@ -6,7 +6,7 @@
 
 1. **项目目录**：已有项目先运行 `drama_tools.py status <项目>`，按输出第一行处理；没有项目就运行 `drama_tools.py init-project <项目> --title <剧名>`。用户给的集纲、前文、设定（docx 等）转成文本放进项目的 `runs/input/`，不要只放在临时工作区。项目目录不能放在技能安装目录里。
 2. **连接与上下文**：先发现当前会话里实际可用的 mali-story 工具。可用时，用 `get_writing_context` 读到 `nextOffset` 为 null 并记回执；要装进包里的前文页面用 `read_page` 读回，再用 `receipt cache` 存进本地缓存。按路线图，mali-story 是正文的唯一存放处：没有 mali-story 工具或还没有远端项目时，先告诉用户并请用户配置连接或确认建项目，不自行改走离线。只有两种情况走下文 [离线与单代理降级](#离线与单代理降级)：已有远端项目但暂时断线（连上后补存），或用户明确同意这次只交本地草稿（把用户原话记进 `PROJECT.md`）。离线也不跳过后面的步骤。
-3. **C4 确认集纲可写**：本集集纲要写明处境、行动目标、阻力、关键选择和出口；入口按前一集的实际正文，不按前一集的计划（见 [C4](workstations/c4-episode-outline.md)）。集纲缺少关键选择时提 C4 变更，不让正文去补这个空缺。
+3. **C4 确认集纲可写**：本集分集计划过了 `plan-check`，`events` 单独读得懂、关键动作带动机与代价、`capacity.status` 是 `fits` 或带默认的提案；入口按前一集的实际正文（底账实际轨），不按前一集的计划（见 [集纲层](outline-layer.md#9-分集计划字段14-字段summary-可选) 与 [C4](workstations/c4-episode-outline.md)）。计划缺了承重的东西时提 C4 变更，不让正文去补这个空缺。
 4. **C5 装包写正文**：一集一个作者运行，前一集定稿后再给下一集装包，不一次写完一批。作者包至少有三样：本集集纲或修改单、前一集最新稿的原文、入口状态记录 `runs/state/after-ep-<前一集三位数>.md`（谁知道了什么、承诺与付款到哪一步、关键物件在谁手里、故事第几天）。包里还要有本集出场人物的声音卡（见 [台词](dialogue.md)）。写好 `task` 和选材清单（selection），运行 `drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role author --budget <字数>` 生成快照，再按这个包写完整正文（见 [C5](workstations/c5-screenplay.md)）。前文按原场面装，不能只装摘要；超出预算就缩小单元，不静默截断。
 5. **台词遍**：场面稿写完，另装一个 `--role dialogue_author` 包（场面稿、声音卡、对照卡、入口状态），改台词、表演括注和动作，不动场头和事件（见 [台词遍](dialogue.md#5-台词遍)）。主创给过前文、样集或改稿时，先做 [前文校核](dialogue.md#8-有人写的正文时前文校核)，声音卡的例句逐字取自原文。
 6. **C6 审读**（见 [C6](workstations/c6-review.md)）：
@@ -27,7 +27,7 @@
 
 **没有 mali-story 连接**
 
-- 材料必须是项目里的文件。`context-pack` 的 `local_file` 只读项目 `.drama/`（不含 `.drama/cache/`）或 `runs/` 下的相对路径；`episodes/`、`planning/` 下的文件、绝对路径、`..` 都会被拒绝。可以这样放：输入 `runs/input/outline-031.md`、`runs/input/ep-030.md`，本批稿件 `runs/b04/ep-031.c5.md`，修订稿 `runs/b04/ep-031.c5r1.md`，审读记录 `.drama/reviews/rev-b04-1.json`。交付时再整理到 `episodes/`。
+- 材料必须是项目里的文件。`context-pack` 的 `local_file` 只读项目 `.drama/`（不含 `.drama/cache/`）、`runs/` 或 `planning/` 下的相对路径；`episodes/` 下的文件、绝对路径、`..` 都会被拒绝。集纲层的功能地图、底账、季编排与分集计划直接从 `planning/` 装。可以这样放：输入 `runs/input/outline-031.md`、`runs/input/ep-030.md`，本批稿件 `runs/b04/ep-031.c5.md`，修订稿 `runs/b04/ep-031.c5r1.md`，审读记录 `.drama/reviews/rev-b04-1.json`。交付时再整理到 `episodes/`。
 - 选材写 `{"kind": "local_file", "id": "runs/input/ep-030.md", "revision": null}`，工具会把实际 sha256 写进快照。selection 的 `sourceSnapshotId` 和 task 的 `project.remoteProjectId` 都填 null。
 - 回执：在本该写页面的地方，先把准备发送的完整输入存成文件（如 `runs/b04/ep-031.create.input.json`），再手写一份回执 `.drama/receipts/<requestId>.json`，文件名必须与 `requestId` 一致。字段这样填：
   - `operation` 写本该调用的操作，如 `create_page`；

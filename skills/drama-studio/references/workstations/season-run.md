@@ -9,9 +9,9 @@
 ## 1. 开工前
 
 - **项目目录**：先 `drama_tools.py status <项目>`，没有项目就 `init-project`。用户给的集纲、前文、设定转成文本放进 `runs/input/`。
-- **远端项目**：先确认 mali-story 工具可用、远端项目存在。没有就告诉用户，请用户配置连接或确认建项目；用户明确同意只交本地草稿时才离线，把原话记进 `PROJECT.md`，之后 `season-check` 加 `--allow-offline`。
-- **上游 C1–C4**：从用户给的集纲起步也要各写一份交接（`run-handoff`），C1 定位、C2 人物与规则、C3 结构与状态账、C4 逐集确认集纲可写。采用用户给定的材料时，产出指向 `runs/input/` 下的文件，并在交接里写明“采用用户给定”；C4 的产出逐集列出集纲文件（如 `runs/input/outline-031.md`）。C4 发现集纲缺关键选择、前提不成立，写进 `changeProposals` 交用户。
-- **入口状态**：从前一集的实际正文恢复，不从集纲恢复：谁知道了什么、承诺和付款到了哪一步、关键物件在谁手里、现在是故事的第几天。写成 `runs/state/after-ep-<三位集号>.md`，每集定稿后按定稿和交接里的 `stateChangeProposals` 更新一份新的，下一集的作者包装它。前文缺失时如实写缺失，不用集纲假装前文已经发生。
+- **远端项目**：先确认 mali-story 工具可用、远端项目存在。没有就告诉用户，请用户配置连接或确认建项目；用户明确同意只交本地草稿时才离线，把原话记进 `PROJECT.md`，之后 `season-check` 加 `--allow-offline`。集纲侧（`--outline`）与正文侧同法：分集计划的可读稿离线保存，回执记 `not_sent`。
+- **上游 C1–C4**：各写一份交接（`run-handoff`）：C1 定位、C2 人物、C3a 功能地图、C3b 底账（`planning/ledger/ledger-ep000.json`）、C3c 季编排（`planning/season-plan.json`）、C4 逐集分集计划（`planning/episodes/episode-plan-<三位集号>.json`，带计划轨 `ledgerDelta`）。从用户给的集纲或设定起步也一样：用户材料放 `runs/input/`，进系统时拆成功能与底账条目（标 `origin: user_given`），追问照问，不成立时按默认保留并登记，见 [用户给定设定的处理](../outline-layer.md#11-用户给定设定的处理user_givenuser_given_modified不成立时默认保留并标-license_pending)；交接里写明“采用用户给定”。C4 发现前提不成立、装不下，写进 `changeProposals`，并用 `decision add --from-handoff` 登记进决定队列、带默认，流程按默认继续。
+- **入口状态**：来自底账实际轨，不来自分集计划。每集定稿后，把交接里的 `stateChangeProposals[].ledgerDelta` 写成 `planning/ledger/delta-ep<三位集号>.actual.json`，再用 `ledger replay planning/ledger/ledger-ep000.json --delta planning/ledger/ --at <集号> --track actual --md`（目录按集序取 `delta-*.json`）导出，输出存为 `runs/state/after-ep-<三位集号>.md`（文件名沿用），下一集的作者包装它。某集还没有实际轨时 `replay` 用它的计划轨代替，列在导出文件开头的「重放说明」里；导出后看这一节，已定稿的集不应出现在里面。应用出错时退出码 2，错误同时打到 stderr，这时不用这份导出。这份文件是导出物，不手改；要改就改实际轨的 delta 再导出。实际轨与计划轨的差异（`ledger diff`）交下一集 C4 作输入。前文缺失时如实写缺失，不用分集计划假装前文已经发生。
 - **篇幅与时长**：按项目规格定，依据是已有各集的实际篇幅、用户原话或项目规则文件。都没有就先问，不自己降标准。规格写成 `episode-check --config` 能读的规则文件，每批都核对。时长只能按约定口径估算时，标明口径和“未经实测校准”，这样的估算只能比较前后变化，不能当作片长。
 - **写入范围**：列出本次要写的页面（每集一个 `episode` 页面，带 `episode_ref`），以及只读不写的材料。
 

@@ -1,6 +1,6 @@
 """`corpus rate` -- media-profile physical quantities only (dialogue structure architecture doc
 §3.2 "媒介档案只保留物理量"). Ported from the阶段 A script
-`projects/qige-xiongdi/runs/pilot-ep006/tools/media_profile.py` so the real numbers keep
+the D6-0 pilot's `media_profile.py` so the real numbers keep
 reproducing exactly (local acceptance compares this against `media-profile-v0.json`); the field
 names below follow the D6-1 decisions on top of that prototype, not the prototype's own names,
 where the two differ:

@@ -2,15 +2,22 @@
 
 Deterministic assembly only: no semantic selection, no truncation, no network, no model. Reads --task,
 --selection, <project>/.drama/cache/ (through its manifest v0 or v1: remote_page by pageId@revision, remote_artifact by artifactId), <project>/knowledge/cards/ and, for local_file
-items, files inside <project>/.drama/ (not its cache) or <project>/runs/; writes only
+items, files inside <project>/.drama/ (not its cache), <project>/runs/ or <project>/planning/, or a bundled question set
+by id ("question-set:reality-check-questions@v1", read from the skill's schemas/data/); writes only
 <project>/.drama/snapshots/, and never overwrites an existing snapshot.
 
-D6-1 roles add package rules: a cold_reader gets exactly one project_facts item and nothing authored; a C5a
+D6-1 roles add package rules: a cold_reader gets exactly one project_facts item and nothing authored (of an episode
+plan, only its plan-events export; D6-2); a C5a
 (dialogue_designer) package needs this episode's plan with capacity.status fits, or proposal:<id> whose decision has a
 default; a C5b package (task.layer C5b) needs a dialogue plan that passes contract-check. Samples (--exemplars,
 --contrast-pairs) are the corpus positives and contrast pairs the packed dialogue plan cites, at most two positives and
 one pair per topic, added first positives, then pairs, then second positives while the budget lasts; the rest are
 listed as omitted for budget. Samples are the one thing the package leaves out to fit, and it says so.
+
+D6-2: in a project that has started the outline layer (season_check.outline_project: planning/season-plan.json or
+planning/function-map.json, or a JSON record under planning/ledger/ or planning/episodes/; the empty folders
+init-project creates do not count, and 0.3.6-era projects have none of these), a C4 author package must hold the season plan and a ledger (season-check's
+outline-season-assigned and outline-ledger-delta read them), else exit 2. Other projects' C4 packages are unchanged.
 """
 from __future__ import annotations
 
@@ -20,12 +27,12 @@ import os
 from pathlib import Path
 import re
 
-from .contract_check import check_contract
+from .contract_check import COMPARISON_ROLES, DATA_DIR, check_contract
 from .receipt import MANIFESTS, effective_entries
-from .season_check import layer_records, record_kind
+from .season_check import layer_records, outline_project, record_kind
 
 PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns"]
-LOCAL_ROOTS = (".drama", "runs")  # the only folders a local_file selection item may read from
+LOCAL_ROOTS = (".drama", "runs", "planning")  # the only folders a local_file selection item may read from
 SAMPLE_ROOTS = (".drama", "runs", "knowledge")  # corpus exchanges and project contrast pairs
 SAMPLE_ROLES = ("dialogue_designer", "author")
 
@@ -129,9 +136,9 @@ def _read_card(cards: Path, ref: dict, where: str, project_id: str, errors: list
 
 
 def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
-    """A local_file (#26): a project-relative path inside .drama/ or runs/, read as is and pinned by its sha256.
+    """A local_file (#26): a project-relative path inside .drama/, runs/ or planning/, read as is and pinned by its sha256.
 
-    Absolute paths, `..`, backslashes and anything resolving outside those two folders (symlinks included) are input
+    Absolute paths, `..`, backslashes and anything resolving outside those folders (symlinks included) are input
     errors. The revision is null or the sha256 the host expects; the snapshot records the file's actual sha256 as both.
     """
     name = ref["id"]
@@ -139,7 +146,7 @@ def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
     if (not name or name.startswith("/") or "\\" in name or "\0" in name or any(part in ("", ".", "..") for part in parts)
             or parts[0] not in LOCAL_ROOTS or len(parts) < 2):
         raise ValueError(f"{where}: local_file id must be a relative path inside {' or '.join(f'{folder}/' for folder in LOCAL_ROOTS)} "
-                         "without '..' (e.g. .drama/reviews/rev-ep45-1.json or runs/ep45/review.md)")
+                         "without '..' (e.g. .drama/reviews/rev-ep45-1.json, runs/ep45/review.md or planning/season-plan.json)")
     if parts[:2] == [".drama", "cache"]:
         raise ValueError(f"{where}: cached pages and artifacts are packed as remote_page or remote_artifact through the cache manifest, not as local_file")
     if ref["revision"] is not None and not (isinstance(ref["revision"], str) and re.fullmatch(r"sha256:[a-f0-9]{64}", ref["revision"])):
@@ -159,6 +166,24 @@ def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
         errors.append(f"{where}: revision pins {ref['revision']} but the file is {_sha(data)}")
         return "error", None
     return "ok", data
+
+
+QUESTION_SET = "question-set:"  # a bundled question set packed by id@version (D6-2 §5 #22)
+
+
+def _read_question_set(ref: dict, where: str, errors: list[str]):
+    """local_file "question-set:<id>@<version>": a question set bundled under schemas/data/, read only, never copied
+    into the project; pinned by its sha256 like any local_file."""
+    wanted = ref["id"][len(QUESTION_SET):]
+    for path in sorted(DATA_DIR.glob("*-questions.json")):
+        data = path.read_bytes()
+        doc = json.loads(data.decode("utf-8"))
+        if f"{doc.get('id')}@{doc.get('version')}" == wanted:
+            if ref["revision"] is not None and ref["revision"] != _sha(data):
+                errors.append(f"{where}: revision pins {ref['revision']} but the bundled question set is {_sha(data)}")
+                return "error", None
+            return "ok", data
+    raise ValueError(f"{where}: no bundled question set {wanted!r} under schemas/data/ (ids look like reality-check-questions@v1)")
 
 
 def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) -> list[str]:
@@ -208,7 +233,7 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         ref = item["ref"]
         where = f"selection.items[{index}] ({_label(ref)})"
         if ref["kind"] not in ("remote_page", "remote_artifact", "knowledge_card", "local_file"):
-            raise ValueError(f"{where}: kind must be remote_page or remote_artifact (cache), knowledge_card or local_file (.drama/ or runs/)")
+            raise ValueError(f"{where}: kind must be remote_page or remote_artifact (cache), knowledge_card or local_file (.drama/, runs/ or planning/)")
         if ref["kind"] != "local_file" and (not isinstance(ref["revision"], int) or isinstance(ref["revision"], bool)):
             raise ValueError(f"{where}: revision must pin an integer revision" + (" (a remote_page is pageId + revision)" if ref["kind"] == "remote_page" else ""))
         span = ref.get("range")
@@ -219,7 +244,8 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             entries = _manifest(cache) if entries is None else entries
             status, loaded = _read_cache(root, cache, entries, ref, where, allow_unverified, errors, unknowns)
         elif ref["kind"] == "local_file":
-            status, loaded = _read_local(root, ref, where, errors)
+            reader = _read_question_set if ref["id"].startswith(QUESTION_SET) else (lambda r, w, e: _read_local(root, r, w, e))
+            status, loaded = reader(ref, where, errors)
             loaded = (loaded, None) if status == "ok" else loaded
         else:
             status, loaded = _read_card(cards, ref, where, task_doc["project"]["localId"], errors)
@@ -263,8 +289,8 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         clean["sha256"] = _sha(data)
         if usage == "evaluation_only" and role != "evaluation":
             errors.append(f"{where}: evaluation_only material cannot enter the {role} package")
-        if usage == "comparison_only" and role not in ("similarity_review", "evaluation"):
-            errors.append(f"{where}: comparison_only material is limited to similarity_review/evaluation, not {role}")
+        if usage == "comparison_only" and role not in COMPARISON_ROLES:
+            errors.append(f"{where}: comparison_only material is limited to {'/'.join(COMPARISON_ROLES)}, not {role}")
         if role in ("reader_effect", "dialogue_read", "cold_reader") and item["partition"] == "current_plan":
             errors.append(f"{where}: a {role} package must not include current_plan (author plans)")
         if text.lstrip().startswith("{"):
@@ -367,6 +393,11 @@ def _role_rules(root: Path, role: str, task_doc: dict, items: list, labels: list
             errors.append(f"cold_reader: the package takes exactly one project_facts item (this episode's text or its plan events), found {len(facts)}: {facts}")
         errors += [f"{label}: a cold_reader package takes no {item['partition']}" for label, item in zip(labels, items)
                    if item["partition"] == "knowledge"]
+        # D6-2 §5 #9: of an episode plan, the cold reader gets the plan-events export only, never the whole plan
+        errors += [f"{where}: a cold_reader package takes the plan's events export (drama_tools.py plan-events), not the whole "
+                   "episode plan with its moves, infoLedger and saysFact" for where, doc in docs
+                   if record_kind(doc) == "episode-plan" or (isinstance(doc, dict) and record_kind(doc) != "episode-plan-events"
+                                                               and ("infoLedger" in doc or "moves" in doc))]
     if role == "dialogue_designer":
         plans = [(where, doc) for where, doc in docs if record_kind(doc) == "episode-plan"]
         if not plans:
@@ -383,6 +414,15 @@ def _role_rules(root: Path, role: str, task_doc: dict, items: list, labels: list
                     errors.append(f"{where}: capacity.status {status} names a proposal without a default; C5a packs only a plan the flow can follow")
             elif status != "fits":
                 errors.append(f"{where}: capacity.status is {status!r}; C5a packs a plan that fits or names a proposal:<id> with a default")
+    if role == "author" and "C4" in (task_doc["workstation"], task_doc.get("layer")) and outline_project(root):
+        kinds = {record_kind(doc) for _, doc in docs}
+        # the C4 package checklist (c4-episode-outline.md, D6-2 §5 #10), the same one season-check outline-structure reads
+        for kind, what, rule in (("season-plan", "season plan (planning/season-plan.json)", "outline-season-assigned"),
+                                 ("ledger-entry", "ledger (planning/ledger/ledger-ep000.json or a replayed revision)", "outline-ledger-delta"),
+                                 ("function-map", "function map (planning/function-map.json)", "outline-structure")):
+            if kind not in kinds:
+                errors.append(f"C4 author: the package holds no {what}; an episode plan is written from the season plan, the ledger "
+                              f"and the function map (season-check {rule}); this project uses the outline layer")
     if task_doc.get("layer") == "C5b":
         plans = [(where, doc) for where, doc in docs if record_kind(doc) == "dialogue-plan"]
         if not plans:

@@ -6,6 +6,10 @@
     "id": "F-box-1.A"
   },
   "questionsVersion": "reality-check-questions@v1",
+  "promptVersion": {
+    "id": "reality-check",
+    "version": "v1"
+  },
   "cardRevisions": {
     "K1-tuijian": 1
   },
