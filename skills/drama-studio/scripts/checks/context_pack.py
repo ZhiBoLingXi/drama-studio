@@ -4,6 +4,13 @@ Deterministic assembly only: no semantic selection, no truncation, no network, n
 --selection, <project>/.drama/cache/ (through its manifest v0 or v1: remote_page by pageId@revision, remote_artifact by artifactId), <project>/knowledge/cards/ and, for local_file
 items, files inside <project>/.drama/ (not its cache) or <project>/runs/; writes only
 <project>/.drama/snapshots/, and never overwrites an existing snapshot.
+
+D6-1 roles add package rules: a cold_reader gets exactly one project_facts item and nothing authored; a C5a
+(dialogue_designer) package needs this episode's plan with capacity.status fits, or proposal:<id> whose decision has a
+default; a C5b package (task.layer C5b) needs a dialogue plan that passes contract-check. Samples (--exemplars,
+--contrast-pairs) are the corpus positives and contrast pairs the packed dialogue plan cites, at most two positives and
+one pair per topic, added first positives, then pairs, then second positives while the budget lasts; the rest are
+listed as omitted for budget. Samples are the one thing the package leaves out to fit, and it says so.
 """
 from __future__ import annotations
 
@@ -15,9 +22,12 @@ import re
 
 from .contract_check import check_contract
 from .receipt import MANIFESTS, effective_entries
+from .season_check import layer_records, record_kind
 
 PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns"]
 LOCAL_ROOTS = (".drama", "runs")  # the only folders a local_file selection item may read from
+SAMPLE_ROOTS = (".drama", "runs", "knowledge")  # corpus exchanges and project contrast pairs
+SAMPLE_ROLES = ("dialogue_designer", "author")
 
 
 def _sha(data: bytes) -> str:
@@ -161,7 +171,7 @@ def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) 
 
 
 def run_context_pack(project, task, selection, role: str, budget: int, dry_run: bool = False,
-                     allow_unverified: bool = False) -> dict:
+                     allow_unverified: bool = False, exemplars: str | None = None, contrast_pairs: str | None = None) -> dict:
     root = Path(project).expanduser().absolute()
     if not root.is_dir():
         raise ValueError(f"Project directory not found: {root}")
@@ -188,7 +198,7 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
               "partition": "task", "required": True, "usage": "project_text", "chars": len(task_bytes.decode("utf-8")),
               "sha256": task_hash, "reason": "任务定义（context-pack 按 --task 自动装入）"}]
     item_labels, omitted, omitted_labels = [f"task {task_doc['taskId']}"], [], []
-    errors, unknowns = [], list(chosen.get("unknowns", []))
+    errors, unknowns, packed_docs = [], list(chosen.get("unknowns", [])), []
     cache, cards = root / ".drama" / "cache", root / "knowledge" / "cards"
     for folder, what in ((cache, ".drama/cache"), (cards, "knowledge/cards")):
         if folder.exists():
@@ -255,12 +265,24 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             errors.append(f"{where}: evaluation_only material cannot enter the {role} package")
         if usage == "comparison_only" and role not in ("similarity_review", "evaluation"):
             errors.append(f"{where}: comparison_only material is limited to similarity_review/evaluation, not {role}")
-        if role in ("reader_effect", "dialogue_read") and item["partition"] == "current_plan":
+        if role in ("reader_effect", "dialogue_read", "cold_reader") and item["partition"] == "current_plan":
             errors.append(f"{where}: a {role} package must not include current_plan (author plans)")
+        if text.lstrip().startswith("{"):
+            try:
+                packed_docs.append((where, json.loads(text)))
+            except ValueError:
+                pass
         items.append({"ref": clean, "partition": item["partition"], "required": item["required"], "usage": usage,
                       "chars": len(text), "sha256": _sha(text.encode("utf-8")), "reason": item["reason"]})
         item_labels.append(where)
 
+    errors.extend(_role_rules(root, role, task_doc, items, item_labels, packed_docs))
+    samples = None
+    if exemplars or contrast_pairs:
+        if role not in SAMPLE_ROLES or (role == "author" and task_doc.get("layer") != "C5b"):
+            raise ValueError("--exemplars/--contrast-pairs pack samples for C5a (dialogue_designer) or C5b (author with task.layer C5b) only")
+        samples = _pack_samples(root, packed_docs, exemplars, contrast_pairs, budget - sum(i["chars"] for i in items),
+                                items, item_labels, omitted, omitted_labels)
     partition_chars = {name: sum(i["chars"] for i in items if i["partition"] == name) for name in PARTITIONS}
     total = sum(partition_chars.values())
     if total > budget:
@@ -275,6 +297,8 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
               "omitted": [{"ref": label, "required": o["required"], "reason": o["reason"]} for label, o in zip(omitted_labels, omitted)],
               "completeness": completeness, "written": False, "existing": False,
               "network_used": False, "models_called": False, "remote_verified": False}
+    if samples is not None:
+        result["samples"] = samples
     if errors:
         return {**result, "passed": False, "errors": errors}
 
@@ -332,3 +356,111 @@ def _publish(path: Path, content: bytes) -> bool:
         return False
     finally:
         temp.unlink()
+
+
+def _role_rules(root: Path, role: str, task_doc: dict, items: list, labels: list, docs: list) -> list[str]:
+    """Package rules of the D6 roles that need more than one item to judge (implementation plan §2.2 #13)."""
+    errors = []
+    if role == "cold_reader":
+        facts = [label for label, item in zip(labels, items) if item["partition"] == "project_facts"]
+        if len(facts) != 1:
+            errors.append(f"cold_reader: the package takes exactly one project_facts item (this episode's text or its plan events), found {len(facts)}: {facts}")
+        errors += [f"{label}: a cold_reader package takes no {item['partition']}" for label, item in zip(labels, items)
+                   if item["partition"] == "knowledge"]
+    if role == "dialogue_designer":
+        plans = [(where, doc) for where, doc in docs if record_kind(doc) == "episode-plan"]
+        if not plans:
+            errors.append("dialogue_designer (C5a): the package holds no episode-plan, so its capacity cannot be checked")
+        queues = [d for _, d in layer_records(root).get("decision-queue", [])] + [d for _, d in docs if record_kind(d) == "decision-queue"]
+        decisions = {entry.get("id"): entry for doc in queues for entry in doc.get("entries", []) if isinstance(entry, dict)}  # packed wins
+        for where, plan in plans:
+            status = (plan.get("capacity") or {}).get("status") if isinstance(plan.get("capacity"), dict) else None
+            if isinstance(status, str) and status.startswith("proposal:"):
+                proposal = decisions.get(status.split(":", 1)[1])
+                if proposal is None:
+                    errors.append(f"{where}: capacity.status {status} names a proposal that no decision queue (packed or under planning/) holds")
+                elif not proposal.get("default"):
+                    errors.append(f"{where}: capacity.status {status} names a proposal without a default; C5a packs only a plan the flow can follow")
+            elif status != "fits":
+                errors.append(f"{where}: capacity.status is {status!r}; C5a packs a plan that fits or names a proposal:<id> with a default")
+    if task_doc.get("layer") == "C5b":
+        plans = [(where, doc) for where, doc in docs if record_kind(doc) == "dialogue-plan"]
+        if not plans:
+            errors.append("C5b: the package holds no dialogue-plan; C5b writes from a dialogue plan that passes contract-check")
+        for where, plan in plans:
+            problems = check_contract("dialogue-plan", plan)
+            if problems:
+                errors.append(f"{where}: the dialogue plan fails contract-check dialogue-plan: " + "; ".join(problems[:5]))
+    return errors
+
+
+def _sample_file(root: Path, path: str, what: str) -> tuple[str, bytes, dict]:
+    """A JSONL sample file inside the project: (project-relative id, bytes, key -> (start, end) of its line)."""
+    resolved = Path(path).expanduser().absolute().resolve()
+    if not resolved.is_relative_to(root.resolve()) or resolved.relative_to(root.resolve()).parts[0] not in SAMPLE_ROOTS:
+        raise ValueError(f"{what} must be a file inside {', '.join(f'{f}/' for f in SAMPLE_ROOTS)} of the project: {path}")
+    data = resolved.read_bytes()
+    spans, offset = {}, 0
+    for line in data.decode("utf-8").splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        if body.strip():
+            try:
+                row = json.loads(body)
+            except ValueError as error:
+                raise ValueError(f"{what} line at char {offset} is not JSON: {error}") from error
+            key = row.get("exchangeId") or row.get("pairId") if isinstance(row, dict) else None
+            if key:
+                spans.setdefault(key, (offset, offset + len(body)))
+        offset += len(line)
+    return resolved.relative_to(root.resolve()).as_posix(), data, spans
+
+
+def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, omitted, omitted_labels) -> dict:
+    """Two corpus positives and one contrast pair per topic of the packed dialogue plan(s), in priority order while the
+    budget lasts; nothing is cut inside a sample, whole samples that do not fit are listed as omitted for budget."""
+    plans = [doc for _, doc in docs if record_kind(doc) == "dialogue-plan"]
+    if not plans:
+        raise ValueError("samples follow the topics of a packed dialogue plan; the selection holds none")
+    files = {"positive": _sample_file(root, exemplars, "--exemplars") if exemplars else None,
+             "contrast": _sample_file(root, contrast_pairs, "--contrast-pairs") if contrast_pairs else None}
+    tiers, seen, unresolved = ([], [], []), set(), []
+    for plan in plans:
+        for scene in plan.get("scenes") or []:
+            for topic in scene.get("topics") or [] if isinstance(scene, dict) else []:
+                shown = (topic.get("exemplars") or {}) if isinstance(topic, dict) else {}
+                refs = [("positive", p.get("ref")) for p in shown.get("positives") or [] if isinstance(p, dict) and p.get("source") == "corpus"]
+                refs += [("contrast", c.get("pairId")) for c in shown.get("contrast") or [] if isinstance(c, dict)]
+                taken = {"positive": 0, "contrast": 0}
+                for kind, ref in refs:
+                    file = files[kind]
+                    if file is None or not isinstance(ref, str) or taken[kind] >= (2 if kind == "positive" else 1):
+                        continue
+                    key = next((k for k in (ref, ref.split("#")[-1]) if k in file[2]), None)
+                    if key is None:
+                        unresolved.append(f"{topic.get('topicId')}:{ref}")
+                        continue
+                    taken[kind] += 1
+                    if (kind, key) in seen:
+                        continue
+                    seen.add((kind, key))
+                    tier = 1 if kind == "contrast" else (0 if taken[kind] == 1 else 2)
+                    tiers[tier].append((topic.get("topicId"), kind, key, file))
+    packed = left = 0
+    for topic, kind, key, (ident, data, spans) in [entry for tier in tiers for entry in tier]:
+        start, end = spans[key]
+        text = data.decode("utf-8")[start:end]
+        ref = {"kind": "local_file", "id": ident, "revision": _sha(data), "sha256": _sha(data), "range": {"start": start, "end": end}}
+        label = f"sample {topic} {'正例' if kind == 'positive' else '对照对'} {key}"
+        if len(text) <= room:
+            room -= len(text)
+            packed += 1
+            items.append({"ref": ref, "partition": "current_plan", "required": False, "usage": "creative_reference",
+                          "chars": len(text), "sha256": _sha(text.encode("utf-8")),
+                          "reason": f"样本：话题 {topic} 的{'正例' if kind == 'positive' else '对照对'} {key}（对话表引用）"})
+            labels.append(label)
+        else:
+            left += 1
+            omitted.append({"ref": ref, "required": False, "reason": "budget"})
+            omitted_labels.append(label)
+    return {"packed": packed, "omittedForBudget": left, "unresolved": unresolved,
+            "policy": "每话题至多 2 个语料正例＋1 个对照对，先各话题第一正例、再对照对、再第二正例，装到预算为止；不截断单条样本"}

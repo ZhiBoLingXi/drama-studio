@@ -1,0 +1,132 @@
+{
+  "schemaVersion": "drama-studio/function-map/v0",
+  "revision": "v1",
+  "premises": [
+    {
+      "premiseId": "PQ-1",
+      "question": "王姨为什么三年没告诉老陈箱子被退了",
+      "default": null,
+      "decisionRef": "D-001"
+    }
+  ],
+  "threads": [
+    {
+      "threadId": "T-box",
+      "title": "老陈寄回老家的箱子三年没到",
+      "origin": "user_given",
+      "sources": [
+        "planning/bible.md#箱子"
+      ],
+      "functions": [
+        {
+          "functionId": "F-box-1",
+          "audienceFeels": "替老陈着急：他以为东西早到了",
+          "whoLearnsWhat": "观众先于老陈知道箱子没到",
+          "situationChange": "老陈从放心变成起疑",
+          "status": "selected",
+          "alsoServes": [
+            "T-family"
+          ],
+          "candidates": [
+            {
+              "candidateId": "F-box-1.A",
+              "origin": "user_given",
+              "description": "仓库按规矩退件，王姨签收后没说",
+              "steps": [
+                {
+                  "stepId": "F-box-1.A.s1",
+                  "who": "仓管",
+                  "did": "按退件规矩把箱子退回",
+                  "where": {
+                    "source": "集纲",
+                    "episode": 3
+                  },
+                  "origin": "user_given"
+                },
+                {
+                  "stepId": "F-box-1.A.s2",
+                  "who": "王姨",
+                  "did": "签收后把箱子放进地窖",
+                  "where": {
+                    "source": "集纲",
+                    "episode": 3
+                  },
+                  "origin": "designed"
+                }
+              ],
+              "ledgerDeps": [
+                {
+                  "depId": "D-box-p01",
+                  "kind": "procedure",
+                  "claim": "无人领取的件满期退回寄件地址",
+                  "entryId": "L-proc-001",
+                  "assertion": "stated"
+                },
+                {
+                  "depId": "D-box-k01",
+                  "kind": "knowledge",
+                  "claim": "王姨知道箱子是老陈寄的",
+                  "entryId": null,
+                  "assertion": "required_unstated"
+                }
+              ],
+              "inquiryRef": "RC-box-1A",
+              "status": "selected",
+              "rejectedBecause": [],
+              "patchCount": 0,
+              "requiresPremise": [
+                "PQ-1"
+              ],
+              "dependsOnCandidates": [],
+              "losesFunctions": []
+            },
+            {
+              "candidateId": "F-box-1.B",
+              "origin": "designed",
+              "description": "箱子寄错了地址，一直滞留在镇仓库",
+              "steps": [
+                {
+                  "stepId": "F-box-1.B.s1",
+                  "who": "老陈",
+                  "did": "把门牌写错了一位",
+                  "where": {
+                    "source": "设计",
+                    "episode": null
+                  }
+                }
+              ],
+              "ledgerDeps": [
+                {
+                  "depId": "D-box-o01",
+                  "kind": "object",
+                  "claim": "箱子在镇仓库",
+                  "entryId": null
+                }
+              ],
+              "inquiryRef": null,
+              "status": "rejected",
+              "rejectedBecause": [
+                "写错门牌是解难题的巧合（追问单第 11 问）"
+              ],
+              "patchCount": null
+            }
+          ]
+        }
+      ],
+      "threadLevel": {
+        "ending": "老陈在第 4 集当面问出箱子的去处",
+        "irreversibles": [
+          "老陈打开地窖"
+        ],
+        "plantsAndPays": [
+          {
+            "plantId": "P-box-1",
+            "what": "地窖的锁",
+            "currentPlantEp": 3,
+            "currentPayEp": 4
+          }
+        ]
+      }
+    }
+  ]
+}

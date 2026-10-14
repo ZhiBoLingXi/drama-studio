@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "drama-studio/dialogue-exchange/v0",
+  "exchangeId": "EX-0001",
+  "templateId": "TPL-TOWN-01",
+  "snapshotId": null,
+  "episodeIndex": 2,
+  "startMs": 41000,
+  "endMs": 52500,
+  "cutBy": "model",
+  "series": {
+    "title": "合成样本",
+    "format": "live",
+    "genre": "现实"
+  },
+  "lines": [
+    {
+      "t0": 41000,
+      "t1": 43500,
+      "speaker": "办事员",
+      "text": "大姐，我是街道的，来问问孩子上学的事。",
+      "isMonologue": false,
+      "state": "平静"
+    },
+    {
+      "t0": 44000,
+      "t1": 45200,
+      "speaker": "大姐",
+      "text": "上学怎么了？",
+      "isMonologue": false,
+      "state": "防备"
+    }
+  ],
+  "about": "办事员上门说明来意",
+  "situation": {
+    "function": "交代",
+    "relation": "办事人员对群众",
+    "powerDirection": "down",
+    "addresseeIsChild": false,
+    "speakerWants": "让对方肯开口",
+    "listenerKnows": "不知道来人为什么来",
+    "emotion": {
+      "a": "平静",
+      "b": "防备"
+    }
+  },
+  "walkthrough": "她在防备，他每出一件事就等她接一句",
+  "features": {
+    "durationSec": 11.5,
+    "speakers": 2
+  },
+  "speakerAttributionSuspect": false,
+  "refKind": "local_fingerprint",
+  "localSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "scope": {
+    "level": "project",
+    "projectId": "local-demo"
+  }
+}

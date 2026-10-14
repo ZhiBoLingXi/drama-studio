@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "drama-studio/answers/v0",
+  "checkId": "RC-box-1A",
+  "target": {
+    "kind": "candidate",
+    "id": "F-box-1.A"
+  },
+  "questionsVersion": "reality-check-questions@v1",
+  "cardRevisions": {
+    "K1-tuijian": 1
+  },
+  "answers": [
+    {
+      "q": 4,
+      "landsOn": "F-box-1.A.s1",
+      "holds": "holds",
+      "reason": "卡上写保管期满退回寄件地址",
+      "realityRef": [
+        "K1-tuijian#r1"
+      ]
+    },
+    {
+      "q": 5,
+      "landsOn": "F-box-1.A.s2",
+      "holds": "notHolds",
+      "reason": "刘叔每周去王姨家，三年没见过箱子说不通",
+      "defectKey": "box-liu-never-saw",
+      "defectKind": [
+        "internal_conflict"
+      ],
+      "loadBearing": true,
+      "loadBearingBasis": "function_sentence_step",
+      "loadBearingWhy": "去掉这一步，「老陈以为东西早到了」落空",
+      "disposition": {
+        "to": "decision",
+        "ref": "D-001"
+      }
+    },
+    {
+      "q": 9,
+      "landsOn": "D-box-p01",
+      "holds": "not_evaluable",
+      "reason": "卡上没写退回前要不要电话通知",
+      "because": "card_says_not_found",
+      "leaning": "none"
+    },
+    {
+      "q": 14,
+      "landsOn": "F-box-1.A",
+      "holds": "n/a",
+      "reason": "能换成寄错地址，但那是巧合"
+    }
+  ],
+  "outcome": "fail",
+  "askedSubset": [
+    4,
+    5,
+    9,
+    14
+  ],
+  "closes": [],
+  "retiresWith": [],
+  "leavesOpen": [],
+  "mapErrata": [],
+  "unverifiedList": [
+    "L-proc-001"
+  ]
+}

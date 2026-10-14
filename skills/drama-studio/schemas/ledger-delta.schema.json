@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/ledger-delta/v0",
+  "title": "一集对底账的读写（planned 来自分集计划，actual 来自正文）",
+  "description": "开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "episode",
+    "track",
+    "reads",
+    "writes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/ledger-delta/v0"
+    },
+    "episode": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "集号：整数，或拆集后的「6A」这类字符串"
+    },
+    "track": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "actual"
+      ]
+    },
+    "reads": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "writes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/write"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "write": {
+      "type": "object",
+      "required": [
+        "entryId",
+        "change",
+        "reason"
+      ],
+      "properties": {
+        "entryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "change": {
+          "type": "object",
+          "description": "字段级改动；entryId 为 new 时是完整条目。自由文本改法不收"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supportedBy": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

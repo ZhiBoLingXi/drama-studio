@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "drama-studio/writer-note/v0",
+  "noteId": "WN-007",
+  "author": "编剧",
+  "date": "2026-10-15",
+  "source": "feishu_comment:drafts/ep-002.md#c7",
+  "sourceKind": "feishu_comment",
+  "episode": 2,
+  "scene": "2-1",
+  "quotedText": "我是街道的，来问孩子上学和户口的事，下周要交材料。",
+  "humanSuggestion": null,
+  "humanNote": "一句话塞了三件事，大姐会插嘴的",
+  "level": "info_carrying",
+  "attachesTo": {
+    "planRef": "T2",
+    "lineRef": "L12"
+  },
+  "outcome": [
+    {
+      "kind": "negative",
+      "ref": "NEG-01"
+    }
+  ],
+  "conflictsWith": [],
+  "scope": {
+    "level": "project",
+    "projectId": "local-demo"
+  }
+}

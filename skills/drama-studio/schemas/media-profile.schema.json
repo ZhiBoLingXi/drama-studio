@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/media-profile/v0",
+  "title": "媒介档案：只含物理量（语速、停顿占比、目标时长）",
+  "description": "拒绝任何句数／换人／话题数一类的配额字段与区间字段（contract-check 规则）。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "formatDefault",
+    "calibration"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/media-profile/v0"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "live",
+        "anime"
+      ]
+    },
+    "formatSource": {
+      "type": "string"
+    },
+    "formatDefault": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "live": {
+          "$ref": "#/$defs/values"
+        },
+        "anime": {
+          "$ref": "#/$defs/values"
+        }
+      }
+    },
+    "projectValue": {
+      "$ref": "#/$defs/values"
+    },
+    "calibration": {
+      "type": "string",
+      "enum": [
+        "corpus_default",
+        "project_measured",
+        "uncalibrated"
+      ]
+    },
+    "measurementBasis": {
+      "type": "object"
+    },
+    "perSeries": {
+      "type": "object"
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "values": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "speechRateCharsPerMin": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "pauseShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "targetSecondsDefault": {
+          "type": "number",
+          "minimum": 0
+        },
+        "grossCharsPerMinute": {
+          "type": "number",
+          "minimum": 0
+        },
+        "speechCharsPerEpisodeMin": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pictureBeatSec": {
+          "type": "object",
+          "required": [
+            "source"
+          ],
+          "properties": {
+            "value": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "measured_corpus",
+                "measured_project",
+                "assumed"
+              ]
+            }
+          }
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "measured_corpus",
+            "measured_project",
+            "assumed"
+          ]
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

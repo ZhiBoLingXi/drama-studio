@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/decision-queue/v0",
+  "title": "决定队列（含容量提案）：每条带默认，流程按默认继续",
+  "description": "开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/decision-queue/v0"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "question",
+        "options",
+        "default",
+        "defaultReason",
+        "affects",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "setting_conflict",
+            "premise",
+            "license",
+            "capacity",
+            "upstream_change",
+            "other"
+          ]
+        },
+        "raisedAt": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "layer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "runId": {
+              "type": "string"
+            }
+          }
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          },
+          "minItems": 1
+        },
+        "default": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affects": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "object"
+            ]
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "decided"
+          ]
+        },
+        "decidedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decidedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "humanWords": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "decided 时主创选定的 optionId"
+        }
+      }
+    },
+    "option": {
+      "type": "object",
+      "required": [
+        "optionId",
+        "text"
+      ],
+      "properties": {
+        "optionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cost": {
+          "type": "string"
+        },
+        "losesFunctions": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "items": {
+            "type": [
+              "object",
+              "string"
+            ]
+          },
+          "description": "选它会让哪些功能句落空；未核时写以 not_evaluable 开头的字符串"
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

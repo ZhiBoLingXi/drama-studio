@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "drama-studio/defect-register/v0",
+  "generatedBy": "drama_tools.py defects build",
+  "basedOn": [
+    "RC-box-1A"
+  ],
+  "defects": [
+    {
+      "defectId": "box-liu-never-saw",
+      "title": "刘叔每周去王姨家，三年没见过箱子",
+      "defectKind": [
+        "internal_conflict"
+      ],
+      "loadBearing": true,
+      "loadBearingBasis": [
+        "function_sentence_step"
+      ],
+      "records": [
+        {
+          "checkId": "RC-box-1A",
+          "q": 5,
+          "landsOn": "F-box-1.A.s2"
+        }
+      ],
+      "disposition": {
+        "to": "decision",
+        "ref": "D-001"
+      }
+    }
+  ]
+}

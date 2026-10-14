@@ -47,7 +47,7 @@ def main():
         if path.suffix == ".json":
             try:
                 schema = json.loads(path.read_text(encoding="utf-8"))
-                if name.startswith("schemas/examples/"):
+                if name.startswith(("schemas/examples/", "schemas/data/")):
                     continue
                 if not name.startswith("schemas/") or schema.get("$id") != schema.get("properties", {}).get("schemaVersion", {}).get("const"):
                     failures.append(f"Bundled JSON must be a schema with matching $id: {name}")

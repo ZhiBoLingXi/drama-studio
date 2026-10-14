@@ -1,0 +1,118 @@
+{
+  "schemaVersion": "drama-studio/dialogue-plan/v0",
+  "episode": 3,
+  "planRevision": "v1",
+  "basedOn": {
+    "episodePlan": "episode-plan-003",
+    "target": "town-dialogue-target@v0.1"
+  },
+  "infoLedger": [
+    {
+      "infoId": "I1",
+      "factId": "I1-f1",
+      "carriedBy": {
+        "exchangeIds": [
+          "X-T1-02"
+        ]
+      }
+    }
+  ],
+  "scenes": [
+    {
+      "sceneId": "3-2",
+      "participants": [
+        "老陈",
+        "仓管"
+      ],
+      "observers": [],
+      "topics": [
+        {
+          "topicId": "T1",
+          "about": "老陈问箱子的去处",
+          "situation": {
+            "speakerWants": "弄清箱子在不在",
+            "listenerKnows": "仓管知道三年前退过",
+            "relation": "办事的对来问的",
+            "powerDirection": "up",
+            "addresseeIsChild": false,
+            "emotion": {
+              "老陈": "急",
+              "仓管": "平静"
+            },
+            "audienceLearns": [
+              "I1-f1"
+            ]
+          },
+          "shape": {
+            "turns": "一方问另一方短答",
+            "lineLength": {
+              "老陈": "完整句",
+              "仓管": "短"
+            },
+            "reason": "老陈急（emotion），仓管只按登记簿答（listenerKnows）",
+            "citesSituation": [
+              "emotion",
+              "listenerKnows"
+            ]
+          },
+          "segments": [
+            {
+              "segmentId": "T1-s1",
+              "between": [
+                "老陈",
+                "仓管"
+              ],
+              "closer": {
+                "by": "仓管",
+                "kind": "line",
+                "how": "报出签收人"
+              }
+            }
+          ],
+          "exchanges": [
+            {
+              "exchangeId": "X-T1-01",
+              "segmentId": "T1-s1",
+              "speaker": "老陈",
+              "addressee": "仓管",
+              "move": "问",
+              "carries": []
+            },
+            {
+              "exchangeId": "X-T1-02",
+              "segmentId": "T1-s1",
+              "speaker": "仓管",
+              "addressee": "老陈",
+              "move": "答",
+              "carries": [
+                "I1-f1"
+              ],
+              "oneItemPerLine": true,
+              "givesReason": false
+            }
+          ],
+          "interruptedBy": null,
+          "exemplars": {
+            "positives": [
+              {
+                "ref": "TPL-TOWN-01#EX-0001",
+                "source": "corpus",
+                "maskedLines": [
+                  "〔甲〕，我是〔机构〕的，来问问〔事〕。"
+                ]
+              }
+            ],
+            "contrast": []
+          }
+        }
+      ]
+    }
+  ],
+  "deviationsFromOutline": [],
+  "changeProposals": [
+    {
+      "targetLayer": "C4",
+      "default": "按画面写，不加台词"
+    }
+  ]
+}

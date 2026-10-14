@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/answers/v0",
+  "title": "问题单的回答记录（追问单用 landsOn，对话问题单用 quoteRef）",
+  "description": "outcome 只是摘要，不作排序或通过依据；informational 问不参与 outcome。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "checkId",
+    "target",
+    "questionsVersion",
+    "answers",
+    "outcome"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/answers/v0"
+    },
+    "checkId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "episode": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "集号：整数，或拆集后的「6A」这类字符串"
+        }
+      }
+    },
+    "questionsVersion": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+@v[0-9]+$"
+    },
+    "cardRevisions": {
+      "type": "object"
+    },
+    "promptVersion": {
+      "type": [
+        "object",
+        "string"
+      ]
+    },
+    "answers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/answer"
+      },
+      "minItems": 1
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "fail_inherited",
+        "pass_with_unverified"
+      ]
+    },
+    "closes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "defectId"
+        ],
+        "properties": {
+          "defectId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confirmedBy": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "retiresWith": {
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "string"
+        ]
+      }
+    },
+    "leavesOpen": {
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "string"
+        ]
+      }
+    },
+    "mapErrata": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "unverifiedList": {
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "string"
+        ]
+      }
+    },
+    "supersedes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "readScope": {
+      "type": [
+        "string",
+        "array"
+      ]
+    },
+    "askedSubset": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "任务声明的问题子集；不在子集里的问不要求作答（D6-0 修正点 #73）"
+    },
+    "scopeOfQuestions": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "旧写法，同 askedSubset"
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "answer": {
+      "type": "object",
+      "required": [
+        "q",
+        "holds",
+        "reason"
+      ],
+      "properties": {
+        "q": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "landsOn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quoteRef": {
+          "type": "object",
+          "required": [
+            "line",
+            "quote"
+          ],
+          "properties": {
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "quote": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "holds": {
+          "type": "string",
+          "enum": [
+            "holds",
+            "notHolds",
+            "not_evaluable",
+            "n/a"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "realityRef": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ledgerRef": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "defectKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defectKind": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "loadBearing": {
+          "type": "boolean"
+        },
+        "loadBearingBasis": {
+          "type": "string",
+          "enum": [
+            "stated_in_record",
+            "has_downstream",
+            "function_sentence_step"
+          ]
+        },
+        "loadBearingWhy": {
+          "type": "string"
+        },
+        "inheritedFrom": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inheritedAt": {
+          "type": "object",
+          "required": [
+            "q",
+            "landsOn"
+          ],
+          "properties": {
+            "q": {
+              "type": "integer"
+            },
+            "landsOn": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "patch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disposition": {
+          "type": "object",
+          "required": [
+            "to"
+          ],
+          "properties": {
+            "to": {
+              "type": "string",
+              "enum": [
+                "confirmed_gone",
+                "license",
+                "decision",
+                "leaves_open"
+              ]
+            },
+            "ref": {
+              "type": [
+                "string",
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "because": {
+          "type": "string",
+          "enum": [
+            "no_card",
+            "card_says_not_found",
+            "cannot_answer"
+          ]
+        },
+        "leaning": {
+          "type": "string",
+          "enum": [
+            "against",
+            "for",
+            "none"
+          ]
+        },
+        "searchScope": {
+          "type": "object",
+          "required": [
+            "files",
+            "method"
+          ],
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "method": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "notAsked": {
+          "type": "boolean"
+        },
+        "targetClause": {
+          "type": "string"
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

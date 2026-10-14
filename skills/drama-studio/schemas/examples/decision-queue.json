@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "drama-studio/decision-queue/v0",
+  "entries": [
+    {
+      "id": "D-001",
+      "kind": "license",
+      "raisedAt": {
+        "layer": "C3a",
+        "runId": "run-c3a-02"
+      },
+      "question": "王姨三年没说箱子的事：按现实改掉，还是作为戏剧假定保留？",
+      "options": [
+        {
+          "optionId": "keep",
+          "text": "保留，登记为戏剧假定",
+          "losesFunctions": []
+        },
+        {
+          "optionId": "rewrite",
+          "text": "改成王姨第一年就说了",
+          "losesFunctions": [
+            {
+              "functionId": "F-box-1",
+              "half": "老陈以为东西早到了"
+            }
+          ]
+        }
+      ],
+      "default": "keep",
+      "defaultReason": "保留用户给定的设定，不替主创删功能",
+      "affects": [
+        "F-box-1",
+        "L-obj-001",
+        "ep3"
+      ],
+      "status": "pending",
+      "humanWords": null
+    }
+  ]
+}

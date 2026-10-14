@@ -66,22 +66,37 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | `drama_tools.py doctor` | 检查本地工具能否运行；不检查 mali-story 连接 |
 | `drama_tools.py init-project <项目> --title <剧名>` | 建本地项目目录与 `.drama/project.json`，不建远端项目 |
 | `drama_tools.py status <项目>` | 从本地回执、运行和快照给出下一步（第一行），接续时先跑 |
-| `drama_tools.py context-pack <项目> --task … --selection … --role … --budget …` | 按选材清单从本地缓存、知识卡和 `.drama/`、`runs/` 文件组装快照，超预算退出码 2 |
-| `drama_tools.py contract-check <对象> <文件>` | 校验任务、选材、快照、审读记录、交接、回执、知识卡的格式与脚本规则 |
+| `drama_tools.py context-pack <项目> --task … --selection … --role … --budget …` | 按选材清单从本地缓存、知识卡和 `.drama/`、`runs/` 文件组装快照，超预算退出码 2；冷读只许一项本集材料，C5a 要分集计划容量 `fits` 或带默认的提案，C5b 要对话表过 `contract-check`；`--exemplars`／`--contrast-pairs` 按话题装样本，装不下的整条列入 omitted |
+| `drama_tools.py contract-check <对象> <文件>` | 校验任务、选材、快照、审读记录、交接、回执、知识卡及集纲层、台词层对象的格式与脚本规则；`--records`、`--defects`、`--cards`、`--questions` 补跨文件规则 |
 | `drama_tools.py receipt record <项目> <响应> --operation … --request-id … --input …` | 把保存下来的 mali-story 响应记成回执 |
 | `drama_tools.py receipt pending <项目>` | 列出结果未知的写入及对账办法 |
 | `drama_tools.py receipt cache <项目> <读回分块…>` | 把 `read_page` 读回的全文核对指纹后存进 `.drama/cache/` |
 | `drama_tools.py receipt show <项目> <requestId>` | 显示一份回执及其校验结果 |
-| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、声音卡、台词遍、台词读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。不通过退出码 2；只看记录，不评内容 |
+| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、声音卡、台词遍、台词读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。项目有 `planning/season-plan.json` 时集纲另核集纲层七条，有对话表记录时正文改核台词层规则（启用的一侧输出 `ruleSet: outline-layer`／`episodeRuleSet: dialogue-layer`）。不通过退出码 2；只看记录，不评内容 |
 | `drama_tools.py impact <项目> --page <pageId> --revision <n>` | 前文出了新修订后，标出引用旧修订的快照与运行（也支持 `--slot`、`--artifact`、`--card`） |
-| `drama_tools.py episode-check <正文>` | 剧集统计；只有给了 `--config` 或显式阈值才核对规格 |
-| `drama_tools.py dup-check --new <新稿> --source <参考>` | 汉字字面重合统计，不是原创证明 |
+| `drama_tools.py episode-check <正文>` | 剧集统计；只有给了 `--config` 或显式阈值才核对规格；`--speech` 加口播汉字数（不估时） |
+| `drama_tools.py dup-check --new <新稿> --source <参考>` | 汉字字面重合统计，不是原创证明；`--list-hits --k 8` 逐条列出命中位置 |
 | `drama_tools.py reference-check <模板详情.json>` | 检查拉片模板详情的集序与覆盖 |
 | `drama_tools.py knowledge validate <项目>` | 校验项目知识卡 |
 | `drama_tools.py knowledge search <项目> …` | 按类型、工位、用途、关键词检索知识卡 |
 | `drama_tools.py knowledge show <项目> <cardId>` | 显示一张知识卡并核对本地来源文件 |
 | `drama_tools.py import-project preview <项目> --listing …` | 迁移前旧稿成批存为候选的计划预览（只读） |
 | `drama_tools.py import-project apply <项目> --listing … --out …` | 按预览生成逐条保存输入，不调用 mali-story |
+| `drama_tools.py ledger {init\|merge\|apply\|replay\|check\|diff\|knows\|view\|stats} …` | 底账：建、分段合并、应用 delta、按集重放、一致性规则、两版差异、某人到某集知道什么、总账视图、统计 |
+| `drama_tools.py plan-check <分集计划> --ledger …` | 分集计划的脚本规则（在场、说话人知情、delta 有场拍支撑）；`--characters` 只报不拦 |
+| `drama_tools.py season-plan-check <季编排> --function-map …` | 季编排对功能地图、容量与决定队列的脚本规则 |
+| `drama_tools.py capacity {season\|episode\|text} …` | 季编排粗估、分集计划复核、正文精估，一套公式两口径并报；超出写提案占位，退出码 0 |
+| `drama_tools.py decision {add\|list\|decide\|check} …` | 决定队列：登记（带默认）、列出、记主创决定（须原话）、核对 |
+| `drama_tools.py function-map {check\|merge\|topics} …` | 功能地图的脚本规则、分段合并、检索题目归并（只归并不检索） |
+| `drama_tools.py defects build --records …` | 从回答记录生成缺口登记表（回答记录是唯一来源） |
+| `drama_tools.py check-answers <回答记录…>` | 按问题单核回答记录格式；覆盖与 `--cross` 跨记录一致性只报不拦 |
+| `drama_tools.py retell-check <复述> --plan <计划>` | 冷读复述对照计划的信息事实与收尾事件：retold／partial／missing |
+| `drama_tools.py answers-consistency <记录甲> <记录乙>` | 两份回答记录同一落点的三态差异（只报） |
+| `drama_tools.py dialogue-plan-check <对话表> --episode-plan … --knows …` | 对话表的脚本规则（段、收尾、承载、listenerKnows 来自底账） |
+| `drama_tools.py plan-text-consistency <正文对照表> --dialogue-plan … --episode-plan …` | 正文对照对话表（含 `verbatimFrom` 行）：说话人序列、话题段边界、收尾、承载关键词 |
+| `drama_tools.py dialogue-diagnose <正文> --plan-text-map …` | 台词信号与位置、处境；不给区间判定 |
+| `drama_tools.py feedback-ingest <反馈文件>` | 编剧反馈记成 writer-note 并按层级路由（派生物为草稿） |
+| `drama_tools.py corpus {segment\|label\|filter\|lexicon\|rate} …` | 语料库的脚本部分：切交换、标注格式、过滤、题材禁词扫描、量语速与停顿；不联网取数 |
 
 实际执行时把脚本也解析为安装目录下的绝对路径。工具只用 Python 3.10+ 标准库。剧集检查默认只统计，`passed: null`，不能称为质量通过。已有明确项目规格才使用 `--config` 或显式阈值；未指定的规则不启用，不为消除报告而擅改规格。历史 AIGC 规则仅在 `--preset legacy-aigc` 下启用。
 

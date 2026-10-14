@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/retell-record/v0",
+  "title": "冷读复述记录（读正文或读分集计划 events）",
+  "description": "开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "target",
+    "readingScope",
+    "events",
+    "unclear",
+    "promptVersion"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/retell-record/v0"
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "kind",
+        "episode"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "episode_text",
+            "episode_plan_events"
+          ]
+        },
+        "episode": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "集号：整数，或拆集后的「6A」这类字符串"
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "readingScope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "promptVersion": {
+      "type": [
+        "object",
+        "string"
+      ],
+      "description": "随包冷读提示词的版本；版本不同的两次冷读不直接比"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "what"
+        ],
+        "properties": {
+          "order": {
+            "type": "integer"
+          },
+          "who": {
+            "type": [
+              "array",
+              "string"
+            ]
+          },
+          "what": {
+            "type": "string",
+            "minLength": 1
+          },
+          "why": {
+            "type": "string"
+          },
+          "sourceLine": {
+            "type": "string"
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "onlyFromPicture": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "unclear": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "what"
+        ],
+        "properties": {
+          "what": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "characters": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "stopsAt": {
+      "type": "string"
+    },
+    "factRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/factRef"
+      },
+      "description": "读者或标注者注明的事实引用；也可放在单独的标注文件里"
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "factRef": {
+      "type": "object",
+      "required": [
+        "factId",
+        "retellRefs"
+      ],
+      "properties": {
+        "factId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "retold",
+            "partial",
+            "missing"
+          ]
+        },
+        "retellRefs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        },
+        "why": {
+          "type": "string"
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

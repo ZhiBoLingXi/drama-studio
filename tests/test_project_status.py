@@ -1676,7 +1676,10 @@ class InvariantTests(unittest.TestCase):
         run = subprocess.run([sys.executable, "-B", str(TOOL), "doctor"], capture_output=True, text=True)
         result = json.loads(run.stdout)
         self.assertEqual((run.returncode, result["network_used"], result["models_called"], result["mali_story"]), (0, False, False, "not_checked"))
-        self.assertEqual(result["contracts"], ["context-snapshot", "knowledge-card", "remote-receipt", "review-record", "run-handoff", "selection", "task"])
+        old = ["context-snapshot", "knowledge-card", "remote-receipt", "review-record", "run-handoff", "selection", "task"]
+        self.assertLessEqual(set(old), set(result["contracts"]))  # D6-1 adds contracts; the D0 ones stay
+        names = sorted(path.name[:-len(".schema.json")] for path in (ROOT / "skills/drama-studio/schemas").glob("*.schema.json"))
+        self.assertEqual(result["contracts"], names)
 
     def test_module_imports_only_the_standard_library_and_sibling_checks(self):
         source = (ROOT / "skills/drama-studio/scripts/checks/project_status.py").read_text(encoding="utf-8")

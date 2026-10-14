@@ -12,7 +12,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.3.6` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.4.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -251,6 +251,44 @@ python3 -B skills/drama-studio/scripts/drama_tools.py season-check ../my-drama -
 - 首读有多份时，至少一份封存即可，其余未封存的记警告。
 - 只有 `not_sent` 回执时判不通过；用户明确同意只交本地草稿、且项目没绑定远端时加 `--allow-offline`，改记警告。
 - 退出码 0 为全部通过，2 为有失败（看 `failures`、`failuresByRule`、`failedEpisodes`），1 为输入错误。输出带 `remote_verified: false`：通过只说明记录齐全、彼此一致，不说明正文写得好，也不证明远端已保存。
+- 新旧规则并存（0.4.0）：启用了新规则的一侧在输出里写明——集纲侧 `ruleSet: outline-layer`，正文侧 `episodeRuleSet: dialogue-layer`；没启用的一侧不加这个键。没有 `planning/season-plan.json`、也没有对话表记录的项目只跑上面的旧规则，输出与 0.3.6 逐字节相同。新规则读 `planning/`、`.drama/checks/`、`.drama/tasks/` 下的 JSON 记录（任意层级），按 `schemaVersion`／`schema` 标记或 `reproduceCommand` 里的 drama_tools 子命令认出是什么记录，集号取记录自己的 `episode`／`target.episode`、所核文件名或记录文件名。
+- 集纲层（项目有 `planning/season-plan.json`）：旧集纲规则照查，另加 `outline-season-assigned`（本集在季编排里）、`outline-ledger-delta`（有本集分集计划，`ledgerDelta` 有 reads／writes，`writes[].supportedBy` 是本集的场或拍）、`outline-capacity`（`capacity.status` 为 `fits`，或 `proposal:<id>` 且决定队列里该条有 `default`）、`outline-reality-refs`（`realityRefs` 都在底账里且不是 `contested`；`unverified` 只计数，记在 `perOutline` 的 `unverifiedRealityRefs`）、`outline-retell`（有 `target.kind: episode_plan_events` 的冷读复述）；全项目查一次 `outline-decision-default`（未定的决定都有 `default`）与 `outline-patch-cap`（功能地图里 `selected` 的候选或未退役的底账条目 `patchCount` 到 3 及以上，即到 2 之后又原地修订；被否的旧候选的计数是历史，不查）。
+- 台词层（项目有对话表记录）：不再查 `voice-card`、`dialogue-pass`、`dialogue-read`，改查 `dialogue-plan`（有本集对话表且过 `contract-check`）、`target-ref`（对话表 `basedOn.target` 引用项目里的台词目标）、`plan-text-align`、`cold-retell`（`target.kind: episode_text` 的复述）、`situation-check`（对话问题单的回答记录）、`consistency-record`（两份以上处境核对时要有 `answers-consistency` 记录）、`retell-after-revise`（冷读运行之后又有 C5 运行时，最后一次 C5 之后要再有冷读运行）、`constraint-origin`、`no-numeric-dialogue-constraint`（`.drama/tasks/` 里本集作者运行的任务约束；找不到任务记录只记警告）、`fixlist-no-lines`（修订单不写“人物：台词”格式的行）、`dup-two-tier`（8 字与 13 字两档 `dup-check --list-hits` 记录）、`genre-lexicon`（`corpus lexicon` 记录）。
+
+### 集纲层与台词层的只读工具（0.4.0）
+
+这些命令都只读本地文件、不联网、不调模型，输出 JSON 并带可直接运行的 `reproduceCommand`（drama_tools 子命令形式，文件参数为绝对路径）；`--help` 看参数。退出码同上：0 完成（含只报不拦的报告与容量提案），1 输入错误，2 显式规则不满足。对象的 Schema 与合成示例在 `skills/drama-studio/schemas/`，问题单、禁词表、题材词表在 `schemas/data/`。
+
+```sh
+T=skills/drama-studio/scripts/drama_tools.py
+python3 -B $T ledger check planning/ledger/ledger-ep000.json            # 底账规则；另有 init/merge/apply/replay/diff/knows/view/stats
+python3 -B $T ledger replay planning/ledger/ledger-ep000.json --delta d5.json --delta d6.json --at 6
+python3 -B $T function-map check planning/function-map.json --records planning/reality-check/*.json
+python3 -B $T function-map topics planning/function-map.json           # 检索题目归并，只归并不检索
+python3 -B $T defects build --records planning/reality-check/*.json    # 缺口登记表由回答记录生成
+python3 -B $T check-answers planning/reality-check/RC-1.json --cross
+python3 -B $T season-plan-check planning/season-plan.json --function-map planning/function-map.json --media planning/media-profile.json
+python3 -B $T plan-check planning/episode-plans/ep-006.json --ledger planning/ledger/ledger-ep005.json
+python3 -B $T capacity episode planning/episode-plans/ep-006.json --media planning/media-profile.json --corpus corpus/exchanges.jsonl
+python3 -B $T capacity text episodes/ep-006.md --media planning/media-profile.json
+python3 -B $T decision check planning/decisions.json                     # 另有 add/list/decide
+python3 -B $T retell-check .drama/checks/retell-plan-006.json --plan planning/episode-plans/ep-006.json
+python3 -B $T dialogue-plan-check planning/dialogue-plans/ep-006.json --episode-plan planning/episode-plans/ep-006.json --knows knows-ep006.json
+python3 -B $T plan-text-consistency plan-text-map-006.json --dialogue-plan planning/dialogue-plans/ep-006.json --episode-plan planning/episode-plans/ep-006.json
+python3 -B $T dialogue-diagnose episodes/ep-006.md --plan-text-map plan-text-map-006.json
+python3 -B $T answers-consistency .drama/checks/check-006-a.json .drama/checks/check-006-b.json
+python3 -B $T feedback-ingest feedback/comments.json
+python3 -B $T corpus segment raw/*.md                                   # 另有 label/filter/lexicon/rate；fetch 在 D6-4
+python3 -B $T dup-check --list-hits --k 8 --new episodes/ep-006.md --source-dialogue-plan planning/dialogue-plans/ep-006.json
+python3 -B $T episode-check episodes/ep-006.md --speech                 # 口播汉字数，不估时
+python3 -B $T contract-check function-map planning/function-map.json --records planning/reality-check/*.json
+python3 -B $T contract-check answers planning/reality-check/RC-1.json --cards knowledge/cards
+```
+
+- `contract-check` 的跨文件规则要给上下文才核，没给时在 `notEvaluated` 里写明：`--records`（功能地图选定候选引用的回答记录里不能有没有去处的承重缺口）、`--defects`（回答记录或缺口登记表，供底账戏剧假定条目查缺口类型）、`--cards`（知识卡文件或目录，空卡不能当 `holds` 的出处）、`--questions`（项目问题单）、`--base-questions`（项目问题单只能增问不能删问）。
+- `capacity` 超出时写决定队列的提案占位，退出码仍是 0；所有输出没有 within／outside 一类的区间判定字段。
+- `context-pack --role` 新增 `function_mapper`、`ledger_keeper`、`season_planner`、`dialogue_designer`（C5a）、`situation_checker`、`cold_reader`。`cold_reader` 包只能有一项 `project_facts`（本集正文或本集分集计划的 events），不能有 `current_plan` 与知识卡；`dialogue_designer` 包要装本集分集计划，其 `capacity.status` 为 `fits`，或 `proposal:<id>` 且该提案（装入的或 `planning/` 下的决定队列）有 `default`；任务 `layer` 为 `C5b` 时包里要有通过 `contract-check dialogue-plan` 的对话表。违反都是退出码 2。
+- `context-pack --exemplars <exchanges.jsonl> --contrast-pairs <contrast-pairs.jsonl>`（只用于 C5a 与 C5b，文件须在项目的 `.drama/`、`runs/` 或 `knowledge/` 里）：按装入的对话表各话题引用的样本装包，每话题至多 2 个语料正例和 1 个对照对；先装各话题第一个正例，再装对照对，再装第二个正例，装到预算为止，装不下的整条记入 `omitted`（`reason: budget`），从不截断单条。样本以 `local_file` 加字符区间进 `current_plan` 分区；输出 `samples` 记装了几条、因预算留下几条、对话表引用了却在文件里找不到的样本。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 

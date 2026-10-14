@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "drama-studio/contrast-pair/v0",
+  "pairId": "CP-01",
+  "situation": {
+    "function": "交代",
+    "relation": "办事人员对群众",
+    "emotion": {
+      "a": "平静",
+      "b": "防备"
+    }
+  },
+  "positive": {
+    "exchangeRef": "TPL-TOWN-01#EX-0001",
+    "walkthrough": "三件事分三次出，她每次都有机会辩"
+  },
+  "negative": {
+    "location": {
+      "file": "drafts/ep-002.md",
+      "lines": "L12–L14"
+    },
+    "summary": "办事员一句说完身份、问题、通知"
+  },
+  "whyNotHere": "防备中的人不会站着听完三件事不插嘴",
+  "signals": [
+    "MULTI_ITEM_LINE"
+  ],
+  "provenance": {
+    "negativeFrom": "check_and_retell",
+    "humanNote": null
+  },
+  "scope": {
+    "level": "project",
+    "projectId": "local-demo"
+  }
+}

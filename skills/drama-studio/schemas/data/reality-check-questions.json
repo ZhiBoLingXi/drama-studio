@@ -1,0 +1,164 @@
+{
+  "id": "reality-check-questions",
+  "version": "v1",
+  "kind": "reality-check",
+  "answerStates": [
+    "holds",
+    "notHolds",
+    "not_evaluable",
+    "n/a"
+  ],
+  "examplesNote": "v1 题干未改一字；第 3、4、12、13 问括号里的例子原出自试点项目，随包版换成了中性的小镇例子（例子只帮助理解题意，不是题干）。",
+  "questions": [
+    {
+      "q": 1,
+      "group": "A",
+      "title": "更省事的做法",
+      "text": "这个人要达到他的目的，现实里最省事的做法是什么？他为什么没做？（答案必须是一个具体障碍，「他没想到」不算）",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 2,
+      "group": "A",
+      "title": "图什么",
+      "text": "这一步做成了他得到什么？做不成失去什么？（对手每一步必问；答不出就是没目的）",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 3,
+      "group": "A",
+      "title": "心理前提",
+      "text": "这个年龄、这种处境的人会这样想、这样做吗？（老人瞒一件事好几年、少年独自守着一个秘密、店主亲自出面讨价）",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 4,
+      "group": "B",
+      "title": "机构的必然动作",
+      "text": "这个机构按常规接下来必然会做什么？写了没有？没写的话它为什么没做？（派出所接到邻居报警、街道发现孩子长期没上学）",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 5,
+      "group": "B",
+      "title": "其他知情人",
+      "text": "这段时间里其他知道这件事的人会做什么？逐个列。",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 6,
+      "group": "B",
+      "title": "多久被发现",
+      "text": "这件事按现实多久会被发现？谁最先发现？为什么到现在没被发现？",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 7,
+      "group": "C",
+      "title": "怎么知道的",
+      "text": "这个人是怎么知道这件事的？信息链上每一环（谁告诉的、什么时候、在不在场）都有吗？",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 8,
+      "group": "C",
+      "title": "怎么到这儿的",
+      "text": "这件东西／这笔钱是怎么到这里的？经过谁的手？留了什么痕迹？谁有权动？",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 9,
+      "group": "C",
+      "title": "名目后面的实体规则",
+      "text": "这个程序的名字后面，谁有资格、几天、什么条件、谁经手、留什么记录？出处是什么？",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 10,
+      "group": "C",
+      "title": "物理与技术前提",
+      "text": "这个前提成立吗？出处？",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 11,
+      "group": "D",
+      "title": "巧合",
+      "text": "这是不是用来解难题的巧合？（开场的巧合可以有一个；解难题的巧合不行）",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 12,
+      "group": "D",
+      "title": "后果",
+      "text": "按现实这件事的后果写了没有？（冒领包裹、私拆他人信件、当众公开别人的欠条、孩子的照片被传到网上）",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 13,
+      "group": "E",
+      "title": "空白期总账",
+      "text": "这段时间里每一方做了什么、没做什么、为什么？后来加在这段时间上的每一样东西（住在镇上的亲戚、定期寄来的钱、知情的邻居、空着的老房子）一起算过吗？对着时间线账的总账视图答。",
+      "answerKind": "tristate",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 14,
+      "group": "E",
+      "title": "去掉实现，功能还成不成",
+      "text": "不用这个实现，功能能不能用别的方式完成？（能的话，这个实现是被画面绑架的，候选里要有另一个）",
+      "answerKind": "informational",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 15,
+      "group": "E",
+      "title": "是不是用户给定",
+      "text": "这个前提是用户给的吗？如果是，上面每一问同样问过了吗？",
+      "answerKind": "informational",
+      "source": "outline-arch §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 16,
+      "group": "F",
+      "title": "说话人／行动者凭什么知道这件事",
+      "text": "这一步里行动的人此刻凭什么知道他据以行动的事实？信息来源是哪一环？",
+      "answerKind": "tristate",
+      "source": "stage-d-report §十 2",
+      "addedIn": "v1"
+    }
+  ],
+  "formatNotes": [
+    "v1 题干与 D6-0 试用版逐字一致（d6-1-decisions #2：D6-1 不改题干，题干合并与补问在 D6-2 定为 v2）。",
+    "第 1–15 问抄自集纲方案 §6.3；第 16 问来源 stage-d 报告 §十 第 2 条，落点是候选实现／关键动作，题干与对话问题单第 16 问各写各的。",
+    "第 14、15 问 answerKind: informational：照答但不参与 outcome（D6-0 修正点 #16）。",
+    "项目可增问不可删；增问带 source，drafted 问带 noteId。"
+  ]
+}

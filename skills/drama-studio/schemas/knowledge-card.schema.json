@@ -121,6 +121,16 @@
               },
               "rights": {
                 "type": "string"
+              },
+              "sourceTier": {
+                "type": "string",
+                "enum": [
+                  "official",
+                  "transcribed",
+                  "superseded",
+                  "commercial",
+                  "news"
+                ]
               }
             }
           }
@@ -170,6 +180,51 @@
             "minLength": 1
           },
           "minItems": 1
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text",
+              "support"
+            ],
+            "properties": {
+              "ruleId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "support": {
+                "type": "string",
+                "enum": [
+                  "sourced",
+                  "inferred",
+                  "not_found"
+                ]
+              }
+            }
+          }
+        },
+        "caseFacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Optional: facts of a public case the card relies on"
+        },
+        "distanceFromOurs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Optional: where the case differs from our story"
         }
       }
     },
@@ -256,6 +311,15 @@
         "minLength": 1
       },
       "description": "Honest unknowns that no other field can express"
+    },
+    "coverage": {
+      "type": "string",
+      "enum": [
+        "sourced",
+        "partial",
+        "empty"
+      ],
+      "description": "Optional (d6-1-decisions #3): an empty card cannot back a holds answer"
     }
   },
   "$defs": {

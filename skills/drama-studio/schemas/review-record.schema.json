@@ -122,6 +122,37 @@
               "revise",
               "note"
             ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "finding",
+              "preference"
+            ],
+            "description": "Optional (D6): a finding without any cite is a preference and stays out of the revision list"
+          },
+          "cites": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "functionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ledgerId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "targetClause": {
+                "type": "string",
+                "minLength": 1
+              },
+              "factEvidence": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "description": "Optional (D6): what the finding rests on; at least one of the four, otherwise kind: preference"
           }
         }
       }
@@ -181,6 +212,40 @@
         "minLength": 1
       },
       "description": "Honest unknowns that no other field can express"
+    },
+    "adjudications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "findingIds",
+          "decision",
+          "reason"
+        ],
+        "properties": {
+          "findingIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "decision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "by": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Optional (D6): how conflicting findings were settled; never carries replacement text"
     }
   },
   "$defs": {

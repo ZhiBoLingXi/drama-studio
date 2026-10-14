@@ -1,0 +1,489 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/dialogue-plan/v0",
+  "title": "对话表（C5a）：话题、处境、走法、来回与收尾；不写措辞，不写估数",
+  "description": "infoLedger 只引用分集计划的 infoId／factId 并加 carriedBy；不得有 estimates 或任何配额字段。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "episode",
+    "planRevision",
+    "infoLedger",
+    "scenes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/dialogue-plan/v0"
+    },
+    "episode": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "集号：整数，或拆集后的「6A」这类字符串"
+    },
+    "planRevision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "basedOn": {
+      "type": [
+        "object",
+        "string"
+      ]
+    },
+    "infoLedger": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "infoId",
+          "factId",
+          "carriedBy"
+        ],
+        "properties": {
+          "infoId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "factId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "carriedBy": {
+            "type": "object",
+            "required": [],
+            "properties": {
+              "exchangeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "pictureReason": {
+                "type": [
+                  "object",
+                  "string"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "sceneId",
+          "participants",
+          "topics"
+        ],
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "observers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/topic"
+            }
+          },
+          "pictureBeats": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "deviationsFromOutline": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "changeProposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "targetLayer",
+          "default"
+        ],
+        "properties": {
+          "targetLayer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "topic": {
+      "type": "object",
+      "required": [
+        "topicId",
+        "situation",
+        "shape",
+        "segments",
+        "exchanges"
+      ],
+      "properties": {
+        "topicId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "about": {
+          "type": "string"
+        },
+        "situation": {
+          "type": "object",
+          "required": [
+            "speakerWants",
+            "listenerKnows",
+            "relation",
+            "emotion"
+          ],
+          "properties": {
+            "speakerWants": {
+              "type": "string",
+              "minLength": 1
+            },
+            "listenerKnows": {
+              "type": [
+                "string",
+                "object"
+              ]
+            },
+            "relation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "powerDirection": {
+              "type": "string",
+              "minLength": 1
+            },
+            "addresseeIsChild": {
+              "type": "boolean"
+            },
+            "emotion": {
+              "type": "object"
+            },
+            "audienceLearns": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "shape": {
+          "type": "object",
+          "required": [
+            "turns",
+            "reason"
+          ],
+          "properties": {
+            "turns": {
+              "type": "string",
+              "minLength": 1
+            },
+            "lineLength": {
+              "type": [
+                "object",
+                "string"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "citesSituation": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "speakerWants",
+                  "listenerKnows",
+                  "relation",
+                  "powerDirection",
+                  "addresseeIsChild",
+                  "emotion",
+                  "audienceLearns"
+                ]
+              }
+            }
+          }
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segment"
+          },
+          "minItems": 1
+        },
+        "exchanges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exchange"
+          }
+        },
+        "interruptedBy": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "exemplars": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "positives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "ref",
+                  "source"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "corpus",
+                      "human",
+                      "project"
+                    ]
+                  },
+                  "maskedLines": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "contrast": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "no_exemplar": {
+              "type": [
+                "boolean",
+                "string",
+                "object"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "required": [
+        "segmentId",
+        "between",
+        "closer"
+      ],
+      "properties": {
+        "segmentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "between": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "closer": {
+          "type": "object",
+          "required": [
+            "by",
+            "kind"
+          ],
+          "properties": {
+            "by": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "type": "string",
+              "minLength": 1
+            },
+            "how": {
+              "type": "string"
+            },
+            "why": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "exchange": {
+      "type": "object",
+      "required": [
+        "exchangeId",
+        "speaker",
+        "move",
+        "carries"
+      ],
+      "properties": {
+        "exchangeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "segmentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "speaker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "addressee": {
+          "type": "string"
+        },
+        "move": {
+          "type": "string",
+          "minLength": 1
+        },
+        "carries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "oneItemPerLine": {
+          "type": "boolean"
+        },
+        "givesReason": {
+          "type": "boolean"
+        },
+        "verbatimFrom": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "whyNoAddressee": {
+          "type": "string"
+        },
+        "beatRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -327,5 +327,59 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(self.run_tool("episode-check", path)[0], 1)
 
 
+class DupListHitsTests(unittest.TestCase):
+    """dup_check.py --list-hits：逐条命中与行号；旧的查重率输出不变。"""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.base = Path(temp.name)
+        self.new = self.base / "new.md"
+        self.new.write_text("场1-1 镇上 日 内\n人物：老陈\n老陈：今天天气真好适合出门走走看看风景啊。\n△老陈推门出去。\n", encoding="utf-8")
+
+    def hits(self, *args):
+        run = subprocess.run([sys.executable, "-B", str(ROOT / "skills/drama-studio/scripts/checks/dup_check.py"),
+                              "--new", str(self.new), "--list-hits", *map(str, args)], capture_output=True, text=True)
+        return run.returncode, json.loads(run.stdout or run.stderr)
+
+    def write(self, name, value):
+        path = self.base / name
+        path.write_text(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def test_corpus_jsonl_13_char_hits_carry_line_numbers(self):
+        corpus = self.write("corpus.jsonl", json.dumps({"lines": [{"text": "今天天气真好适合出门走走看看，风和日丽。"}]}, ensure_ascii=False) + "\n")
+        code, result = self.hits("--k", 13, "--source-corpus-jsonl", corpus)
+        self.assertEqual(code, 0)
+        self.assertGreaterEqual(result["hitCount"], 1)
+        self.assertEqual({h["line"] for h in result["hits"]}, {3})
+        self.assertIsNone(result["passed"])
+        self.assertIn("--list-hits", result["reproduceCommand"])
+
+    def test_packed_samples_only_corpus_source_counts(self):
+        plan = self.write("dp.json", {"scenes": [{"topics": [{"exemplars": {"positives": [
+            {"source": "corpus", "maskedLines": ["今天天气真好适合出门。"]},
+            {"source": "project", "maskedLines": ["推门出去推门出去推门出去"]}]}}]}]})
+        _, result = self.hits("--k", 8, "--source-dialogue-plan", plan)
+        self.assertGreaterEqual(result["hitCount"], 1)
+        self.assertFalse(any("推门出去" in h["ngram"] for h in result["hits"]))
+
+    def test_verbatim_lines_listed_separately(self):
+        source = self.write("src.md", "今天天气真好适合出门走走看看")
+        verbatim = self.write("map.json", {"verbatimFrom": [{"line": 3, "from": "writer-note WN-1"}]})
+        _, result = self.hits("--k", 13, "--source", source, "--exclude-verbatim", verbatim)
+        self.assertEqual(result["hitCount"], 0)
+        self.assertGreaterEqual(result["verbatimHitCount"], 1)
+
+    def test_no_source_is_input_error(self):
+        self.assertEqual(self.hits("--k", 8)[0], 1)
+
+    def test_rate_output_unchanged(self):
+        source = self.write("src.md", "今天天气真好适合出门走走看看")
+        run = subprocess.run([sys.executable, "-B", str(TOOL), "dup-check", "--new", str(self.new), "--source", str(source)],
+                             capture_output=True, text=True)
+        self.assertNotIn("hits", json.loads(run.stdout))
+
+
 if __name__ == "__main__":
     unittest.main()

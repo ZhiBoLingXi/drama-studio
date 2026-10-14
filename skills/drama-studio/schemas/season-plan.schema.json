@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/season-plan/v0",
+  "title": "季编排（C3c）：每集功能、粗估容量与超出时的动作",
+  "description": "估时只用于排序与触发动作，不作结论（数字不当裁判）。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "episodes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/season-plan/v0"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "basedOn": {
+      "type": [
+        "object",
+        "string"
+      ]
+    },
+    "episodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/episode"
+      },
+      "minItems": 1
+    },
+    "episodesBeforeAction": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/episode"
+      }
+    },
+    "threads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "plantId"
+        ],
+        "properties": {
+          "plantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "plantedAt": {
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "集号：整数，或拆集后的「6A」这类字符串"
+          },
+          "payAt": {
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "集号：整数，或拆集后的「6A」这类字符串"
+          }
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "episode": {
+      "type": "object",
+      "required": [
+        "episode",
+        "functions",
+        "capacity"
+      ],
+      "properties": {
+        "episode": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "集号：整数，或拆集后的「6A」这类字符串"
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "eventsRough": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "object"
+            ]
+          }
+        },
+        "star": {
+          "type": "boolean"
+        },
+        "capacity": {
+          "$ref": "#/$defs/capacity"
+        }
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "required": [
+        "estimateSec",
+        "targetSec",
+        "status"
+      ],
+      "properties": {
+        "infoCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pictureBeats": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estimateSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "targetSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "fits",
+            "exceeds"
+          ]
+        },
+        "action": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "rearrange",
+            "split",
+            "drop_function",
+            null
+          ]
+        },
+        "actionDetail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decisionRef": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "删线等需要主创定的动作所登记的决定队列条目"
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}
