@@ -293,20 +293,22 @@ class SeasonCheckTests(unittest.TestCase):
         self.assertEqual(self.rules(out), {"first-read"})
 
     def test_speakers_need_a_voice_card_in_the_package(self):
-        code, out = self.check(voice=False)
+        # D6-3 decision §2: voice-card, dialogue-pass and dialogue-read run only with --legacy-dialogue (was: always)
+        code, out = self.check("--legacy-dialogue", voice=False)
         self.assertEqual(self.rules(out), {"voice-card"})
         self.assertIn("大凤", out["failures"][0]["message"])
 
     def test_dialogue_pass_is_required_and_may_not_change_scene_headings(self):
-        code, out = self.check(polish="none")
+        # D6-3 decision §2: these three old rules run only with --legacy-dialogue (was: always)
+        code, out = self.check("--legacy-dialogue", polish="none")
         self.assertEqual(self.rules(out), {"dialogue-pass"})
         self.tearDown()
         self.setUp()
-        code, out = self.check(polish="touches_action")  # performance beats belong to this pass
+        code, out = self.check("--legacy-dialogue", polish="touches_action")  # performance beats belong to this pass
         self.assertEqual(code, 0, out["failures"])
         self.tearDown()
         self.setUp()
-        code, out = self.check(polish="touches_heading")
+        code, out = self.check("--legacy-dialogue", polish="touches_heading")
         self.assertEqual(self.rules(out), {"dialogue-pass"})
         self.assertIn("场头", out["failures"][0]["message"])
 
@@ -331,9 +333,10 @@ class SeasonCheckTests(unittest.TestCase):
         self.assertIn("first-read-sealed", {w["rule"] for w in out["warnings"]})
 
     def test_dialogue_read_is_required_unless_skipped(self):
-        code, out = self.check(dialogue_read=False)
+        # D6-3 decision §2: these three old rules run only with --legacy-dialogue (was: always)
+        code, out = self.check("--legacy-dialogue", dialogue_read=False)
         self.assertEqual(self.rules(out), {"dialogue-read"})
-        code, out = run("season-check", self.root, "--episodes", "2-3", "--skip-dialogue")
+        code, out = run("season-check", self.root, "--episodes", "2-3", "--legacy-dialogue", "--skip-dialogue")
         self.assertEqual((code, out["dialogueChecked"]), (0, False))
 
     def test_a_dialogue_read_package_takes_no_plan(self):

@@ -395,6 +395,9 @@ class PlanReviewCitesTests(Temp):
         doc["target"] = {"kind": "local_file", "id": target, "revision": None}
         doc.pop("additionalTargets", None)
         doc["findings"] = findings
+        # D6-3 changed this fixture on purpose: a review of an episode plan keeps only human-sourced preserved items, and
+        # the example's plain-string item is the pre-D6-3 form
+        doc["preserved"] = [{"item": item, "noteId": "WN-001"} for item in doc.get("preserved", [])]
         path = self.base / "review.json"
         path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
         return tool("contract-check", "review-record", path)

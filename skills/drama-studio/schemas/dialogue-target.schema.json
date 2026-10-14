@@ -33,12 +33,20 @@
       ]
     },
     "mediaProfile": {
-      "type": "string",
-      "minLength": 1
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "The project media profile; null means the bundled schemas/data/default-media-profile.json, as capacity uses it (D6-3 walkthrough #17)"
     },
     "corpusManifest": {
-      "type": "string",
-      "minLength": 1
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "The corpus manifest the target leans on; null when the project has no corpus yet, then noCorpusReason says why (D6-3 walkthrough #2)"
     },
     "checkQuestions": {
       "type": "string",
@@ -117,6 +125,11 @@
         "type": "string"
       },
       "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    },
+    "noCorpusReason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required when corpusManifest is null"
     }
   },
   "$defs": {

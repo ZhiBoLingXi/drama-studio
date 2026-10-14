@@ -267,6 +267,20 @@ def cmd_episode(args):
     return 0
 
 
+def text_target(args, media_fd):
+    """The target a text is compared with (D6-3 walkthrough #20): --target-sec, else the episode plan's capacity.targetSec
+    (--episode-plan), else the media profile's targetSecondsDefault (the bundled default without --media)."""
+    if args.target_sec is not None:
+        return {"targetSec": args.target_sec, "targetSecSource": "argument"}
+    if args.episode_plan:
+        plan = L.load_json(args.episode_plan, "分集计划")
+        value = number(((plan or {}).get("capacity") or {}).get("targetSec")) if isinstance(plan, dict) else None
+        if value is not None:
+            return {"targetSec": value, "targetSecSource": "episode_plan"}
+    return {"targetSec": media_fd.get("targetSecondsDefault"),
+            "targetSecSource": "media_profile" if args.media else "default_media_profile"}
+
+
 def cmd_text(args):
     _, media_fd = load_media(args.media, args.format)
     try:
@@ -295,7 +309,8 @@ def cmd_text(args):
         notes.append("媒介档案缺 grossCharsPerMinute（speechCharsPerEpisodeMin），口径乙算不了")
     L.emit({"ok": True, "entry": "text", "textFile": args.text_file, "speechChars": chars, "dialogueLinesCounted": lines,
             "perScene": [{"sceneId": sid, **v} for sid, v in per_scene.items()],
-            "estimateSecA": a, "estimateSecB": b, "formulas": {"A": FORMULA_TEXT_A, "B": FORMULA_TEXT_B},
+            "estimateSecA": a, "estimateSecB": b, **text_target(args, media_fd),
+            "formulas": {"A": FORMULA_TEXT_A, "B": FORMULA_TEXT_B},
             "media": {"format": args.format, "speechRateCharsPerMin": rate, "pauseShare": pause, "grossCharsPerMinute": gross,
                       "targetSecondsDefault": media_fd.get("targetSecondsDefault")},
             "basis": defaults(args),
@@ -318,6 +333,8 @@ def build_parser(prog=None):
     p = sub.add_parser("text")
     p.add_argument("text_file")
     p.add_argument("--media", default=None, help="媒介档案；不给用随包默认档案（basis.status: default_unmeasured）")
+    p.add_argument("--target-sec", type=float, default=None, help="对照的目标秒数；最优先")
+    p.add_argument("--episode-plan", default=None, help="分集计划：没给 --target-sec 时取它的 capacity.targetSec")
     p.add_argument("--format", default="live")
     p.set_defaults(func=cmd_text)
     return ap

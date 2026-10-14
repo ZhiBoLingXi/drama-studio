@@ -111,7 +111,7 @@ def delegate(argv: list[str]) -> int:
 
 def contract_context(args) -> dict | None:
     """Cross-file context for contract-check rules a single file cannot settle; None when no flag was given."""
-    if not any((args.records, args.defects, args.cards, args.questions, args.base_questions)):
+    if not any((args.records, args.defects, args.cards, args.questions, args.base_questions, args.decisions)):
         return None
     load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
     context: dict = {}
@@ -134,6 +134,9 @@ def contract_context(args) -> dict | None:
         context["questionSets"] = {**question_sets(), **{f"{doc['id']}@{doc['version']}": doc for doc in map(load, args.questions)}}
     if args.base_questions:
         context["baseQuestionSet"] = load(args.base_questions)
+    if args.decisions:
+        context["decisionIds"] = {e.get("id") for doc in map(load, args.decisions) if isinstance(doc, dict)
+                                  for e in doc.get("entries") or [] if isinstance(e, dict)}
     return context
 
 
@@ -181,6 +184,7 @@ def main() -> int:
     contract.add_argument("--cards", nargs="+", help="Knowledge cards (files or folders): an empty card cannot back a holds answer")
     contract.add_argument("--questions", nargs="+", help="Project question sets (id@version) besides the bundled ones")
     contract.add_argument("--base-questions", help="The bundled question set a project set extends (may add, not remove)")
+    contract.add_argument("--decisions", nargs="+", help="Decision queues: a run-handoff's decisionRefs must name their entries")
     pack = commands.add_parser("context-pack", help="Assemble a reproducible context-snapshot from local cache and knowledge cards; never truncates or goes online")
     pack.add_argument("project")
     pack.add_argument("--task", required=True)
@@ -190,8 +194,9 @@ def main() -> int:
     pack.add_argument("--budget", required=True, type=int, help="Character budget; exceeding it exits 2 without writing")
     pack.add_argument("--dry-run", action="store_true", help="Run every check and print the package; write nothing")
     pack.add_argument("--allow-unverified", action="store_true", help="Accept manifest entries marked verified: false and note them in unknowns")
-    pack.add_argument("--exemplars", help="C5a/C5b: corpus exchanges.jsonl (inside the project) to pack the plan's cited positives from")
+    pack.add_argument("--exemplars", help="C5a/C5b: masked sample records to pack the plan's cited positives from -- a JSONL file, or the dialogue plan itself (its exemplars.positives); inside the project")
     pack.add_argument("--contrast-pairs", help="C5a/C5b: contrast-pairs.jsonl (inside the project) to pack the plan's cited pairs from")
+    pack.add_argument("--quotes-per-topic", type=int, default=2, help="C5a/C5b: masked original lines (maskedLines) a topic's samples may carry in all, default 2; 0 for none")
     knowledge = commands.add_parser("knowledge", help="Read-only project-private knowledge cards: validate, search, show")
     knowledge_commands = knowledge.add_subparsers(dest="knowledge_command", required=True)
     knowledge_commands.add_parser("validate", help="contract-check every card and its filename").add_argument("project")
@@ -248,6 +253,7 @@ def main() -> int:
     season.add_argument("--outline-batch", type=int, default=15, help="Most outlines one C4 run may write (default 15)")
     season.add_argument("--batch-size", type=int, default=10, help="Most episodes one first read may cover (default 10)")
     season.add_argument("--skip-dialogue", action="store_true", help="Leave out the voice-card, dialogue-pass and dialogue-read checks (recorded in the output)")
+    season.add_argument("--legacy-dialogue", action="store_true", help="Also run voice-card, dialogue-pass and dialogue-read on old records (retired in D6-3); output then equals 0.3.6")
     season.add_argument("--revise", action="store_true", help="A feedback revision of an existing full draft: batches may share one author run and the entry-state rules do not apply")
     season.add_argument("--since", help="Only count C4-C6 runs finished at or after this ISO time (one version of a project revised several times)")
     season.add_argument("--allow-offline", action="store_true", help="Only when the user agreed to an offline run: not_sent saves warn instead of fail while no remote project is bound")
@@ -276,7 +282,7 @@ def main() -> int:
             context = contract_context(args)
             result = run_contract_check(args.contract, args.path, context)
             if context is not None:
-                flags = [token for flag in ("records", "defects", "cards", "questions") if getattr(args, flag)
+                flags = [token for flag in ("records", "defects", "cards", "questions", "decisions") if getattr(args, flag)
                          for token in ["--" + flag, *getattr(args, flag)]]
                 flags += ["--base-questions", args.base_questions] if args.base_questions else []
                 result["reproduceCommand"] = reproduce(["contract-check", args.contract], [args.path, *flags])
@@ -292,7 +298,8 @@ def main() -> int:
         elif args.command == "context-pack":
             result = run_context_pack(args.project, args.task, args.selection, args.role, args.budget,
                                       dry_run=args.dry_run, allow_unverified=args.allow_unverified,
-                                      exemplars=args.exemplars, contrast_pairs=args.contrast_pairs)
+                                      exemplars=args.exemplars, contrast_pairs=args.contrast_pairs,
+                                      quotes_per_topic=args.quotes_per_topic)
         elif args.command == "import-project" and args.import_command == "preview":
             result = run_preview(args.project, args.listing)
         elif args.command == "import-project":
@@ -305,7 +312,8 @@ def main() -> int:
                 print(render_status(result))
                 return 0
         elif args.command == "season-check":
-            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch, args.skip_dialogue, args.revise, args.since)
+            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch, args.skip_dialogue, args.revise, args.since,
+                                      args.legacy_dialogue)
         elif args.command == "impact":
             result = run_impact(args.project, args.slot, args.revision, args.artifact, args.card, args.page)
         else:

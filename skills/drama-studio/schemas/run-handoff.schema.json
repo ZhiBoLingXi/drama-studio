@@ -356,6 +356,14 @@
         ]
       },
       "description": "Optional (D6): what this run actually read (self-reported, for the checker to know what to re-check)"
+    },
+    "decisionRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Optional (D6-3): ids of the decision-queue entries this run acts on (e.g. a revision the lead or the default chose after the budget ran out); contract-check run-handoff --decisions checks they exist"
     }
   },
   "$defs": {

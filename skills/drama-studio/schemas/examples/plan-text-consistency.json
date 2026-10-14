@@ -1,15 +1,15 @@
 {
   "schemaVersion": "drama-studio/plan-text-consistency/v0",
-  "plan": "planning/dialogue-plan-003.json",
-  "text": "drafts/ep-003.md",
-  "reproduceCommand": "python3 -B skills/drama-studio/scripts/drama_tools.py plan-text-consistency drafts/ep-003.md --plan planning/dialogue-plan-003.json",
+  "plan": "planning/dialogue/dialogue-plan-003.json",
+  "text": "runs/b1/ep-003.c5b.md",
+  "reproduceCommand": "python3 -B skills/drama-studio/scripts/drama_tools.py plan-text-consistency .drama/checks/plan-text-map-003.json --dialogue-plan planning/dialogue/dialogue-plan-003.json --episode-plan planning/episodes/episode-plan-003.json",
   "rules": {
     "speaker-sequence": {
-      "status": "consistent",
+      "status": "pass",
       "items": []
     },
     "topic-boundary": {
-      "status": "inconsistent",
+      "status": "fail",
       "items": [
         {
           "topic": "T1",

@@ -142,10 +142,15 @@ def ledger_replay(V):
             added = [k["entryId"] for k in sn["byPerson"].get(person, {}).get("knows", []) if k not in kn["knows"]]
             extra.extend((sn["sceneId"], person, m, entries.get(m, {}).get("status")) for m in missing)
             extra.extend((sn["sceneId"], person, "+" + a) for a in added)
-    only_retired = extra and all(len(x) == 4 and x[3] == "retired" for x in extra)
-    rows.append(row("ledger-knows-episode-plan-006A", cmd, code, "match" if not extra else ("explained_difference" if only_retired else "mismatch"),
+    retired = [x for x in extra if len(x) == 4 and x[3] == "retired"]
+    # D6-3 walkthrough #3: one knows one's own agenda, so each agenda entry now shows up for its party
+    owned = [x for x in extra if len(x) == 3 and str(x[2]).startswith("+")
+             and entries.get(x[2][1:], {}).get("kind") == "agenda" and x[1] in new.agenda_owners(entries.get(x[2][1:], {}))]
+    explained = extra and len(retired) + len(owned) == len(extra)
+    rows.append(row("ledger-knows-episode-plan-006A", cmd, code, "match" if not extra else ("explained_difference" if explained else "mismatch"),
                     "与 r8/knows-ep006A.json 相同" if not extra else
-                    f"只差退役条目（新命令不把 status=retired 的条目算作还知道／看得见）：{extra}" if only_retired else f"差异：{extra}"))
+                    (f"只差两类：退役条目不再算作还知道／看得见（{len(retired)} 处）；图谋账的主人现在算知道自己的图谋"
+                     f"（D6-3 决定 §6 #3，{len(owned)} 处）：{extra}") if explained else f"差异：{extra}"))
     return rows
 
 

@@ -3,8 +3,9 @@
 只核 S 项（台词方案 §8.4），不判「走法像不像」：
 1. speaker-sequence（fail）：对话表每个交换的 `speaker` 与对照表 `exchangeToLines` 指到的正文行说话人一致。
 2. topic-boundary（fail）：每段在对照表里有且只有一行 `closerOf`；同一话题内段的 closerOf 行号按 segments 顺序递增。
-3. interrupted-by（报）：`interruptedBy.at` 里取得出交换 id 时，该交换之后正文下一条对白的说话人是 `interruptedBy.who`；
-   取不出的记 notEvaluable。
+3. interrupted-by（报）：被打断的交换写 `interruptedAt`（D6-3），话题的 `interruptedBy.by` 写谁打断：该交换之后正文下一条对白
+   是打断者的（没写打断者时，只要不是被打断的人接着说）；被打断的人不必说完。旧写法 `interruptedBy.at`／`atExchange`
+   里取得出交换 id 时同样核，取不出的记 notEvaluable。
 4. carries-keywords（报，signalQuality: low）：带 `carries` 的对白行里，分集计划 fact 的 keywords 缺了哪些——
    keywords 是书面概括、对白是口语，缺的只是「同义改写候选」（修正点 #89）。
 另列 `verbatimFrom` 行（逐字采用的人工句，不算「问题不在了」的证据）。
@@ -94,28 +95,44 @@ def check_topic_boundary(dplan, ptmap):
 
 
 def check_interrupted_by(dplan, ptmap, parsed):
+    """Where a topic is interrupted. D6-3: the interrupted exchange carries interruptedAt (its own exchangeId, or the
+    exchange the cut lands on); the topic's interruptedBy names who cuts in (`by`, older `who`). The first dialogue line
+    after that exchange's lines is the interrupter's when one is named, else anyone but the interrupted speaker; the
+    interrupted speaker is not expected to finish. Older plans with only interruptedBy.at (or atExchange) are read the
+    same way."""
     items, not_evaluable = [], []
     lines = ptmap.get("exchangeToLines") or {}
     dialogue = [r for r in parsed if r["kind"] == "dialogue"]
     for sid, topic in iter_topics(dplan):
-        interrupt = topic.get("interruptedBy")
-        if not isinstance(interrupt, dict):
-            continue
-        where = f"{sid}/{topic.get('topicId')}"
-        match = EXCHANGE_ID_RE.search(str(interrupt.get("at") or ""))
-        if not match or not interrupt.get("who"):
-            not_evaluable.append({"topic": where, "interruptedBy": interrupt, "why": "at 里取不出交换 id，不按文本猜"})
-            continue
-        if not lines.get(match.group(0)):
-            not_evaluable.append({"topic": where, "interruptedBy": interrupt, "why": f"{match.group(0)} 在对照表里没有行号"})
-            continue
-        anchor = max(lines[match.group(0)])
-        after = [r for r in dialogue if r["line"] > anchor]
-        if not after:
-            items.append(f"{where}: {match.group(0)}（第 {anchor} 行）之后正文没有对白了")
-        elif after[0]["speaker"] != interrupt["who"]:
-            items.append(f"{where}: interruptedBy.who={interrupt['who']!r}，第 {anchor} 行之后第一条对白（第 {after[0]['line']} 行）"
-                         f"是 {after[0]['speaker']!r}")
+        interrupt = topic.get("interruptedBy") if isinstance(topic.get("interruptedBy"), dict) else {}
+        who = interrupt.get("by") or interrupt.get("who")
+        exchanges = [ex for ex in topic.get("exchanges") or [] if isinstance(ex, dict)]
+        marked = [ex for ex in exchanges if ex.get("interruptedAt")]
+        points = []
+        for ex in marked:
+            match = EXCHANGE_ID_RE.search(str(ex["interruptedAt"]))
+            points.append((f"{sid}/{topic.get('topicId')}/{ex.get('exchangeId')}", match.group(0) if match else ex.get("exchangeId")))
+        if not marked and interrupt:
+            match = EXCHANGE_ID_RE.search(str(interrupt.get("at") or interrupt.get("atExchange") or ""))
+            if not match:
+                not_evaluable.append({"topic": f"{sid}/{topic.get('topicId')}", "interruptedBy": interrupt,
+                                      "why": "没有交换写 interruptedAt，interruptedBy 里也取不出交换 id，不按文本猜"})
+                continue
+            points.append((f"{sid}/{topic.get('topicId')}", match.group(0)))
+        speakers = {ex.get("exchangeId"): ex.get("speaker") for ex in exchanges}
+        for where, target in points:
+            if not lines.get(target):
+                not_evaluable.append({"at": where, "interrupted": target, "why": f"{target} 在对照表里没有行号"})
+                continue
+            anchor = max(lines[target])
+            after = [r for r in dialogue if r["line"] > anchor]
+            if not after:
+                items.append(f"{where}: {target} 被打断（第 {anchor} 行），之后正文没有对白了")
+            elif who and after[0]["speaker"] != who:
+                items.append(f"{where}: {target} 被 {who!r} 打断，第 {anchor} 行之后第一条对白（第 {after[0]['line']} 行）"
+                             f"是 {after[0]['speaker']!r}")
+            elif not who and after[0]["speaker"] == speakers.get(target):
+                items.append(f"{where}: {target} 被打断，但第 {anchor} 行之后接着说的还是 {after[0]['speaker']!r}")
     return {"status": "report", "items": items, "notEvaluable": not_evaluable}
 
 

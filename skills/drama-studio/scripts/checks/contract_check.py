@@ -151,6 +151,8 @@ def _rules_context_snapshot(doc: dict) -> list[str]:
     if doc["createdFor"]["role"] in ("reader_effect", "dialogue_read") and any(item["partition"] == "current_plan" for item in doc["items"]):
         errors.append("items: a reader_effect or dialogue_read package must not include author plans or explanations")
     errors.extend(_cold_reader_package(role, doc["items"], "items"))
+    if role not in ("dialogue_designer", "author") and any(item["partition"] == "samples" for item in doc["items"]):
+        errors.append("items: the samples partition belongs to a C5a (dialogue_designer) or C5b (author) package only")
     return errors
 
 
@@ -170,11 +172,57 @@ def _cold_reader_package(role, items, where) -> list[str]:
 # comparison_only material is for comparing against: similarity and evaluation, and (D6-2) the reality check, which
 # compares a move with K1 cards on the real world
 COMPARISON_ROLES = ("similarity_review", "evaluation", "fact_check")
+# a dialogue line: a short speaker name, an optional bracketed direction, a colon, then the words (season-check reads the
+# speakers of a text with it; a revision list must not contain one)
+SPEAKER = re.compile(r"^\s*([^\s:：（(#*|>\-△▲【\[]{1,10})\s*(?:[（(][^）)\n]{0,40}[）)])?\s*[:：]\s*\S")
+NOT_SPEAKERS = {"人物", "出场人物", "地点", "时间", "场景", "道具", "字幕", "标题", "备注", "注", "特写", "画面", "镜头", "旁白", "音效", "闪回", "转场"}
+REVISION_LOCATORS = ("id", "where", "cites", "layer", "target", "basis", "ref")  # point at things; every other string is read
+# a label an instruction opens with ("本轮不改：…", "原因：…") has the SPEAKER shape but names no character
+REVISION_LABEL = re.compile(r"不|改|删|保留|说明|注意|原因|依据|理由|备注|处理|结论|问题|建议|做法|方案|现状|目标|范围|步骤|照表|按表")
+
+
+def revision_list_problems(doc: dict, cast=None) -> list[str]:
+    """A revision list names problems and cites what they rest on; it writes no replacement line (no SPEAKER-format line)
+    and no numeric dialogue instruction (the numeric_dialogue blocklist). Every text field of an item is read except the
+    locators (REVISION_LOCATORS). Given the episode's cast (speakers of its dialogue plan or plan-text map), only a line
+    opening with a cast member's name counts; otherwise a heuristic skips instruction labels. A locator
+    such as `g1:L44` in `where` is not a dialogue line (D6-3)."""
+    problems = []
+    for index, item in enumerate(doc.get("items") or [] if isinstance(doc, dict) else []):
+        for field, value in (item.items() if isinstance(item, dict) else []):
+            texts = [value] if isinstance(value, str) else [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+            if field in REVISION_LOCATORS or not texts:
+                continue
+            text = "\n".join(texts)
+            for line in text.splitlines():
+                match = SPEAKER.match(line)
+                # with the episode's cast (D6-3 walkthrough #8) only 「人物名：」 is a line; without it, the label heuristic
+                is_line = match and (match.group(1) in cast if cast else
+                                     match.group(1) not in NOT_SPEAKERS and not REVISION_LABEL.search(match.group(1)))
+                if is_line:
+                    problems.append(f"items[{index}].{field} 写了替换台词（{line.strip()[:30]}）")
+                    break
+            problems += [f"items[{index}].{field} 下了数值指令（{hit!r}）" for category, hit in blocklist_hits(text)
+                         if category == "numeric_dialogue"]
+    return problems
+
+
 PLAN_FOLDER = "planning/episodes/"  # where C4 writes episode plans (docs/d6/d6-2-decisions.md §1)
 
 
+def preserved_without_source(doc: dict) -> list[str]:
+    """preserved items that do not name a human source (D6-3: preserved only counts what a person asked to keep): plain
+    strings (the pre-D6-3 form) and objects with neither noteId nor humanWords."""
+    return [f"preserved[{i}]" for i, item in enumerate(doc.get("preserved") or [])
+            if not (isinstance(item, dict) and ((item.get("noteId") or "").strip() or (item.get("humanWords") or "").strip()))]
+
+
 def _rules_review_record(doc: dict) -> list[str]:
-    errors = []
+    # the object form (D6-3) must name its human source; plain strings stay valid for old records (season-check's
+    # dialogue layer refuses them: preserved-human-source)
+    errors = [f"preserved[{i}]: an object item names its human source (noteId or humanWords)"
+              for i, item in enumerate(doc.get("preserved") or [])
+              if isinstance(item, dict) and not ((item.get("noteId") or "").strip() or (item.get("humanWords") or "").strip())]
     for index, finding in enumerate(doc["findings"]):
         if finding["category"] == "fact" and not finding["evidence"]:
             errors.append(f"findings[{index}]: a fact finding needs quoted evidence")
@@ -183,6 +231,11 @@ def _rules_review_record(doc: dict) -> list[str]:
     # D6-2: a review of an episode plan in the planning/episodes/ layout cites what every finding rests on
     plan_review = any(ref.get("kind") == "local_file" and str(ref.get("id", "")).startswith(PLAN_FOLDER)
                       for ref in [doc["target"], *doc.get("additionalTargets", [])])
+    if plan_review:  # same rule as the text side (D6-3): preserved keeps only what a person asked to keep
+        errors += [f"{where}: a review of an episode plan ({PLAN_FOLDER}) keeps only human-sourced items: write "
+                   "{item, noteId} or {item, humanWords}; a model's view of what works goes in goalAssessments[].evidence"
+                   for i, item in enumerate(doc.get("preserved") or []) if not isinstance(item, dict)
+                   for where in [f"preserved[{i}]"]]  # an unsourced object item is already refused above
     for index, finding in enumerate(doc["findings"]):
         if plan_review and not finding.get("cites") and finding.get("kind") != "preference":
             errors.append(f"findings[{index}]: a review of an episode plan ({PLAN_FOLDER}) needs cites "
@@ -500,6 +553,7 @@ def _rules_answers(doc: dict, ctx=None, notes=None) -> list[str]:
         notes.append(f"answers question-set rules: not evaluated ({doc['questionsVersion']} is not a bundled question set)")
     kinds = {question["q"]: question["answerKind"] for question in qset["questions"]} if qset else {}
     reality = doc["questionsVersion"].startswith("reality-check")
+    dialogue = doc["questionsVersion"].startswith("dialogue-check")
     unknown_subset = sorted(set(doc.get("askedSubset", [])) - set(kinds)) if qset else []
     if unknown_subset:
         errors.append(f"askedSubset: {unknown_subset} are not questions of {doc['questionsVersion']}")
@@ -513,8 +567,11 @@ def _rules_answers(doc: dict, ctx=None, notes=None) -> list[str]:
     counted = {"notHolds": [], "not_evaluable": 0}
     for index, answer in enumerate(doc["answers"]):
         where = f"answers[{index}] q{answer['q']}"
-        if ("landsOn" in answer) == ("quoteRef" in answer):
+        if not dialogue and ("landsOn" in answer) == ("quoteRef" in answer):
             errors.append(f"{where}: exactly one anchor — landsOn (reality check) or quoteRef (dialogue check)")
+        if dialogue and "quoteRef" not in answer and answer["holds"] != "n/a":
+            # D6-3 walkthrough #14: a situation check quotes its line (landsOn may sit beside it); n/a needs no quote
+            errors.append(f"{where}: a dialogue-check answer quotes its line (quoteRef), unless it is n/a")
         if qset and answer["q"] not in kinds:
             errors.append(f"{where}: q {answer['q']} is not in {doc['questionsVersion']}")
         if answer["holds"] == "notHolds":
@@ -543,7 +600,7 @@ def _rules_answers(doc: dict, ctx=None, notes=None) -> list[str]:
             counted["notHolds"].append(answer)
         elif answer["holds"] == "not_evaluable":
             counted["not_evaluable"] += 1
-    if len(anchors) > 1:
+    if len(anchors) > 1 and not dialogue:
         errors.append("answers: one record uses one anchor kind throughout (landsOn or quoteRef)")
     expected = allowed_outcomes(counted["notHolds"], counted["not_evaluable"])
     if doc["outcome"] not in expected:
@@ -710,7 +767,7 @@ def _rules_dialogue_plan(doc: dict, ctx=None, notes=None) -> list[str]:
 def _rules_dialogue_target(doc: dict, ctx=None, notes=None) -> list[str]:
     errors = _no_quota(doc, "a dialogue target")
     errors += [f"conventions: id {d} repeats" for d in _duplicates(c["id"] for c in doc["conventions"])]
-    return errors
+    return errors + _no_corpus_reason(doc)
 
 
 def _project_only(doc, what) -> list[str]:
@@ -872,6 +929,36 @@ def _legacy_question_set(doc, hints):
             hints.add("questions[].answerKind missing (added in D6-1; v1 data marks q14/q15 of the reality check informational)")
 
 
+def _rules_plan_text_map(doc: dict, ctx=None, notes=None) -> list[str]:
+    """D6-3: every line exchangeToLines points at is marked with that exchange in lineToPlan; a verbatim line says whose
+    line it is (verbatimFrom on the line or in the summary). Whether the source is the writer's and not the corpus is M."""
+    errors = []
+    marked = {}
+    for entry in doc["lineToPlan"]:
+        marked.setdefault(entry["line"], set()).add(entry.get("exchangeId"))
+    for exchange, lines in doc["exchangeToLines"].items():
+        for line in lines:
+            if exchange not in marked.get(line, set()):
+                errors.append(f"exchangeToLines.{exchange}: line {line} is not marked exchangeId {exchange} in lineToPlan")
+    summary = {item["line"] for item in doc.get("verbatimFrom", [])}
+    for entry in doc["lineToPlan"]:
+        if entry.get("verbatimFrom") and entry["line"] not in summary:
+            errors.append(f"lineToPlan line {entry['line']}: verbatimFrom is not listed in the verbatimFrom summary")
+    return errors
+
+
+def _no_corpus_reason(doc: dict) -> list[str]:
+    """D6-3 walkthrough #2: a target without a corpus says why."""
+    if "corpusManifest" in doc and doc["corpusManifest"] is None and not (doc.get("noCorpusReason") or "").strip():
+        return ["corpusManifest: null (no corpus yet) needs noCorpusReason"]
+    return []
+
+
+def _rules_revision_list(doc: dict, ctx=None, notes=None) -> list[str]:
+    """D6-3: a revision list writes no replacement line and no numeric instruction (the same scan as fixlist-no-lines)."""
+    return revision_list_problems(doc)
+
+
 LEGACY = {"question-set": _legacy_question_set, "answers": _legacy_answers, "ledger-entry": _legacy_ledger, "function-map": _legacy_function_map,
           "contrast-pair": _legacy_contrast_pair, "retell-record": _legacy_retell, "defect-register": _legacy_defect_register}
 
@@ -884,7 +971,8 @@ RULES = {"knowledge-card": _rules_knowledge_card, "context-snapshot": _rules_con
          "dialogue-exchange": _rules_dialogue_exchange, "corpus-manifest": _rules_corpus_manifest,
          "contrast-pair": _rules_contrast_pair, "writer-note": _rules_writer_note, "dialogue-plan": _rules_dialogue_plan,
          "dialogue-target": _rules_dialogue_target, "retell-record": _rules_retell_record,
-         "plan-text-consistency": _rules_plan_text_consistency, "defect-register": _rules_defect_register}
+         "plan-text-consistency": _rules_plan_text_consistency, "defect-register": _rules_defect_register,
+         "revision-list": _rules_revision_list, "plan-text-map": _rules_plan_text_map}
 D6_RULES = set(RULES) - {"knowledge-card", "context-snapshot", "review-record", "run-handoff", "remote-receipt", "task"}
 
 
@@ -894,7 +982,21 @@ def _errors(name: str, document, context, notes) -> list[str]:
     _validate(document, schema, schema, "$", errors)
     if not errors and name in RULES:
         errors.extend(RULES[name](document, context, notes) if name in D6_RULES else RULES[name](document))
+    if not errors and name == "run-handoff":
+        errors.extend(_handoff_decisions(document, context, notes))
     return errors
+
+
+def _handoff_decisions(doc: dict, ctx, notes) -> list[str]:
+    """D6-3 re-run N2: decisionRefs name decision-queue entries that exist (needs --decisions context)."""
+    refs = doc.get("decisionRefs") or []
+    known = (ctx or {}).get("decisionIds")
+    if not refs:
+        return []
+    if known is None:
+        notes.append("run-handoff decision-refs: not evaluated (needs --decisions context)")
+        return []
+    return [f"decisionRefs: {ref} is not an entry of the given decision queue(s)" for ref in refs if ref not in known]
 
 
 def check_contract(name: str, document, context: dict | None = None) -> list[str]:

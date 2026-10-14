@@ -204,8 +204,8 @@ def check_record(doc: dict, questions: dict, subset_cli=None, ref_sources=None) 
         answered.add(q)
         if q not in question_ids:
             errors.append(f"{where}: 不在问题单 {version} 的问题范围内")
-        if not is_nonempty(answer.get(field)):
-            errors.append(f"{where}: 落点 {field} 为空或缺失")
+        if not is_nonempty(answer.get(field)) and not (kind == "dialogue-check" and answer.get("holds") == "n/a"):
+            errors.append(f"{where}: 落点 {field} 为空或缺失")  # a situation check's n/a needs no quote (D6-3 #14)
         holds = answer.get("holds")
         if holds not in states:
             errors.append(f"{where}: holds={holds!r} 不在 {states}")
@@ -214,6 +214,12 @@ def check_record(doc: dict, questions: dict, subset_cli=None, ref_sources=None) 
         if not is_nonempty(answer.get("reason")):
             errors.append(f"{where}: reason 为空或缺失")
         kinds = answer.get("defectKind") or []
+        known_kinds = questions.get("defectKinds")
+        if known_kinds and kinds:
+            unknown = [k for k in (kinds if isinstance(kinds, list) else [kinds]) if k not in known_kinds]
+            if unknown:
+                reports.append({"rule": "defect-kind-vocabulary", "where": where,
+                                "detail": f"defectKind {unknown} 不在问题单的词表 {known_kinds} 里（只报不拦）"})
         if "missing" in kinds and not is_nonempty(answer.get("searchScope")):
             reports.append({"rule": "missing-without-search-scope", "where": where,
                             "detail": "defectKind 含 missing（材料没写），没有 searchScope 说明查了哪些材料（只报不拦）"})

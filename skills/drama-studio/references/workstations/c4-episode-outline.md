@@ -52,4 +52,4 @@
 
 ## 停止与边界
 
-不设每场反转配额，不设字数上限；每场能说明它承担什么变化即可。不改功能、不定全剧级事实、不查证。返修次数不超过 `task.revisionBudget`；触顶后不再改，两处都做：未处理的审读意见写进交接 `unfinished`（`goal` 记 `partially_met`，写明瓶颈），并用 `decision add planning/decisions.json --from-handoff <交接>` 登记进决定队列、带默认，流程按默认继续，不停下等人。
+不设每场反转配额，不设字数上限；每场能说明它承担什么变化即可。不改功能、不定全剧级事实、不查证。返修次数不超过 `task.revisionBudget`；触顶后不再改，两处都做：未处理的审读意见写进交接 `unfinished`（`goal` 记 `partially_met`，写明瓶颈），并用 `decision add planning/decisions.json --from-handoff <交接>` 登记进决定队列、带默认，流程按默认继续，不停下等人。决定队列的默认是“按现稿交付”时不再改；主创或默认选了“再改一次”时，由编排方开一次新的 C4 运行，这次修订另计预算 1 次，交接的 `decisionRefs[]` 写该决定的队列 id（`contract-check run-handoff <交接> --decisions planning/decisions.json` 核它存在）。下层（如 C5a）提给 C4 的变更按默认要改分集计划时，也是这样开一次 C4 运行。

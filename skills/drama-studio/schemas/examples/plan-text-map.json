@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "drama-studio/plan-text-map/v0",
+  "episode": 3,
+  "text": "runs/b1/ep-003.c5b.md",
+  "dialoguePlan": "planning/dialogue/dialogue-plan-003.json",
+  "exchangeToLines": {
+    "X-T1-01": [
+      2
+    ],
+    "X-T1-02": [
+      3
+    ]
+  },
+  "lineToPlan": [
+    {
+      "line": 1,
+      "text": "场3-2 镇仓库柜台 中午",
+      "kind": "scene"
+    },
+    {
+      "line": 2,
+      "text": "老陈：我那箱子，三年前寄的。",
+      "kind": "dialogue",
+      "exchangeId": "X-T1-01",
+      "speaker": "老陈",
+      "carries": [
+        "I1-f1"
+      ]
+    },
+    {
+      "line": 3,
+      "text": "仓管：早退了，签收的是你家里人。",
+      "kind": "dialogue",
+      "exchangeId": "X-T1-02",
+      "speaker": "仓管",
+      "closerOf": "T1-s1",
+      "verbatimFrom": "writer-ep-002 L14（编剧原句）"
+    }
+  ],
+  "verbatimFrom": [
+    {
+      "line": 3,
+      "from": "writer-ep-002 L14（编剧原句）"
+    }
+  ],
+  "deviations": []
+}

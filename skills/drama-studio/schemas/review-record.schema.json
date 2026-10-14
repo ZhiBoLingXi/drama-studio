@@ -88,8 +88,11 @@
               "C3",
               "C4",
               "C5",
+              "C5a",
+              "C5b",
               "C6"
-            ]
+            ],
+            "description": "C5a (dialogue plan) or C5b (text) since D6-3; C5 stays for older records"
           },
           "claim": {
             "type": "string",
@@ -194,9 +197,30 @@
     "preserved": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1
-      }
+        "type": [
+          "string",
+          "object"
+        ],
+        "minLength": 1,
+        "required": [
+          "item"
+        ],
+        "properties": {
+          "item": {
+            "type": "string",
+            "minLength": 1
+          },
+          "noteId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "humanWords": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "description": "What must survive a revision. D6-3: an object item names its human source (noteId of a writer-note, or the person's humanWords); season-check's dialogue layer accepts only such items. Plain strings are the pre-D6-3 form"
     },
     "losses": {
       "type": "array",
@@ -246,6 +270,11 @@
         }
       },
       "description": "Optional (D6): how conflicting findings were settled; never carries replacement text"
+    },
+    "sealedSha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "D6-3: a first read's seal kept in the record itself: sha256 of the record's canonical JSON (sorted keys, no spaces, sealedSha256 left out); the .sha256 sidecar file still counts"
     }
   },
   "$defs": {

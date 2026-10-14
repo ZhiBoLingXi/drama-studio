@@ -1,5 +1,6 @@
-"""D6-1/D6-2 local acceptance, the single entry point: collect the stream segments (D6-2 adds d62: the outline-layer
-artifacts moved into a project), add the integration checks, print one table.
+"""D6-1/D6-2/D6-3 local acceptance, the single entry point: collect the stream segments (D6-2 adds d62: the outline-layer
+artifacts moved into a project; D6-3 adds d63: the episode 6A dialogue-layer records), add the integration checks, print
+one table.
 
     python3 -B scripts/d6_acceptance/run.py [V]
 
@@ -26,7 +27,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 CHECKS = TOOL.parent / "checks"
-SEGMENTS = ("schemas", "ledger", "checks", "corpus", "d62")
+SEGMENTS = ("schemas", "ledger", "checks", "corpus", "d62", "d63")
 PROJECTS = ("yuanxinsuo", "qige-xiongdi")  # real projects with 0.3.6-era records and no D6 records
 LOCK_ARGS = ("--episodes 1-60", "--outline 1-60", "--episodes 1-10 --outline 1-60 --allow-offline", "--episodes 1-60 --revise",
              "--episodes 1-10 --skip-dialogue", "--episodes 1-60 --since 2026-10-01T00:00:00+08:00")
@@ -105,12 +106,28 @@ def lock_rows():
             for args in LOCK_ARGS:
                 command = ["season-check", str(project), *args.split()]
                 old = subprocess.run(["python3", "-B", str(old_tool), *command], capture_output=True, text=True)
-                code, out, err = tool(*command)
+                # D6-3: the three old dialogue rules run only with --legacy-dialogue; with it the output is 0.3.6's
+                flagged = command + (["--legacy-dialogue"] if "--episodes" in args else [])
+                code, out, err = tool(*flagged)
                 same = out == old.stdout and code == old.returncode
-                rows.append(row("E", f"season-check legacy lock {project.name} {args}", shlex.join(["python3", "-B", str(TOOL), *command]),
+                rows.append(row("E", f"season-check legacy lock {project.name} {args}" + (" --legacy-dialogue" if flagged != command else ""),
+                                shlex.join(["python3", "-B", str(TOOL), *flagged]),
                                 f"projects/{project.name}/.drama", "pass" if same else "fail", "yes" if same else "no", "0.3.6",
                                 f"标准输出与 0.3.6 逐字节{'相同' if same else '不同'}（旧项目不加 ruleSet／episodeRuleSet），"
                                 f"退出码 {code}（0.3.6 为 {old.returncode}）"))
+                if flagged == command:
+                    continue
+                code, out, err = tool(*command)  # without the flag: the old three are gone and nothing new fails
+                mine, theirs = json.loads(out), json.loads(old.stdout)
+                key = lambda f: (f["scope"], f["rule"], f["message"])  # noqa: E731
+                new = [f for f in mine["failures"] if key(f) not in {key(g) for g in theirs["failures"]}]
+                gone = sorted({f["rule"] for f in theirs["failures"]} - {f["rule"] for f in mine["failures"]})
+                old_three = {f["rule"] for f in mine["failures"]} & {"voice-card", "dialogue-pass", "dialogue-read"}
+                ok = not new and not old_three and "episodeRuleSet" not in mine
+                rows.append(row("E", f"season-check legacy no-flag {project.name} {args}", shlex.join(["python3", "-B", str(TOOL), *command]),
+                                f"projects/{project.name}/.drama", "pass" if ok else "fail", "yes" if ok else "no", "0.3.6",
+                                f"不带 --legacy-dialogue：没有新失败（{len(new)}），旧三条不出现（{sorted(old_three) or '无'}），"
+                                f"比 0.3.6 少的规则 {gone or '无'}；失败 {len(mine['failures'])} 条（0.3.6 为 {len(theirs['failures'])}）"))
     return rows
 
 
@@ -240,12 +257,18 @@ def requirements(rows):
         requirement("retell（计划三份、正文 g1-a／g1-b／g2）", rows, names("retell-check", "contract-check retell-record")),
         requirement("check 记录（对话问题单回答）", rows, names("check-answers g1", "consistency g1", "drama_tools answers-consistency")),
         requirement("capacity 对 006A 分集计划与 g2 正文与临时脚本 ±1 秒", rows, names("capacity-episode-006A", "capacity-text-g2")),
-        requirement("season-check 对《渊心锁》与本项目旧记录与 0.3.6 逐字节一致", rows, names("season-check legacy lock")),
+        requirement("season-check 对《渊心锁》与本项目旧记录与 0.3.6 逐字节一致（--episodes 带 --legacy-dialogue）", rows, names("season-check legacy lock")),
+        requirement("D6-3：不带 --legacy-dialogue 时旧三条不出现、无新失败", rows, names("season-check legacy no-flag")),
         requirement("validate.py 随包检查；test_skill_routing；install verify", rows, names("validate.py", "test_skill_routing", "install plan")),
         requirement("D6-2：season-check --outline 对搬成项目记录形态的 D6-0 产物（集纲层七条）", rows,
                     lambda r: r["stream"] == "d62" and ("集纲层七条" in r["name"] or "变异" in r["name"] or "旧规则" in r["name"])),
         requirement("D6-2：context-pack --role author（C4）缺季编排、底账或功能地图退出码 2", rows, names("context-pack --role author（C4）")),
         requirement("D6-2：搬运只读 V、不改 V", rows, names("搬成项目记录形态", "V 未被改动")),
+        requirement("D6-3：season-check --episodes 对搬成项目记录形态的 D6-0 第 6A 集记录（台词层规则）", rows,
+                    lambda r: r["stream"] == "d63" and ("台词层规则" in r["name"] or "变异" in r["name"] or "旧规则" in r["name"]
+                                                       or "不出现旧三条" in r["name"] or "重跑转换" in r["name"])),
+        requirement("D6-3：修订单扫描；C5b 装包要对话表过 contract-check", rows,
+                    lambda r: r["stream"] == "d63" and ("revision-list" in r["name"] or "C5b" in r["name"] or "plan-text-map" in r["name"])),
     ]
 
 

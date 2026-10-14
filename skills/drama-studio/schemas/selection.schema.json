@@ -39,7 +39,8 @@
               "project_facts",
               "current_plan",
               "knowledge",
-              "unknowns"
+              "unknowns",
+              "samples"
             ],
             "description": "task 分区由工具按 --task 自动填入，不能出现在选材清单"
           },

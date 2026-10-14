@@ -16,8 +16,8 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | 找模板、下载视频、拉片 | [资料与拉片](references/mali-story.md)；需要下载时再读 [夸克适配](references/quark.md) | 可追溯的模板、任务、集序与证据 |
 | 原创选题、人物与集纲 | [策划](references/planning.md)；写框架、底账与集纲时再读 [集纲层](references/outline-layer.md) | 原创方向、人物、功能地图、底账、季编排与逐集分集计划 |
 | 摆脱换皮、探索不同故事 | [创作开发](references/development-lab.md) | 生活材料、创作立场、不同因果候选及场面试写 |
-| 写作、检查、改稿（含按集纲写正文、续写下一批） | [工位流程](references/writing.md#工位流程)：先读 writing.md 第一节；一次写多批再读 [整季分批](references/workstations/season-run.md) | 经 C5 装包写成、C6 两读、一次定向修订的分集正文，以及快照、审读记录、回执与交接 |
-| 台词 AI 味重、不像人说的话、人物说话分不开 | [台词](references/dialogue.md) | 前文校核、取自人写正文的声音卡、台词与表演遍、台词读 |
+| 写作、检查、改稿（含按集纲写正文、续写下一批） | [工位流程](references/writing.md#工位流程)：先读 writing.md 第一节；一次写多批再读 [整季分批](references/workstations/season-run.md) | 经 C5a 对话表与 C5b 照表写成、C6 五读、先改表再改文的分集正文，以及快照、对话表、审读与核对记录、回执与交接 |
+| 台词 AI 味重、不像人说的话、人物说话分不开 | [台词层](references/dialogue-structure.md) | 前文校核、按处境写的对话表、照表写的正文、冷读复述与处境对照、先改表再改文 |
 | 行为不贴人设、台词同质、情绪平、剧情靠解释推进 | [人物与情绪改稿](references/character-emotion.md)，结合写作与自主迭代 | 有前文依据的人物写法、关键场面改写、本轮创作目标的正文复核 |
 | 自行测试迭代、提高质量 | [自主创作迭代](references/creative-loop.md) | 原稿与候选比较、证据复核、最佳待审版本 |
 | 继续项目、切换宿主、交付 | [接续与交付](references/recovery.md) | 当前版本、下一动作、可核对交付文件 |
@@ -38,7 +38,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 1. 项目目录：已有项目先 `status`，没有就 `init-project`；用户给的集纲、前文转成文本放进 `runs/input/`。
 2. 发现 mali-story 工具；能用就读写作上下文并缓存前文页面。没有工具或没有远端项目时先问用户，用户明确同意只交本地草稿或只是暂时断线，才走 [离线降级](references/writing.md#离线与单代理降级)。
 3. 按因果依赖分批，每集一个页面、一个写者；前一批保存后再给下一批装包（[整季分批](references/workstations/season-run.md)）。
-4. 每集一个作者运行：`context-pack --role author` 装包（主创给过前文或样集时先做 [前文校核](references/dialogue.md#8-有人写的正文时前文校核)；本集集纲、前一集最新稿原文、入口状态记录 `runs/state/after-ep-NNN.md`、出场人物的声音卡）→ C5 写场面稿 → 台词与表演遍（`dialogue_author` 包，不动场头）→ C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ C6 次读、台词读（`dialogue_read` 包）→ C5 问题定向修订一次，C4 及以上的问题写成变更提案交用户。
+4. 每集一个作者运行（[台词层](references/dialogue-structure.md)；主创给过前文或样集时先做 [前文校核](references/dialogue-structure.md#10-前文校核)）：C5a 写对话表（`context-pack --role dialogue_designer`，每个话题写处境与走法理由，`dialogue-plan-check`）→ C5b 照表写正文（`context-pack --role author`，装对话表、前一集最新稿原文、由底账实际轨导出的入口状态记录 `runs/state/after-ep-NNN.md`）→ C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ 次读、冷读复述（`cold_reader` 包只装本集正文）、处境对照（`situation_checker`，按对话问题单逐问引句作答）、设计依据一致性（`plan-text-consistency`）→ 先改对话表再改正文，定向修订一次，改后再冷读与处境对照；分集计划及以上的问题写成变更提案并带默认，`decision add --from-handoff` 登记进决定队列，流程不停。
 5. 存为页面修订并核对逐字一致 → `receipt record`／`receipt cache`（离线记 `not_sent`）→ `run-handoff` 写进 `.drama/runs/`，更新下一集的入口状态记录。主创确认后才打标签，标签不是采用。
 6. 完整集纲按 [集纲层](references/outline-layer.md) 走 C3a 功能地图（候选实现过追问单，承重缺口换实现、登记为戏剧假定或进决定队列）→ C3b 底账（检索代理写 K1 卡、`ledger check`）→ C3c 季编排（`capacity season`，装不下在这里重排或拆集）→ C4 分集计划（按 [C4 整季集纲](references/workstations/c4-episode-outline.md#整季集纲怎么写) 按顺序分段写，`plan-check`、冷读复述，存成页面），不并行扩写。等人定的事进决定队列并带默认，流程不停。
 7. 每批结束和交付前跑 `season-check`（正文 `--episodes`，集纲 `--outline`），结论原样写进交付说明；不通过不能写“已按流程完成”。
@@ -72,7 +72,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | `drama_tools.py receipt pending <项目>` | 列出结果未知的写入及对账办法 |
 | `drama_tools.py receipt cache <项目> <读回分块…>` | 把 `read_page` 读回的全文核对指纹后存进 `.drama/cache/` |
 | `drama_tools.py receipt show <项目> <requestId>` | 显示一份回执及其校验结果 |
-| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、声音卡、台词遍、台词读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。项目有 `planning/season-plan.json` 时集纲另核集纲层七条，有对话表记录时正文改核台词层规则（启用的一侧输出 `ruleSet: outline-layer`／`episodeRuleSet: dialogue-layer`）。不通过退出码 2；只看记录，不评内容 |
+| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。项目有 `planning/season-plan.json` 时集纲另核集纲层七条（列在 `outlineLayerRules`），有对话表记录时正文另核台词层规则（列在 `dialogueLayerRules`）。旧记录的声音卡、台词遍、台词读三条只在加 `--legacy-dialogue` 时核，这时输出与 0.3.6 相同。不通过退出码 2；只看记录，不评内容 |
 | `drama_tools.py impact <项目> --page <pageId> --revision <n>` | 前文出了新修订后，标出引用旧修订的快照与运行（也支持 `--slot`、`--artifact`、`--card`） |
 | `drama_tools.py episode-check <正文>` | 剧集统计；只有给了 `--config` 或显式阈值才核对规格；`--speech` 加口播汉字数（不估时） |
 | `drama_tools.py dup-check --new <新稿> --source <参考>` | 汉字字面重合统计，不是原创证明；`--list-hits --k 8` 逐条列出命中位置 |

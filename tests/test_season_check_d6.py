@@ -202,7 +202,9 @@ class DialogueLayerTests(unittest.TestCase):
         return code, out, {f["rule"] for f in out["failures"]}
 
     def test_without_dialogue_plans_the_legacy_dialogue_rules_run(self):
-        code, out, rules = self.check(write=False)
+        # D6-3 decision §2 changed this on purpose: the three old rules ran by default; now only with --legacy-dialogue
+        code, out = run("season-check", self.root, "--episodes", "2-3", "--legacy-dialogue")
+        rules = {f["rule"] for f in out["failures"]}
         self.assertEqual(rules, {"voice-card", "dialogue-read"})
         self.assertNotIn("episodeRuleSet", out)
 
@@ -263,7 +265,9 @@ class DialogueLayerTests(unittest.TestCase):
         fixlist = {"schema": "revision-list/v0-pilot", "target": {"episode": 3}, "items": [{"issue": "第 1 场收尾太快", "cites": ["T1"]}]}
         self.layer.records[3]["revision-list-ep-003.json"] = fixlist
         self.assertEqual(self.check()[2], set())
-        fixlist["items"].append({"issue": "改成这句", "replacement": "大凤：别回头，跟紧了。"})
+        # D6-3 walkthrough #8 changed this on purpose: with the episode's cast on record (the dialogue plan's speakers, here
+        # 老陈 and 仓管) only a cast member's name opens a dialogue line; the fixture's 大凤 is not in that plan
+        fixlist["items"].append({"issue": "改成这句", "replacement": "老陈：别回头，跟紧了。"})
         self.assertEqual(self.check()[2], {"fixlist-no-lines"})
 
     def task(self, constraints):

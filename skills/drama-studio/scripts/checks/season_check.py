@@ -27,7 +27,8 @@ from pathlib import Path, PurePosixPath
 import re
 import shlex
 
-from .contract_check import blocklist_hits, check_contract, finished_at
+from .contract_check import (NOT_SPEAKERS, SPEAKER, blocklist_hits, check_contract, finished_at, preserved_without_source,
+                             revision_list_problems)
 from .receipt import area, contained, drama_dir
 
 NOTE = ("只核对 .drama/ 里的记录是否齐全、彼此一致；不判断正文质量，不联网，也不证明远端已保存。"
@@ -35,10 +36,7 @@ NOTE = ("只核对 .drama/ 里的记录是否齐全、彼此一致；不判断�
 EPISODE = re.compile(r"(?:^|[^a-z])(?:ep|episode|outline)[-_]?0*(\d{1,4})(?!\d)|第0*(\d{1,4})集")
 STATE = re.compile(r"^(?:runs|\.drama)/state/after-ep-0*(\d{1,4})\.md$")
 UPSTREAM = ("C1", "C2", "C3")
-# a dialogue line: a short speaker name, an optional bracketed direction, a colon, then the words
-SPEAKER = re.compile(r"^\s*([^\s:：（(#*|>\-△▲【\[]{1,10})\s*(?:[（(][^）)\n]{0,40}[）)])?\s*[:：]\s*\S")
 HEADING = re.compile(r"^\s*(#{1,6}\s|场\s*\d|[｜|])")  # episode titles and scene headings
-NOT_SPEAKERS = {"人物", "出场人物", "地点", "时间", "场景", "道具", "字幕", "标题", "备注", "注", "特写", "画面", "镜头", "旁白", "音效", "闪回", "转场"}
 VOICED_FROM = 3  # a speaker with this many lines in an episode needs a voice card
 LAYER_DIRS = ("planning", ".drama/checks", ".drama/tasks")  # where the D6 records are looked up
 SEASON_PLAN = "planning/season-plan.json"
@@ -143,6 +141,36 @@ def outline_project(root: Path) -> bool:
         any(next((root / folder).glob("*.json"), None) is not None for folder in OUTLINE_FOLDERS if (root / folder).is_dir())
 
 
+DIALOGUE_DIRS = ("planning", ".drama")  # any depth; .drama/cache and .drama/snapshots hold no records
+DIALOGUE_SKIP = (".drama/cache", ".drama/snapshots")
+
+
+def dialogue_plans(root: Path) -> list[tuple[str, dict]]:
+    """[(project-relative path, document)] of every dialogue-plan record under planning/ or .drama/ (any depth)."""
+    found = []
+    for folder in DIALOGUE_DIRS:
+        base = root / folder
+        if not base.is_dir() or not base.resolve().is_relative_to(root.resolve()):
+            continue
+        for path in sorted(base.rglob("*.json")):
+            relative = path.relative_to(root).as_posix()
+            if relative.startswith(DIALOGUE_SKIP):
+                continue
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if record_kind(doc) == "dialogue-plan":
+                found.append((relative, doc))
+    return found
+
+
+def dialogue_project(root: Path) -> bool:
+    """The project has started the dialogue layer (docs/d6/d6-3-decisions.md §2): a dialogue-plan record anywhere under
+    planning/ or .drama/. Judged by records, like outline_project; 0.3.6-era projects have none."""
+    return bool(dialogue_plans(root))
+
+
 def _classify(ref: dict, partition: str | None, pages: dict) -> tuple[str, int | None]:
     """('state'|'plan'|'text'|'other', episode) for a snapshot item or run output. `pages` maps pageIds to what the
     receipts say about them and, in an outline-layer project, the paths of local episode-plan records to their episode."""
@@ -237,6 +265,8 @@ def record_episode(doc: dict, name: str) -> int | None:
             return _ep_int(value)
     tokens = _command(doc)
     named = [doc.get(key) for key in NAME_FIELDS] + [target.get("file")]
+    if isinstance(doc.get("target"), str):  # a record whose target is the file it is about (D6-0 revision lists)
+        named.append(doc["target"])
     named += [tokens[i + 1] for i, t in enumerate(tokens[:-1]) if t == "--new"]
     for value in named:
         if isinstance(value, str) and _episode_of_name(value) is not None:
@@ -265,7 +295,7 @@ def layer_records(root: Path) -> dict[str, list[tuple[str, dict]]]:
 
 def run_season_check(project: str, episodes: str | None = None, batch_size: int = 10, allow_offline: bool = False,
                      outline: str | None = None, outline_batch: int = 15, skip_dialogue: bool = False,
-                     revise: bool = False, since: str | None = None) -> dict:
+                     revise: bool = False, since: str | None = None, legacy_dialogue: bool = False) -> dict:
     if episodes is None and outline is None:
         raise ValueError("give --episodes (written episodes) and/or --outline (episode outlines) as N or A-B")
     first, last = _range(episodes) if episodes is not None else (1, 0)
@@ -299,7 +329,11 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         pages.update({path: {"episode": record_episode(doc, path), "semantic": "episode_plan"}
                       for path, doc in records.get("episode-plan", []) if record_episode(doc, path) is not None})
     outline_layer = outline_range is not None and (root / SEASON_PLAN).is_file()
-    dialogue_layer = episodes is not None and bool(records.get("dialogue-plan"))
+    plans_found = dialogue_plans(root) if episodes is not None else []
+    dialogue_layer = bool(plans_found)
+    if dialogue_layer:  # the dialogue plans anywhere under planning/ or .drama/ (layer_records only reads three folders)
+        records["dialogue-plan"] = plans_found
+    dialogue_rules: dict[str, list] = {}
 
     # runs in finish order; a run without a valid finishedAt cannot be placed and fails
     ordered = []
@@ -379,6 +413,8 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             fail(scope, "c4", "没有覆盖本集的 C4 运行交接（集纲确认或修改单），且须早于作者运行")
         if not writers:
             fail(scope, "author", "没有产出本集正文的 C5 运行交接")
+            if dialogue_layer:  # the dialogue-layer rules judge records; without a handoff they still say what is there
+                _text_layer(scope, n, entry, records, [], ordered, snapshot_items, role, pages, fail, warn, None, dialogue_rules)
             continue
         author_when, author = writers[0]
         entry["authorRun"] = author["runId"]
@@ -441,16 +477,29 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         else:
             fail(scope, "saved", "最终稿没有 confirmed 保存回执" + ("（有未决回执，先对账）" if "unknown" in outcomes else ""))
         if dialogue_layer:
-            _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role, pages, fail, warn)
-        elif not skip_dialogue:
+            _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role, pages, fail, warn, final, dialogue_rules)
+        # D6-3: voice-card, dialogue-pass and dialogue-read only check old records, on request (--legacy-dialogue)
+        if legacy_dialogue and not skip_dialogue:
             _dialogue(scope, n, entry, root, writers, polish, ordered, final, items, snapshot_items, role, text_outputs, pages, fail)
         covering = []
         for path, review, data in reviews:
             refs = [review["target"], *review.get("additionalTargets", []), *review["readingScope"]]
             if any(_classify(ref, None, pages) == ("text", n) for ref in refs):
                 covering.append((path, review, data))
-        firsts = [c for c in covering if c[1]["firstReadWithoutAuthorNotes"]]
-        seconds = [c for c in covering if not c[1]["firstReadWithoutAuthorNotes"]]
+        if dialogue_layer:  # D6-3: preserved only keeps what a person asked to keep (writer-note id or their own words)
+            dialogue_rules.setdefault("preserved-human-source", []).append(scope)
+            for path, review, _ in covering:
+                unsourced = preserved_without_source(review)
+                if unsourced:
+                    fail(scope, "preserved-human-source", f"{review['reviewId']} 的 {'、'.join(unsourced[:3])} 没有人工来源"
+                         "（noteId 或 humanWords）；preserved 只认人要求保留的东西")
+        if dialogue_layer:  # D6-3 walkthrough #13: first and second reads are reviews of the text, judged by their target
+            covering_reads = [c for c in covering if any(_classify(ref, None, pages) == ("text", n)
+                                                         for ref in [c[1]["target"], *c[1].get("additionalTargets", [])])]
+        else:
+            covering_reads = covering
+        firsts = [c for c in covering_reads if c[1]["firstReadWithoutAuthorNotes"]]
+        seconds = [c for c in covering_reads if not c[1]["firstReadWithoutAuthorNotes"]]
         entry["firstRead"] = [c[1]["reviewId"] for c in firsts]
         entry["secondRead"] = [c[1]["reviewId"] for c in seconds]
         if not firsts:
@@ -458,7 +507,8 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         unsealed = []
         for path, review, data in firsts:
             sidecar = path.with_suffix(".sha256")
-            if not sidecar.is_file() or sidecar.read_text(encoding="utf-8").split()[:1] != [hashlib.sha256(data).hexdigest()]:
+            if (not sidecar.is_file() or sidecar.read_text(encoding="utf-8").split()[:1] != [hashlib.sha256(data).hexdigest()]) \
+                    and not _sealed_inside(review):
                 unsealed.append(review["reviewId"])
             targets = [review["target"], *review.get("additionalTargets", [])]
             size = len({_classify(ref, None, pages)[1] for ref in targets} - {None})
@@ -504,7 +554,27 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
                                               "evaluatedOn": scopes} for rule, scopes in outline_rules.items()}
     if dialogue_layer:
         result["episodeRuleSet"] = "dialogue-layer"
+        failed = {f["rule"] for f in failures}
+        result["dialogueLayerRules"] = {rule: {"status": "failed" if rule in failed else "passed" if scopes else "not_evaluated",
+                                               "evaluatedOn": scopes} for rule, scopes in dialogue_rules.items()}
+        # re-run N1: without a corpus the 13-char tier did not run; say so beside the status rather than hide it in passed
+        skipped13 = [f"第{n}集" for n in sorted(per_episode) if (per_episode[n].get("dupTwoTier") or {}).get("13", "").startswith("not_evaluable")]
+        if skipped13 and "dup-two-tier" in result["dialogueLayerRules"]:
+            result["dialogueLayerRules"]["dup-two-tier"].update(notEvaluatedTiers=["13"], notEvaluatedTiersOn=skipped13,
+                                                                notEvaluatedWhy="本项目无语料（台词目标 corpusManifest: null）")
+    if episodes is not None and not legacy_dialogue:  # with the flag the output is the 0.3.6 output byte for byte
+        result["legacyDialogueRules"] = "not_run (voice-card, dialogue-pass, dialogue-read: --legacy-dialogue)"
     return result
+
+
+def _sealed_inside(review: dict) -> bool:
+    """D6-3: a first read may keep its seal in sealedSha256: the sha256 of its canonical JSON (sorted keys, no spaces,
+    sealedSha256 left out). A record carrying none is judged by the .sha256 sidecar alone, as before."""
+    seal = review.get("sealedSha256")
+    if not isinstance(seal, str):
+        return False
+    body = json.dumps({k: v for k, v in review.items() if k != "sealedSha256"}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return seal == "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _saved(ref: dict, receipts: list[dict]) -> set[str]:
@@ -761,16 +831,35 @@ def _strings(value):
             yield from _strings(item)
 
 
-def _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role, pages, fail, warn) -> None:
+DIALOGUE_LAYER_RULES = ("dialogue-plan", "target-ref", "plan-text-align", "cold-retell", "situation-check", "consistency-record",
+                        "retell-after-revise", "constraint-origin", "no-numeric-dialogue-constraint", "fixlist-no-lines",
+                        "dup-two-tier", "genre-lexicon", "preserved-human-source")
+
+
+def _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role, pages, fail, warn, final=None, ran=None) -> None:
     """The dialogue-layer rules (implementation plan §2.2 #12), run instead of voice-card, dialogue-pass and
-    dialogue-read when the project keeps dialogue plans: each is a record that must exist or a field that must hold."""
+    dialogue-read when the project keeps dialogue plans: each is a record that must exist or a field that must hold.
+    `ran` collects rule -> the episodes it was evaluated on, for dialogueLayerRules."""
+    ran = ran if ran is not None else {}
+    for rule in DIALOGUE_LAYER_RULES:
+        ran.setdefault(rule, [])
+
+    def evaluated(*rules):
+        for rule in rules:
+            ran[rule].append(scope)
+
     def mine(kind):
         return [(path, doc) for path, doc in records.get(kind, []) if record_episode(doc, path) == n]
 
     plans = mine("dialogue-plan")
     entry["dialoguePlans"] = [path for path, _ in plans]
+    evaluated("dialogue-plan", "plan-text-align", "cold-retell", "situation-check", "dup-two-tier", "genre-lexicon")
+    if writers:  # whether the text was revised is read from the C5 runs; without them it cannot be told
+        evaluated("retell-after-revise")
     if not plans:
         fail(scope, "dialogue-plan", "没有本集的对话表记录（C5a 的 dialogue-plan）")
+    else:
+        evaluated("target-ref")
     target_ids = [doc["targetId"] for _, doc in records.get("dialogue-target", []) if isinstance(doc.get("targetId"), str)]
     for path, plan in plans:
         errors = check_contract("dialogue-plan", plan)
@@ -784,22 +873,46 @@ def _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role
             fail(scope, "target-ref", f"{path} 引用的台词目标不在项目的 dialogue-target 记录里（{cited[:80]}）")
     if not mine("plan-text-consistency"):
         fail(scope, "plan-text-align", "没有本集正文对照对话表的 plan-text-consistency 记录")
-    if not [doc for _, doc in mine("retell-record") if doc["target"].get("kind") == "episode_text"]:
+    text_retells = [doc for _, doc in mine("retell-record") if doc["target"].get("kind") == "episode_text"]
+    if not text_retells:
         fail(scope, "cold-retell", "没有只读本集正文的冷读复述记录（retell-record，target.kind episode_text）")
-    checks = [path for path, doc in mine("answers") if str(doc.get("questionsVersion") or doc.get("schema") or "").startswith("dialogue-check")]
+    situation = [(path, doc) for path, doc in mine("answers")
+                 if str(doc.get("questionsVersion") or doc.get("schema") or "").startswith("dialogue-check")]
+    checks = [path for path, _ in situation]
     entry["situationChecks"] = checks
+    # two independent checks of the same draft need a consistency record; checks of different drafts (the original and the
+    # revision) are not compared (D6-3 walkthrough #6). Records without target.file count as one draft, as before.
+    by_draft: dict = {}
+    for path, doc in situation:
+        target = doc.get("target") if isinstance(doc.get("target"), dict) else {}
+        by_draft.setdefault(target.get("file"), []).append(path)
+    doubled = {draft: paths for draft, paths in by_draft.items() if len(paths) > 1}
     if not checks:
         fail(scope, "situation-check", "没有本集正文的处境核对记录（对话问题单的回答记录）")
-    elif len(checks) > 1 and not mine("consistency"):
-        fail(scope, "consistency-record", f"本集有 {len(checks)} 份处境核对，却没有它们之间的 answers-consistency 记录")
+    elif doubled:
+        evaluated("consistency-record")
+        if not mine("consistency"):
+            draft, paths = next(iter(doubled.items()))
+            fail(scope, "consistency-record", f"同一稿{f'（{draft}）' if draft else ''}有 {len(paths)} 份处境核对，"
+                 "却没有它们之间的 answers-consistency 记录")
+    # retell-after-revise (D6-3): once the text was revised (a C5 run after the author run), the revised text needs a cold
+    # retell of its own: a cold_reader run after the last revision, or a retell record whose target.file is the final text
     cold = [when for when, run in ordered if run["workstation"] == "C6" and role(run) == "cold_reader"
             and any(_classify(i["ref"], i["partition"], pages) == ("text", n) for i in snapshot_items(run)[0])]
-    if cold and any(when > min(cold) for when, _ in writers) and not any(when > writers[-1][0] for when in cold):
-        fail(scope, "retell-after-revise", f"冷读之后又改了正文（{writers[-1][1]['runId']}），改后没有再做一次冷读")
+    final_id = (final or {}).get("id") or ""
+    retold_final = bool(final_id) and any(_same_file(doc["target"].get("file"), final_id) for doc in text_retells)
+    # with cold-read runs on record their order decides (as in D6-1); a records-only project needs a retell of the final
+    revised_unread = (any(when > min(cold) for when, _ in writers) and not any(when > writers[-1][0] for when in cold)) if cold \
+        else len(writers) > 1 and bool(text_retells) and not retold_final  # no retell at all is cold-retell's failure
+    if revised_unread:
+        fail(scope, "retell-after-revise", f"正文改过（{writers[-1][1]['runId']}），改后的稿没有冷读复述"
+             f"（改后的冷读运行，或 target.file 为 {final_id or '最终稿'} 的复述记录）")
     tasks = {doc.get("taskId"): (path, doc) for path, doc in records.get("task", [])}
     found = [tasks[run["taskId"]] for _, run in writers if run["taskId"] in tasks]
     if not found:
         warn(scope, "constraint-origin", "没有本集作者运行的任务记录（.drama/tasks/），任务约束的来源与禁词未核")
+    else:
+        evaluated("constraint-origin", "no-numeric-dialogue-constraint")
     for path, task in found:
         for index, constraint in enumerate(task.get("constraints") or []):
             text, origin = constraint.get("text") or "", constraint.get("origin")
@@ -807,12 +920,34 @@ def _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role
                 fail(scope, "constraint-origin", f"{path} constraints[{index}] 没有来源，或编排方约束没有引用台词目标条款")
             for category, hit in blocklist_hits(text):
                 fail(scope, "no-numeric-dialogue-constraint", f"{path} constraints[{index}] 命中 {category} 禁词（{hit!r}），不论来源都拒")
-    for path, fixlist in mine("revision-list"):
-        quoted = [line.strip() for text in _strings(fixlist) for line in text.splitlines() if _speaker(line)]
-        if quoted:
-            fail(scope, "fixlist-no-lines", f"{path} 写了替换台词（{quoted[0][:30]}…）；修订单只指问题与引用，不写台词")
+    fixlists = mine("revision-list")
+    if fixlists:
+        evaluated("fixlist-no-lines")
+    cast = {ex.get("speaker") for _, plan in plans for scene in plan.get("scenes") or [] if isinstance(scene, dict)
+            for topic in scene.get("topics") or [] if isinstance(topic, dict)
+            for ex in topic.get("exchanges") or [] if isinstance(ex, dict) and ex.get("speaker")}
+    cast |= {row.get("speaker") for _, ptm in mine("plan-text-map") for row in ptm.get("lineToPlan") or []
+             if isinstance(row, dict) and row.get("speaker")}
+    for path, fixlist in fixlists:
+        problems = revision_list_problems(fixlist, cast or None)
+        if problems:
+            fail(scope, "fixlist-no-lines", f"{path}：{problems[0]}；修订单只指问题与引用，不写台词、不下数值指令")
     tiers = {doc.get("k") for _, doc in mine("dup-hits")}
-    if not {8, 13} <= tiers:
-        fail(scope, "dup-two-tier", f"逐条命中记录缺 {sorted({8, 13} - tiers)} 字档（装包样本 8 字、全库 13 字）")
+    # D6-3 walkthrough #1: a project without a corpus (its dialogue target says corpusManifest: null) has no pool for the
+    # 13-char tier, which is then not_evaluable; the 8-char tier is owed only when the plan cites corpus samples
+    no_corpus = any("corpusManifest" in doc and doc["corpusManifest"] is None for _, doc in records.get("dialogue-target", []))
+    cites_samples = any(p.get("source") == "corpus" for _, plan in plans for scene in plan.get("scenes") or [] if isinstance(scene, dict)
+                        for topic in scene.get("topics") or [] if isinstance(topic, dict)
+                        for p in ((topic.get("exemplars") or {}).get("positives") or []) if isinstance(p, dict))
+    owed = ({8} if cites_samples or not no_corpus else set()) | (set() if no_corpus else {13})
+    if no_corpus:
+        entry["dupTwoTier"] = {"13": "not_evaluable（本项目无语料）", "8": "owed" if 8 in owed else "passed（没有装语料样本）"}
+    if not owed <= tiers:
+        fail(scope, "dup-two-tier", f"逐条命中记录缺 {sorted(owed - tiers)} 字档（装包样本 8 字、全库 13 字）")
     if not mine("genre-scan"):
         fail(scope, "genre-lexicon", "没有本集正文的题材禁词扫描记录（corpus lexicon）")
+
+
+def _same_file(cited, final_id: str) -> bool:
+    """A retell's target.file names the final text: the same project path, or the same file name."""
+    return isinstance(cited, str) and bool(cited) and (cited == final_id or PurePosixPath(cited).name == PurePosixPath(final_id).name)

@@ -324,7 +324,7 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 - 删功能永远只是选项，不作默认；默认是「保留用户给定的」时，按默认走不会替主创删掉任何功能。
 - 运行交接里的 `changeProposals` 用 `decision add --from-handoff <run-handoff>` 登记，缺默认就登记不进去。
 - 主创说了话才能改成 `decided`：`decision decide --id <id> --option <optionId> --human-words "<原话>"`，原话照记。之后 `affects[]` 列出要重写的集，按 §7 修订。
-- 修订预算用完后，审读意见仍在的，两处都做：写进该运行交接的 `unfinished`（任务 `goal` 记 `partially_met`），并用 `decision add --from-handoff` 登记进队列、带默认（通常默认「按现稿交付」，另一选项是追加一次修订）；受影响的分集计划在 `pending[]` 引用这条。不在预算之外悄悄再改。
+- 修订预算用完后，审读意见仍在的，两处都做：写进该运行交接的 `unfinished`（任务 `goal` 记 `partially_met`），并用 `decision add --from-handoff` 登记进队列、带默认（通常默认「按现稿交付」，另一选项是追加一次修订）；受影响的分集计划在 `pending[]` 引用这条。选了「再改一次」时，由编排方在预算用完的那一层（集纲侧通常是 C4）另开一次运行，另计预算 1 次，交接的 `decisionRefs[]` 写这条决定的 id（`contract-check run-handoff <交接> --decisions planning/decisions.json` 核引用存在，S）。不在预算之外悄悄再改。
 - 编剧、顾问的意见经 `feedback-ingest` 记成 `writer-note`，决定类的回流成 `decided` 条目，同样带原话。
 
 ## 11. 用户给定设定的处理（`user_given`／`user_given_modified`、不成立时默认保留并标 `license_pending`）

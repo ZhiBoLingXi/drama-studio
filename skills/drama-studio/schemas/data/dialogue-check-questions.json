@@ -8,6 +8,19 @@
     "not_evaluable",
     "n/a"
   ],
+  "defectKinds": [
+    "missing",
+    "internal_conflict",
+    "knowledge_gap",
+    "situation_mismatch",
+    "listener_knows_mismatch",
+    "info_not_carried",
+    "emotion_not_in_line_shape",
+    "unmotivated_repeat",
+    "closer_missing",
+    "address_term",
+    "speaker_basis_missing"
+  ],
   "questions": [
     {
       "q": 1,

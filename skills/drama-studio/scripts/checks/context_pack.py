@@ -14,6 +14,13 @@ default; a C5b package (task.layer C5b) needs a dialogue plan that passes contra
 one pair per topic, added first positives, then pairs, then second positives while the budget lasts; the rest are
 listed as omitted for budget. Samples are the one thing the package leaves out to fit, and it says so.
 
+D6-3: samples go into their own samples partition (no longer current_plan) as masked sample records (situation,
+walkthrough, skeleton, maskedLines), never raw transcript rows. --exemplars is a JSONL of such records, or the dialogue
+plan itself, whose exemplars.positives objects are packed as their own character ranges. --quotes-per-topic caps the
+masked lines a topic's samples carry in all (default 2, 0 for none); a sample that would pass the cap is left out whole
+(reason quote_cap). A written package appends its samples to .drama/packs/history.json, and a sample the previous
+episode's package also held is reported under samples.repeatedFromPreviousEpisode (reported, not refused).
+
 D6-2: in a project that has started the outline layer (season_check.outline_project: planning/season-plan.json or
 planning/function-map.json, or a JSON record under planning/ledger/ or planning/episodes/; the empty folders
 init-project creates do not count, and 0.3.6-era projects have none of these), a C4 author package must hold the season plan and a ledger (season-check's
@@ -31,9 +38,11 @@ from .contract_check import COMPARISON_ROLES, DATA_DIR, check_contract
 from .receipt import MANIFESTS, effective_entries
 from .season_check import layer_records, outline_project, record_kind
 
-PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns"]
+PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns", "samples"]  # samples: D6-3, no longer in current_plan
+QUOTES_PER_TOPIC = 2  # masked corpus lines (positives) per topic (D6-3 decisions §1, plan §8 #2); 0 packs none
+HISTORY = ".drama/packs/history.json"  # which samples went into which episode's package
 LOCAL_ROOTS = (".drama", "runs", "planning")  # the only folders a local_file selection item may read from
-SAMPLE_ROOTS = (".drama", "runs", "knowledge")  # corpus exchanges and project contrast pairs
+SAMPLE_ROOTS = (".drama", "runs", "knowledge", "planning")  # corpus exchanges, project contrast pairs, a dialogue plan
 SAMPLE_ROLES = ("dialogue_designer", "author")
 
 
@@ -169,13 +178,16 @@ def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
 
 
 QUESTION_SET = "question-set:"  # a bundled question set packed by id@version (D6-2 §5 #22)
+LEXICON = "lexicon:"  # a bundled genre lexicon packed the same way (D6-3 walkthrough #9)
+BUNDLED = {QUESTION_SET: "*-questions.json", LEXICON: "*-lexicon.json"}
 
 
 def _read_question_set(ref: dict, where: str, errors: list[str]):
-    """local_file "question-set:<id>@<version>": a question set bundled under schemas/data/, read only, never copied
-    into the project; pinned by its sha256 like any local_file."""
-    wanted = ref["id"][len(QUESTION_SET):]
-    for path in sorted(DATA_DIR.glob("*-questions.json")):
+    """local_file "question-set:<id>@<version>" or "lexicon:<id>@<version>": a question set or genre lexicon bundled
+    under schemas/data/, read only, never copied into the project; pinned by its sha256 like any local_file."""
+    prefix = next(p for p in BUNDLED if ref["id"].startswith(p))
+    wanted = ref["id"][len(prefix):]
+    for path in sorted(DATA_DIR.glob(BUNDLED[prefix])):
         data = path.read_bytes()
         doc = json.loads(data.decode("utf-8"))
         if f"{doc.get('id')}@{doc.get('version')}" == wanted:
@@ -183,7 +195,7 @@ def _read_question_set(ref: dict, where: str, errors: list[str]):
                 errors.append(f"{where}: revision pins {ref['revision']} but the bundled question set is {_sha(data)}")
                 return "error", None
             return "ok", data
-    raise ValueError(f"{where}: no bundled question set {wanted!r} under schemas/data/ (ids look like reality-check-questions@v1)")
+    raise ValueError(f"{where}: no bundled {prefix[:-1]} {wanted!r} under schemas/data/ (ids look like reality-check-questions@v1, genre-lexicon@v1)")
 
 
 def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) -> list[str]:
@@ -196,12 +208,15 @@ def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) 
 
 
 def run_context_pack(project, task, selection, role: str, budget: int, dry_run: bool = False,
-                     allow_unverified: bool = False, exemplars: str | None = None, contrast_pairs: str | None = None) -> dict:
+                     allow_unverified: bool = False, exemplars: str | None = None, contrast_pairs: str | None = None,
+                     quotes_per_topic: int = QUOTES_PER_TOPIC) -> dict:
     root = Path(project).expanduser().absolute()
     if not root.is_dir():
         raise ValueError(f"Project directory not found: {root}")
     if budget < 1:
         raise ValueError("--budget must be a positive number of chars")
+    if quotes_per_topic < 0:
+        raise ValueError("--quotes-per-topic must be 0 or more")
     task_bytes = Path(task).read_bytes()
     task_doc = _load_json(Path(task), "task")
     problems = check_contract("task", task_doc)
@@ -244,7 +259,7 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             entries = _manifest(cache) if entries is None else entries
             status, loaded = _read_cache(root, cache, entries, ref, where, allow_unverified, errors, unknowns)
         elif ref["kind"] == "local_file":
-            reader = _read_question_set if ref["id"].startswith(QUESTION_SET) else (lambda r, w, e: _read_local(root, r, w, e))
+            reader = _read_question_set if ref["id"].startswith(tuple(BUNDLED)) else (lambda r, w, e: _read_local(root, r, w, e))
             status, loaded = reader(ref, where, errors)
             loaded = (loaded, None) if status == "ok" else loaded
         else:
@@ -308,7 +323,9 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         if role not in SAMPLE_ROLES or (role == "author" and task_doc.get("layer") != "C5b"):
             raise ValueError("--exemplars/--contrast-pairs pack samples for C5a (dialogue_designer) or C5b (author with task.layer C5b) only")
         samples = _pack_samples(root, packed_docs, exemplars, contrast_pairs, budget - sum(i["chars"] for i in items),
-                                items, item_labels, omitted, omitted_labels)
+                                items, item_labels, omitted, omitted_labels, quotes_per_topic)
+        history = _history(root)
+        samples["repeatedFromPreviousEpisode"] = _repeats(history, samples)
     partition_chars = {name: sum(i["chars"] for i in items if i["partition"] == name) for name in PARTITIONS}
     total = sum(partition_chars.values())
     if total > budget:
@@ -363,6 +380,9 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         _inside(folder, root, ".drama/snapshots")
         written = [path.name for path, content in ((target, body), (sidecar, sidecar_body)) if _publish(path, content)]
         result.update(written=target.name in written, existing=target.name not in written, written_files=written)
+        if samples is not None and samples["keys"]:
+            _record_history(root, history, snapshot_id, task_doc["taskId"], samples)
+            result["historyPath"] = str(root / HISTORY)
     return {**result, "passed": True, "errors": []}
 
 
@@ -434,13 +454,16 @@ def _role_rules(root: Path, role: str, task_doc: dict, items: list, labels: list
     return errors
 
 
-def _sample_file(root: Path, path: str, what: str) -> tuple[str, bytes, dict]:
-    """A JSONL sample file inside the project: (project-relative id, bytes, key -> (start, end) of its line)."""
+def _sample_file(root: Path, path: str, what: str) -> tuple[str, bytes, dict, dict]:
+    """A JSONL sample file inside the project: (project-relative id, bytes, key -> (start, end) of its line, key -> row)."""
     resolved = Path(path).expanduser().absolute().resolve()
     if not resolved.is_relative_to(root.resolve()) or resolved.relative_to(root.resolve()).parts[0] not in SAMPLE_ROOTS:
         raise ValueError(f"{what} must be a file inside {', '.join(f'{f}/' for f in SAMPLE_ROOTS)} of the project: {path}")
     data = resolved.read_bytes()
-    spans, offset = {}, 0
+    plan = _plan_exemplars(data.decode("utf-8"))
+    if plan is not None:
+        return (resolved.relative_to(root.resolve()).as_posix(), data, *plan)
+    spans, rows, offset = {}, {}, 0
     for line in data.decode("utf-8").splitlines(keepends=True):
         body = line.rstrip("\r\n")
         if body.strip():
@@ -451,13 +474,65 @@ def _sample_file(root: Path, path: str, what: str) -> tuple[str, bytes, dict]:
             key = row.get("exchangeId") or row.get("pairId") if isinstance(row, dict) else None
             if key:
                 spans.setdefault(key, (offset, offset + len(body)))
+                rows.setdefault(key, row)
         offset += len(line)
-    return resolved.relative_to(root.resolve()).as_posix(), data, spans
+    return resolved.relative_to(root.resolve()).as_posix(), data, spans, rows
 
 
-def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, omitted, omitted_labels) -> dict:
-    """Two corpus positives and one contrast pair per topic of the packed dialogue plan(s), in priority order while the
-    budget lasts; nothing is cut inside a sample, whole samples that do not fit are listed as omitted for budget."""
+def _plan_exemplars(text: str):
+    """When --exemplars is a dialogue plan (D6-3 ruling): (ref -> (start, end) of its exemplars.positives object in the
+    file, ref -> that object), so each sample is packed as that object's own character range; None for a JSONL file."""
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        return None
+    if record_kind(doc) != "dialogue-plan":
+        return None
+    wanted = {p.get("ref") for scene in doc.get("scenes") or [] for topic in scene.get("topics") or [] if isinstance(topic, dict)
+              for p in ((topic.get("exemplars") or {}).get("positives") or []) if isinstance(p, dict)}
+    spans, rows, stack, in_string, escaped = {}, {}, [], False, False
+    for index, char in enumerate(text):  # every JSON object's span, strings respected
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            stack.append(index)
+        elif char == "}" and stack:
+            start = stack.pop()
+            try:
+                obj = json.loads(text[start:index + 1])
+            except ValueError:
+                continue
+            if isinstance(obj, dict) and obj.get("ref") in wanted and "source" in obj:
+                spans.setdefault(obj["ref"], (start, index + 1))
+                rows.setdefault(obj["ref"], obj)
+    return spans, rows
+
+
+def _masked_problem(row: dict) -> str | None:
+    """A sample goes into a package as a masked sample record (situation, note, skeleton, maskedLines), never as a raw
+    transcript: a row with `lines` or without a maskedLines list is refused (D6-3, plan §8 #2)."""
+    if "lines" in row:
+        return "是原始转写（带 lines）"
+    if not isinstance(row.get("maskedLines"), list) and "pairId" not in row:
+        return "没有 maskedLines（遮蔽后的原句）"
+    return None
+
+
+def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, omitted, omitted_labels,
+                  quotes_per_topic=QUOTES_PER_TOPIC) -> dict:
+    """Two corpus positives and one contrast pair per topic of the packed dialogue plan(s), as masked sample records
+    (situation, walkthrough, skeleton, maskedLines; a raw transcript row is refused), into the samples partition in priority
+    order while the budget lasts. A topic's samples carry at most quotes_per_topic masked lines in all (default 2, 0 for
+    none): a sample that would pass that is left out whole (reason quote_cap), so is one that does not fit the budget.
+    Nothing is cut inside a sample."""
     plans = [doc for _, doc in docs if record_kind(doc) == "dialogue-plan"]
     if not plans:
         raise ValueError("samples follow the topics of a packed dialogue plan; the selection holds none")
@@ -479,22 +554,34 @@ def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, om
                     if key is None:
                         unresolved.append(f"{topic.get('topicId')}:{ref}")
                         continue
+                    problem = _masked_problem(file[3][key])
+                    if problem:
+                        raise ValueError(f"sample {key} (topic {topic.get('topicId')}) {problem}; the samples partition takes masked "
+                                         "sample records (situation, walkthrough, skeleton, maskedLines) only, not transcript ranges")
                     taken[kind] += 1
                     if (kind, key) in seen:
                         continue
                     seen.add((kind, key))
                     tier = 1 if kind == "contrast" else (0 if taken[kind] == 1 else 2)
                     tiers[tier].append((topic.get("topicId"), kind, key, file))
-    packed = left = 0
-    for topic, kind, key, (ident, data, spans) in [entry for tier in tiers for entry in tier]:
+    packed, left, capped, keys, quotes = 0, 0, 0, [], {}
+    for topic, kind, key, (ident, data, spans, rows) in [entry for tier in tiers for entry in tier]:
         start, end = spans[key]
         text = data.decode("utf-8")[start:end]
         ref = {"kind": "local_file", "id": ident, "revision": _sha(data), "sha256": _sha(data), "range": {"start": start, "end": end}}
         label = f"sample {topic} {'正例' if kind == 'positive' else '对照对'} {key}"
+        masked = len(rows[key].get("maskedLines") or [])
+        if quotes.get(topic, 0) + masked > quotes_per_topic:  # whole sample out: its masked lines would pass the topic's cap
+            capped += 1
+            omitted.append({"ref": ref, "required": False, "reason": "quote_cap"})
+            omitted_labels.append(label)
+            continue
         if len(text) <= room:
+            quotes[topic] = quotes.get(topic, 0) + masked
             room -= len(text)
             packed += 1
-            items.append({"ref": ref, "partition": "current_plan", "required": False, "usage": "creative_reference",
+            keys.append({"kind": kind, "key": key, "topicId": topic})
+            items.append({"ref": ref, "partition": "samples", "required": False, "usage": "creative_reference",
                           "chars": len(text), "sha256": _sha(text.encode("utf-8")),
                           "reason": f"样本：话题 {topic} 的{'正例' if kind == 'positive' else '对照对'} {key}（对话表引用）"})
             labels.append(label)
@@ -502,5 +589,51 @@ def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, om
             left += 1
             omitted.append({"ref": ref, "required": False, "reason": "budget"})
             omitted_labels.append(label)
-    return {"packed": packed, "omittedForBudget": left, "unresolved": unresolved,
-            "policy": "每话题至多 2 个语料正例＋1 个对照对，先各话题第一正例、再对照对、再第二正例，装到预算为止；不截断单条样本"}
+    episodes = [plan.get("episode") for plan in plans if plan.get("episode") is not None]
+    return {"packed": packed, "omittedForBudget": left, "omittedForQuoteCap": capped, "unresolved": unresolved,
+            "quotesPerTopic": quotes_per_topic, "maskedLinesPerTopic": quotes,
+            "episode": episodes[0] if episodes else None, "keys": keys,
+            "policy": f"每话题至多 2 个语料正例＋1 个对照对，样本须是遮蔽后的样本记录；一个话题所有样本的 maskedLines 合计不超过 "
+                      f"{quotes_per_topic} 句，超出的样本整条不装（reason: quote_cap）；先各话题第一正例、再对照对、再第二正例，"
+                      "装到预算为止；不截断单条样本"}
+
+
+def _episode_number(value):
+    match = re.match(r"^(?:ep|episode)?[-_]?0*(\d{1,4})", str(value).strip().lower()) if value is not None else None
+    return int(match.group(1)) if match else None
+
+
+def _history(root: Path) -> list:
+    path = root / HISTORY
+    if not path.is_file():
+        return []
+    doc = _load_json(_inside(path, root, HISTORY), "pack history")
+    return doc.get("packs", []) if isinstance(doc, dict) and isinstance(doc.get("packs"), list) else []
+
+
+def _repeats(packs: list, samples: dict) -> list:
+    """Samples of this package that the package of the episode just before also held (D6-3: no sample two episodes
+    running). Episodes are compared by number; 6A and 6B count as consecutive."""
+    n, label = _episode_number(samples["episode"]), str(samples["episode"])
+    if n is None:
+        return []
+    before = [p for p in packs if isinstance(p, dict) and str(p.get("episode")) != label
+              and _episode_number(p.get("episode")) in (n - 1, n)]
+    mine = {(k["kind"], k["key"]) for k in samples["keys"]}
+    return sorted({f"{p.get('episode')}:{k['kind']}:{k['key']}" for p in before for k in p.get("samples") or []
+                   if isinstance(k, dict) and (k.get("kind"), k.get("key")) in mine})
+
+
+def _record_history(root: Path, packs: list, snapshot_id: str, task_id: str, samples: dict) -> None:
+    """Append this package's samples to .drama/packs/history.json (one entry per snapshot; never rewrites one)."""
+    if any(isinstance(p, dict) and p.get("snapshotId") == snapshot_id for p in packs):
+        return
+    folder = root / ".drama" / "packs"
+    folder.mkdir(parents=True, exist_ok=True)
+    _inside(folder, root, ".drama/packs")
+    entry = {"snapshotId": snapshot_id, "taskId": task_id, "episode": samples["episode"],
+             "samples": [{"kind": k["kind"], "key": k["key"], "topicId": k["topicId"]} for k in samples["keys"]]}
+    body = json.dumps({"schemaVersion": "drama-studio/pack-history/v0", "packs": [*packs, entry]}, ensure_ascii=False, indent=2) + "\n"
+    temp = folder / f".history.{os.getpid()}.tmp"
+    temp.write_text(body, encoding="utf-8")
+    os.replace(temp, folder / "history.json")

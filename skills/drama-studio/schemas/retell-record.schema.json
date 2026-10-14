@@ -82,7 +82,21 @@
             "type": "string"
           },
           "sourceLine": {
-            "type": "string"
+            "type": [
+              "string",
+              "object"
+            ],
+            "properties": {
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "quote": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "description": "Where the reader learned it: line number and the line, as {line, quote} or a string (D6-3)"
           },
           "factRefs": {
             "type": "array",
@@ -90,6 +104,15 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "sourceKind": {
+            "type": "string",
+            "enum": [
+              "dialogue",
+              "action",
+              "heading"
+            ],
+            "description": "heading: the cast list or a scene heading counts as the text too (D6-3)"
           }
         }
       }

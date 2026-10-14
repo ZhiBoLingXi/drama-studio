@@ -12,7 +12,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.5.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.6.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -244,8 +244,8 @@ python3 -B skills/drama-studio/scripts/drama_tools.py season-check ../my-drama -
 - 逐集查：有 C1、C2、C3 的交接（早于第一个作者运行），有覆盖本集的 C4 交接；本集的第一个 C5 运行只写这一集，快照是 `author` 包，装了本集集纲、前一集当时的最新稿和入口状态记录 `runs/state/after-ep-<前一集三位数>.md`；前一集有状态变化提案时，入口状态记录必须与上一集用的不同；有封存（`.sha256` 与字节一致）且 `firstReadWithoutAuthorNotes: true` 的首读和另一份次读，一次首读不超过 `--batch-size` 集；有装了本集正文的 `reader_effect` 首读包；最终稿有 confirmed 保存回执。另查快照封存、各记录的契约，以及几次运行的用量完全相同（抄的，不是实测）。
 - 集号从文件名（`ep-031`、`outline-031`、`第31集`）或页面写入回执里的 `episodeRef`、`semantic` 认出；`current_plan` 分区的是集纲，其余是正文。范围第一集缺前一集正文只记警告。
 - `--outline <起-止>` 查集纲（可与 `--episodes` 同用，至少给一个）：每集集纲有 C4 运行产出；一个 C4 运行不超过 `--outline-batch` 集（默认 15）；集纲包装了此前最近一次 C2、C3 运行的全部产出；一段的第一集装了前一集集纲的最新稿，前一集集纲若由更晚的运行写出则判并行（`outline-sequential`）；此前已有正文时装了 `runs/state/after-ep-<已写到的集>.md`；有 `context` 为 `independent` 或 `human` 的审读记录指向该集集纲；集纲最终稿有 confirmed 保存回执。文件名含 `outline` 的本地文件一律认作集纲。结果在 `perOutline`、`failedOutlines`。
-- 台词三条（默认查，`--skip-dialogue` 关闭并在输出记 `dialogueChecked: false`）：`voice-card`，最终稿里台词达到 3 句的每个说话人，名字出现在作者包装入的某张 K5 知识卡里；`dialogue-pass`，作者运行之后有一次 `dialogue_author` 运行，包里有 K5 卡，且它前后两稿的集标题和场头行逐行相同（台词、括注和动作行可以改）；`dialogue-read`，台词遍之后有一次装了本集正文的 `dialogue_read` 运行。台词行指“人物：话”（名字不超过 10 个字，可带括注）；稿子从本地文件或 `.drama/cache/<pageId>@r<n>.md` 读，读不到判不通过。方法见 [台词](skills/drama-studio/references/dialogue.md)。脚本不判断台词自不自然。
-- `context-pack --role` 新增 `dialogue_author`、`dialogue_read`；`dialogue_read` 包和 `reader_effect` 一样不能含 `current_plan`。
+- 旧的台词三条（0.6.0 起只在加 `--legacy-dialogue` 时查，用来复查没有对话表的旧记录；加了它输出与 0.3.6 逐字节相同，不加时输出记 `legacyDialogueRules: not_run …`；`--skip-dialogue` 在加了 `--legacy-dialogue` 时关掉它们并记 `dialogueChecked: false`）：`voice-card`，最终稿里台词达到 3 句的每个说话人，名字出现在作者包装入的某张 K5 知识卡里；`dialogue-pass`，作者运行之后有一次 `dialogue_author` 运行，包里有 K5 卡，且它前后两稿的集标题和场头行逐行相同（台词、括注和动作行可以改）；`dialogue-read`，台词遍之后有一次装了本集正文的 `dialogue_read` 运行。台词行指“人物：话”（名字不超过 10 个字，可带括注）；稿子从本地文件或 `.drama/cache/<pageId>@r<n>.md` 读，读不到判不通过。方法见 [台词](skills/drama-studio/references/dialogue-structure.md)。脚本不判断台词自不自然。
+- `context-pack --role` 有 `dialogue_author`、`dialogue_read`（台词遍、台词读用；0.6.0 起新运行不再做这两步，角色留着读旧记录）；`dialogue_read` 包和 `reader_effect` 一样不能含 `current_plan`。
 - `--revise`：对已有全稿做反馈改稿时用。不查“一集一个作者运行”、前一集正文、入口状态与状态更新；C4 只要求第一个作者运行之前有一次 C4 运行（修改单），作者包只要求有 `current_plan` 分区的材料。其余照查。
 - `--since <ISO 时间>`：只把这个时间及之后完成的 C4–C6 运行算进来，用于同一项目改过几版；C1–C3 仍在全部历史里找。审读记录没有时间，不受它过滤。
 - 首读有多份时，至少一份封存即可，其余未封存的记警告。
@@ -321,6 +321,28 @@ python3 -B $T contract-check task c4-task.json
   - `context-pack`：`fact_check` 包可以装 `comparison_only` 的卡；随包问题单按 id 装（`{"kind": "local_file", "id": "question-set:reality-check-questions@v1"}`）；C4 作者包的清单是季编排、底账、功能地图，`season-check` 的 `outline-structure` 对写 episode-plan 记录的 C4 运行按同一张清单核。
   - `run-handoff`：C1、C2 可以 `contextSnapshotId: null`，同时写 `noSnapshotReason`。`init-project` 另建 `runs/`、`knowledge/`。
   - `season-check` 在 `ruleSet: outline-layer` 下输出 `outlineLayerRules`（每条集纲层规则 passed／failed／not_evaluated 与核过的范围）；`plan-check` 的 `speaker-knows` 有 `notEvaluable` 时写 `pass_with_not_evaluable`；`status` 把已结束、留有未完成项的运行与未结束的分开。
+
+### 切换台词层（0.6.0）
+
+正文默认走 C5a 对话表 → C5b 照表写正文 → C6 五读（首读、次读、冷读复述、处境对照、设计依据一致性）→ 先改表再改文；台词遍、台词读不再是步骤（[D6-3 决定](docs/d6/d6-3-decisions.md)）。产物位置：对话表 `planning/dialogue/dialogue-plan-<NNN>.json`，台词目标 `planning/dialogue-target.json`，复述、处境对照、对照表核对与修订单放 `.drama/checks/`，装包历史 `.drama/packs/history.json`。
+
+```sh
+T=skills/drama-studio/scripts/drama_tools.py
+python3 -B $T season-check ../my-drama --episodes 1-10                      # 有对话表时核台词层规则，列在 dialogueLayerRules
+python3 -B $T season-check ../my-drama --episodes 1-10 --legacy-dialogue    # 复查旧记录：另跑声音卡、台词遍、台词读三条
+python3 -B $T context-pack ../my-drama --task c5a.json --selection sel.json --role dialogue_designer --budget 60000 --exemplars runs/samples/masked-ep006.jsonl --quotes-per-topic 2
+python3 -B $T contract-check revision-list .drama/checks/revision-list-ep006.json
+python3 -B $T contract-check plan-text-map runs/b6/plan-text-map-006.json
+```
+
+- 「启用了台词层」按记录判：`planning/` 或 `.drama/` 下任意深度有带 `dialogue-plan` 标记的 JSON（`.drama/cache`、`.drama/snapshots` 不算），与集纲层的判据并列。没有对话表的旧项目不带 `--legacy-dialogue` 时，旧三条不出现，也没有新失败。
+- `season-check --episodes` 的台词层规则：`dialogue-plan`、`target-ref`、`plan-text-align`、`cold-retell`、`situation-check`、`consistency-record`、`retell-after-revise`、`constraint-origin`、`no-numeric-dialogue-constraint`、`fixlist-no-lines`、`dup-two-tier`、`genre-lexicon`、`preserved-human-source`，每条的 passed／failed／not_evaluated 与核过的集列在 `dialogueLayerRules`。没有 C5 运行交接的集也按记录核这些规则（按运行判的几条记 not_evaluated）。
+  - `retell-after-revise`：有冷读运行时按运行先后判；只有记录时，正文改过（C5 运行不止一个）而正文复述的 `target.file` 不是最终稿，判失败。
+  - `preserved-human-source`：审读记录的 `preserved` 每项要写成 `{item, noteId}` 或 `{item, humanWords}`（人要求保留的东西）；纯字符串是 0.6.0 之前的写法，旧项目照旧能过 `contract-check`，台词层项目判失败。
+- `context-pack`：C5b 作者包（任务 `layer: C5b`）里的对话表要过 `contract-check dialogue-plan`，C5a 包的分集计划 `capacity.status` 要是 `fits` 或带默认的提案，否则退出码 2。样本进单独的 `samples` 分区，只收遮蔽后的样本记录（处境、说明、骨架、`maskedLines`），带原始 `lines` 的转写行或没有 `maskedLines` 的行是输入错误（退出码 1）；`--exemplars` 可以给这种记录的 JSONL，也可以直接给对话表（读其中 `exemplars.positives` 的遮蔽样本记录）；`--quotes-per-topic` 设一个话题所有样本的 `maskedLines` 合计最多几句（默认 2，可设 0），会超出的样本整条不装，列进 `omitted`（`reason: quote_cap`）；写出快照时把装了的样本追加进 `.drama/packs/history.json`，同一条样本上一集的包也装过时列在 `samples.repeatedFromPreviousEpisode`（只报不拦）。
+- `contract-check revision-list`（新对象）：修订单每项指问题、引依据，不写替换台词（SPEAKER 格式行）、不下数值指令（`constraint-blocklist` 的数值类），退出码 2；`where`、`cites` 等定位字段不扫，「本轮不改：…」这类说明标签不算台词行。`season-check` 的 `fixlist-no-lines` 用同一个扫描核 `.drama/checks/` 里的修订单。
+- 走通演示之后（[D6-3 决定 §6](docs/d6/d6-3-decisions.md)）：台词目标 `corpusManifest` 可为 `null`（须写 `noCorpusReason`），这时 `dup-two-tier` 的 13 字全库档记 not_evaluable，8 字档只在对话表引用了语料正例时才要；`mediaProfile` 可为 `null`（用随包默认档案）；`ledger knows` 把图谋账算作其主人知道；`consistency-record` 只在同一稿有两份处境对照时才要；修订单扫描在 `season-check` 里按本集人物名单认台词行；题材禁词表按 `lexicon:genre-lexicon@v1` 进包；`review-record` 的 `layer` 有 `C5a`、`C5b`，首读封存可写进记录的 `sealedSha256`，台词层项目的首读、次读只认审读对象是正文的记录；对话表交换上的 `interruptedAt` 由 `plan-text-consistency` 核；处境对照一答可同时有 `landsOn` 与 `quoteRef`，`n/a` 不必引句；冷读复述每条可带 `sourceLine`、`sourceKind`；对照表 `lineToPlan[].kind` 限定六种；`episode-check` 认「次日晚」这类场头时间词；`run-handoff` 可带 `decisionRefs[]`（`contract-check run-handoff --decisions` 核引用存在）；无语料时 `dialogueLayerRules` 的 `dup-two-tier` 另写 `notEvaluatedTiers`；`interrupted-by` 按被打断交换上的 `interruptedAt` 与话题 `interruptedBy.by` 核，被打断的人不必说完；`capacity text` 输出 `targetSec` 与 `targetSecSource`（`--target-sec` ＞ `--episode-plan` 的 `capacity.targetSec` ＞ 媒介档案，不给 `--media` 时是随包默认档案）。
+- `contract-check plan-text-map`（新对象）：C5b 的对照表（`exchangeToLines`、`lineToPlan` 的 `closerOf`／`carries`／`verbatimFrom`，`plan-text-consistency` 的输入）；核 `exchangeToLines` 指到的行在 `lineToPlan` 里标了同一个交换、逐字采用的行在 `verbatimFrom` 汇总里有出处。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 

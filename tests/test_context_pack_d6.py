@@ -21,7 +21,9 @@ def example(name):
 
 
 def exchange(ident, words):
-    return {"exchangeId": ident, "situation": {"function": "问清"}, "lines": [{"speaker": "甲", "text": words}]}
+    # D6-3 (plan §8 #2) changed this fixture on purpose: samples are packed as masked sample records, not transcript rows
+    # with `lines`; the record keeps one masked line, so the D6-1 expectations below hold unchanged
+    return {"exchangeId": ident, "situation": {"function": "问清"}, "skeleton": "问一件 → 对方答", "maskedLines": [f"［甲］：{words}"]}
 
 
 class D6PackTests(unittest.TestCase):

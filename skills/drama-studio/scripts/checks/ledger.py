@@ -858,9 +858,18 @@ def run_all_checks(entries_by_id, deltas, stage, cards_dir=None, function_map_do
 # ---------------------------------------------------------------------------
 # Knowledge export (knows)
 # ---------------------------------------------------------------------------
+def agenda_owners(entry):
+    """Whose agenda an agenda entry is: its party (the schema's field) or who; a list or a single name."""
+    owners = []
+    for field in ("party", "who"):
+        value = entry.get(field)
+        owners += value if isinstance(value, list) else [value] if isinstance(value, str) else []
+    return owners
+
+
 def knows_for_person(entries_by_id, person, at=None):
     """knows/notKnows of one person: knowledge entries with `who`, plus derived items from object
-    `visibleTo` and timeline `knownTo` (marked kind/derivedFrom/text). `at` (an episode id) filters
+    `visibleTo`, timeline `knownTo` and the person's own agenda entries (marked kind/derivedFrom/text). `at` (an episode id) filters
     knowledge parts whose `since` names a later episode; parts without a readable episode stay."""
     at_key = ep_key(at) if at is not None else None
     knows, not_knows = [], set()
@@ -887,6 +896,10 @@ def knows_for_person(entries_by_id, person, at=None):
         elif kind == "timeline" and person in (e.get("knownTo") or []):
             knows.append({"entryId": eid, "kind": "timeline", "derivedFrom": "knownTo",
                           "text": e.get("title") or e.get("did") or e.get("state")})
+        elif kind == "agenda" and person in agenda_owners(e):  # one knows one's own agenda (D6-3 walkthrough #3)
+            start = ep_key(e.get("validFrom")) if e.get("validFrom") not in (None, "pre") else None
+            if not (at_key is not None and start is not None and start > at_key):
+                knows.append({"entryId": eid, "kind": "agenda", "derivedFrom": "owner", "text": e.get("title") or e.get("goal")})
     known_texts = {k.get("knows") for k in knows if k.get("knows")} | {k.get("text") for k in knows if k.get("text")}
     return {"knows": knows, "notKnows": sorted(x for x in not_knows if x not in known_texts)}
 
@@ -945,6 +958,11 @@ def knows_scene_aware(entries_by_id, person, scene_order_index, current_scene_id
             text = e.get("title") or e.get("did") or e.get("state")
             add_parts(eid, person_since_parts(e.get("knownToSince"), person),
                       {"entryId": eid, "kind": "timeline", "derivedFrom": "knownTo", "text": text}, text)
+        elif kind == "agenda" and person in agenda_owners(e):  # one knows one's own agenda (D6-3 walkthrough #3)
+            text = e.get("title") or e.get("goal")
+            start = e.get("validFrom") if e.get("validFrom") not in (None, "pre") else None
+            add_parts(eid, [(None, start)] if start else None,
+                      {"entryId": eid, "kind": "agenda", "derivedFrom": "owner", "text": text}, text)
     known_texts = {k.get("knows") for k in knows if k.get("knows")} | {k.get("text") for k in knows if k.get("text")}
     return {"knows": knows, "notKnows": sorted(x for x in not_knows if x not in known_texts)}
 

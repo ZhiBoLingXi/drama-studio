@@ -129,7 +129,8 @@
               "project_facts",
               "current_plan",
               "knowledge",
-              "unknowns"
+              "unknowns",
+              "samples"
             ]
           },
           "required": {
@@ -185,7 +186,8 @@
               "missing",
               "stale",
               "not_relevant",
-              "not_provided"
+              "not_provided",
+              "quote_cap"
             ]
           }
         }

@@ -11,9 +11,10 @@ EP_RE = re.compile(r"^#{1,2}\s*第([0-9一二三四五六七八九十百零〇]+
 SCENE_START_RE = re.compile(r"^(?:场|###\s+(?:场|\d))")
 SCENE_ID_RE = re.compile(r"^(?:场\s*|###\s+(?:场\s*)?)(\d+)[-–](\d+)(?:\s+(.*))?$")
 # Unknown time tokens must not silently become part of a guessed location.
+# a day word may lead the time and an order word may follow it: 「次日晚」「次日晚稍后」「当天傍晚」 (D6-3 walkthrough #19)
 SCENE_DETAIL_RE = re.compile(
-    r"^(.+?)\s+(日|夜|晨|暮|黄昏|清晨|深夜|黎明|后半夜|前半夜|凌晨|傍晚|白天|"
-    r"午后|下午|上午|正午|拂晓|晚上|早晨|入夜)\s+(内|外)\s*$")
+    r"^(.+?)\s+((?:次日|当日|当天|翌日|隔天|第二天|同日|同一天)?(?:日|夜|晨|暮|黄昏|清晨|深夜|黎明|后半夜|前半夜|凌晨|傍晚|白天|"
+    r"午后|下午|上午|正午|拂晓|晚上|早晨|入夜|晚|早)(?:稍后|稍早|前|后)?)\s+(内|外)\s*$")
 SEPARATOR_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 DIALOG_RE = re.compile(r"^([^△#场\s【（(：:]{1,12})(（[^）]*）|\([^)]*\))?\s*[：:]\s*(.+)$")
 

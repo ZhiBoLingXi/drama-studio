@@ -59,6 +59,14 @@
         "type": "string"
       },
       "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    },
+    "defectKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "D6-3: the defectKind words this question set uses; check-answers reports others (does not refuse)"
     }
   },
   "$defs": {

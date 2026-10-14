@@ -425,6 +425,11 @@
         "beatRef": {
           "type": "string",
           "minLength": 1
+        },
+        "interruptedAt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "D6-3: written on the exchange that is interrupted (its own exchangeId, or the exchange the cut lands on); the topic's interruptedBy.by names who cuts in. plan-text-consistency checks the first dialogue line after it is the interrupter's; the interrupted speaker need not finish"
         }
       }
     },
