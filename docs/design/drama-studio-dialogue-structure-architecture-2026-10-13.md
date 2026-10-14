@@ -1,6 +1,6 @@
 # 台词系统架构重设计 v3：节奏与长度由角色和情节推出，数字只做算术、诊断和描述
 
-日期：2026-10-13 · 状态：架构级设计方案 v3.1（主创已批准 v3；2026-10-14 记入上游集纲层方案的决定与统一实施计划，§15 五条仍未决），未实施；不改任何技能文件、脚本、契约、剧本或知识卡 · 上游：[集纲层架构 v1.1](drama-studio-outline-layer-architecture-2026-10-13.md)（本稿 §2.2 的 C4 一行由它 §4 细化） · 实施排期：[集纲层与台词层统一实施计划（D6）](drama-studio-outline-dialogue-implementation-plan-2026-10-14.md)，本稿 §16 的阶段划分由它取代 · 依据：`projects/qige-xiongdi/reviews/rca-dialogue-ep006-2026-10-13.md`（下称 RCA）与 `projects/qige-xiongdi/runs/input/feedback/writer-feedback-ep006-2026-10-13.md`（编剧 7 条批注、4 条总结） · 上游：[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)、[实施路线](drama-studio-implementation-roadmap-2026-09-29.md)、[工艺闭环设计](drama-studio-craft-loop-design-2026-10-10.md)、[台词库产品设计](drama-studio-voice-library-product-design-2026-10-12.md)、[台词样本知识库设计](drama-studio-dialogue-sample-library-design-2026-10-13.md)
+日期：2026-10-13 · 状态：架构级设计方案 v3.2（主创已批准 v3；2026-10-14 记入上游集纲层方案的决定与统一实施计划，同日按 D6-0 中期报告改了与集纲层共用的几处，见修订记录；§15 五条仍未决），未实施；不改任何技能文件、脚本、契约、剧本或知识卡 · 上游：[集纲层架构 v1.2](drama-studio-outline-layer-architecture-2026-10-13.md)（本稿 §2.2 的 C4 一行由它 §4 细化） · 实施排期：[集纲层与台词层统一实施计划（D6）](drama-studio-outline-dialogue-implementation-plan-2026-10-14.md)，本稿 §16 的阶段划分由它取代 · 依据：`projects/qige-xiongdi/reviews/rca-dialogue-ep006-2026-10-13.md`（下称 RCA）与 `projects/qige-xiongdi/runs/input/feedback/writer-feedback-ep006-2026-10-13.md`（编剧 7 条批注、4 条总结） · 上游：[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)、[实施路线](drama-studio-implementation-roadmap-2026-09-29.md)、[工艺闭环设计](drama-studio-craft-loop-design-2026-10-10.md)、[台词库产品设计](drama-studio-voice-library-product-design-2026-10-12.md)、[台词样本知识库设计](drama-studio-dialogue-sample-library-design-2026-10-13.md)
 
 ## 修订记录
 
@@ -34,6 +34,13 @@ v2 被撤回的设计在 §13.2 各留一句撤回原因。语料事实标“202
 1. **上游定了。** [集纲层架构 v1.1](drama-studio-outline-layer-architecture-2026-10-13.md) 成为本稿上游，主创 2026-10-14 对它的六条架构取舍已决定（底账与功能地图首版本地；检索代理可联网检索、脚本不联网；用户给定设定不成立时按通过核对的候选先走并标 `pending`；补丁计数到 2 强制回上游；六字段保留为可选派生摘要；两份方案合并排实施计划）。对本稿的直接影响：§2.2 的 C4 一行由集纲层 §4 的 14 字段分集计划细化，`infoLedger` 在分集计划里声明一次、对话表只引用并加 `carriedBy`；§3.5 容量提案的第一次发生位置提前到季编排层（C3c），C4 复核、C5b 精估；`listenerKnows` 初值由知识账生成；C5a 的退回通路是 `changeProposal(targetLayer: C4|C3c)`；`feedback-ingest`、媒介档案、语料、决定队列共用。
 2. **§15 五条仍未决，不替主创定。** 工作室级语料缓存的契约变更、样本原句进包的边界、旧步骤退役时点、容量提案三选一由谁选、本项目下一步——各条不阻塞实施的默认做法和可逆性见统一实施计划 §8，决定随时可改。
 3. **第 6 集验证对本稿的修正点**（`projects/qige-xiongdi/runs/pilot-ep006/stage-a/b/d-report.md`）落到了实施计划 §2.6 的具体任务，D6-5 回写本稿正文；在此之前以实施计划为准：容量粗估放在对话设计之前（分集计划复核超目标两倍以上时 C5a 按提案默认拆法走）；问题单补「说话人凭什么知道」「这条信息第几次出口、重说有没有处境理由」两问并把「为问而问」并入；对话表 `between` 不许写成链，多对象话题拆 `segments[]` 各带 `closer`；`exchanges[]` 加可数标记（`oneItemPerLine`、`givesReason`）作诊断提示；冷读任务的问法改为「连续剧第 N 集、前集已交代不列、△ 标画面约两秒」；语料入库保留「说话人归属可疑」标记；`exemplars.source: project` 允许本剧人工定稿作同处境正例；`writer-note` 加 `conflictsWith`；人工改句逐字采用时在 `plan-text-map` 标 `verbatimFrom`，不算「问题不在了」的证据；§7.2 的每集样本上限改按包预算而不是固定条数；`exchangeRef` 在服务端 `snapshotId` 缺位时允许本地指纹并标明。
+
+**v3.1 → v3.2（2026-10-14，依据 [D6-0 中期报告](../d6/d6-0-interim.md)）。** D6-0 第一轮停在集纲层的候选 B 之前，**没有走到台词层**：没有新的对话表、正文、冷读或问题单记录，所以本稿的主体设计没有新证据，一条不改。只改了与集纲层共用、在 D6-0 准备阶段（写问题单数据与冷读提示词）暴露的四处：
+
+1. **§8.2 冷读提示词**：stage-d §十 9 的修正是两处文案改法加一条装包约束（实施计划 v1 写成「三处改法」，已更正）；提示词随包并版本化，`retell-record` 记 `promptVersion`；上一轮验证没有保存提示词原文，新旧冷读结果不可直接比。
+2. **§8.3 问题单**：写入第 16 问的题干与来源；它与集纲层追问单的第 16 问同源，但各写各的题干。
+3. **§17 清单**：#6 写明回答记录与追问单共用 schema、落点字段各用各的；#8 加 `promptVersion`；#16 的 `check-format` 并入 `check-answers`。
+4. 状态行、本条修订记录与文末声明。
 
 本稿回答的是“系统该换成什么结构”：删什么、合什么、重排什么。项目文件只引用结论和位置，不抄私有剧本的句子；举例处都是为说明而编；语料原句只少量引用作格式示例。每个结论标把握程度：**高**＝RCA 或实测有原句或数字直接支持；**中**＝多条间接证据一致；**低**＝推论。
 
@@ -497,6 +504,14 @@ v2 的“分布距离”一行删除；v2 的“对照检查（勾闭合代码�
 
 做法：新上下文，**只装本集正文**——不装前集、集纲、作者说明、声音卡、样本、任何前情。任务不是“审”，是“复述”：用自己的话写这一集发生了什么；逐条列出“谁做了什么、为什么”；对每条关键信息写“我是从第几行的哪句话知道的”，说不出来源就写“不明”；列出“我不知道为什么会这样”的地方。脚本把复述与信息清单对照，每条标 `retold`／`partial`／`missing`；`missing` 回 C5a。这是理解任务不是品味任务，RCA B3 指出审读人“读得懂”是因为通读了十集（把握：高），隔离就够，模型族别不是问题。复述里每条信息引用台词行号，防模型补全。
 
+**提示词是随包的、有版本的。** 第 6 集验证（stage-d §十 9）对冷读任务的问法提了修正，分清楚是两处文案改法加一条装包约束：
+
+- 文案一：标明这是「连续剧第 N 集」，前集已经交代过的事不列进「不明」。
+- 文案二：△ 行标明是画面、约两秒，并让冷读者另估「只看成片能不能拿到这条信息」。
+- 装包约束：`readingScope` 只允许一项且与复述对象一致（只装本集正文，或只装本集分集计划的 `events`）。它是 S 核的装包规则，不是提示词里的一句话。
+
+提示词文本随技能包发布并带版本号；每份 `retell-record` 记下所用的 `promptVersion`。提示词版本不同的两次冷读，结果不直接比。这一条有来历：上一轮第 6 集验证只留了冷读的产出，没有保存喂给冷读者的提示词原文，D6-0 准备时只能按产出的结构重写一份（字段名也跟着变了）。所以以后的新稿与那一轮两版稿子的冷读覆盖放在一起时，须注明提示词不同，只能作旁证，不能当成同一把尺。把握：高（事实）；重写的提示词与原提示词差多少：不知道。
+
 ### 8.3 对话检查问题单
 
 对正文里每段对话（按对话表的话题切），审读者拿到：这段正文、对话表里这个话题的 `situation` 与 `shape.reason`、对话表引用的正例（带 `walkthrough`）和对照对（带 `whyNotHere`）。然后逐问回答。**每个问题的答案必须引用具体句子（行号＋原句），写“成立／不成立＋原因”；原因必须回到处境；不产生分数，不合成总评。** 答不了的写 `not_evaluable` 并说为什么。
@@ -530,6 +545,12 @@ v2 的“分布距离”一行删除；v2 的“对照检查（勾闭合代码�
 
 14. 对话表写了说话人此刻的情绪（`emotion`），正文里他的话是那种情绪的人会说出来的形状吗——发火的人是不是一截一截、撒谎的人是不是话多且绕、怕的人是不是短、交代程序的人是不是说得全？引用。
 15. 对比正例的 `walkthrough` 和反例的 `whyNotHere`：这段对话在处境上更像哪一边？只写哪一处像、哪一处不像，引用句子，不打分。
+
+**F. 知情**
+
+16. 说话人凭什么知道他这句话里说的事——他在场、被告知、还是推断？对照知识账，他在说这句之前「知道」它吗？引用那句。如果这是一句问话：他是真的不知道才问，还是为了让观众听到答案而问（为问而问）？
+
+第 16 问的来源是第 6 集验证（stage-d §十 2、4：一个人物说出了他不该知道的事，而原 15 问全部答「成立」；「为问而问」并进这一问）。集纲层的追问单也从同一处加了第 16 问，但两份问题单**各写各的题干，不共用一句**：这里的落点是句子（行号加原句）；追问单的对象是候选实现与关键动作，没有句子可引，它问的是「行动者凭什么知道他据以行动的事实」（集纲方案 §6.3）。这一问有一个脚本版：分集计划里某一拍说出一个事实，说话人须在这一拍之前「知道」它（集纲方案 §10.2 `speaker-knows`）；脚本管得到的归脚本，这一问管脚本核不出的（推断、半知半解、为问而问）。stage-d §十 3 的另一问（这条信息第几次出口、重说有没有处境理由）是第 17 问，按实施计划 §2.1 #3，D6-5 回写进这里。
 
 问题单是数据（`dialogue-check-questions.json`，版本化，在台词目标里引用）；项目可以增问，不能删问；增问要带来源（人工批注或 `feedback-ingest` 派生）。脚本只核格式（每问有引用、有成立／不成立、有原因），不核答案对不对。
 
@@ -863,9 +884,9 @@ v2 的第 4 条（本项目下一步）保留为本条 5；v1 的其余条目去
 | 3 | 新 `contrast-pair.schema.json`（§5.3；`whyNotHere` 必填；只允许 `project`） | S | 示例通过；无 `whyNotHere` 被拒 |
 | 4 | 新 `dialogue-plan.schema.json`（§6.1）＋ `contract-check dialogue-plan`：信息清单每条有 `carriedBy`；每话题 `situation` 字段齐；`shape.reason` 非空且引用处境字段关键词；`thenSwitchTo` 非空时 `closer` 必填；**无** `estimates` 字段 | S | 逐条破坏只报对应错误；含 `estimates` 的对话表被拒 |
 | 5 | 新 `dialogue-target.schema.json`（§10.1；**无** `acceptedBand`／`hardRules`／`softRules`；`checkQuestions` 引用必填） | S | `task` 引用不存在的目标被拒 |
-| 6 | 新 `dialogue-check-questions.schema.json`（§8.3；每问带 id、文本、来源；`drafted` 问带 note ID）＋ `dialogue-check.schema.json`（每答带问 id、引用行号与原句、`holds: true|false|not_evaluable`、`reason`） | S | 无引用或无原因的答被拒；文件里出现分数字段被拒 |
+| 6 | 新 `dialogue-check-questions.schema.json`（§8.3；每问带 id、文本、来源；`drafted` 问带 note ID）＋ `dialogue-check.schema.json`（每答带问 id、引用行号与原句、`holds`、`reason`）。实施计划里这两样与集纲层的追问单合为共用的 `question-set` 与 `answers` schema（实施计划 §2.1 #3、#4）：三态统一为 `holds / notHolds / not_evaluable`；落点字段按问题单类型各用各的——本问题单是 `quoteRef: {line, quote}`，追问单是 `landsOn`；追问单回答在 D6-0 后加的承重、缺口类型、修法等字段只属于追问单，本问题单不带 | S | 无引用或无原因的答被拒；文件里出现分数字段被拒 |
 | 7 | 新 `writer-note.schema.json`（§9.2）；约定条目与 `drafted` 问须带 note ID | S | 无来源条目被拒 |
-| 8 | 新 `retell-record.schema.json`：读取范围只含本集；每条信息引用行号 | S | `readingScope` 含前集或集纲即拒 |
+| 8 | 新 `retell-record.schema.json`：读取范围只含本集；每条信息引用行号；`promptVersion` 必填（§8.2） | S | `readingScope` 含前集或集纲即拒；缺 `promptVersion` 被拒 |
 | 9 | 新 `plan-text-consistency.schema.json`：逐话题一致／不一致＋说明 | S | 示例通过 |
 | 10 | `task.schema.json`：`dialogueTarget` 引用；`constraints[] {text, origin, cite}`；**任何**数值型台词约束（字数、行数、句数、换人数）被拒，不论 origin | S | 正反用例 |
 | 11 | `review-record.schema.json`：finding 加 `targetClause`／`factEvidence`；加 `adjudications[]` | S | 正反用例 |
@@ -873,7 +894,7 @@ v2 的第 4 条（本项目下一步）保留为本条 5；v1 的其余条目去
 | 13 | `context-pack`：C5b 装包要求对话表带通过的 `contract-check`；样本以处境＋说明＋骨架＋遮蔽原句装入并记录装包历史；禁词表随包 | S | 缺任一退出码 2 |
 | 14 | 新命令组 `corpus {fetch|segment|label|walkthrough|filter|lexicon|rate}`：取证据（重试、断点、`expected_snapshot_id`）、S 切分候选、M 处境标注与结构说明的双跑比对、过滤、禁词表、语速与停顿比 | S（除 label／walkthrough 的 M 部分） | 夹具可复算；双跑不一致记录 `low` |
 | 15 | 新命令 `dialogue-diagnose <正文> --plan <对话表>`：§3.3 事实、§5.2 信号、对齐、禁词；输出信号＋位置＋处境；**无** `within/outside` | S | 夹具可复算；输出里出现区间比较字段即测试失败 |
-| 16 | 新命令 `retell-check <复述> --plan <对话表>`、`check-format <问题单回答>`（核每答有引用、有 holds、有 reason）、`plan-text-consistency <正文> --plan <对话表>`（S 对齐部分） | S（记录）／M（复述、回答） | 夹具 |
+| 16 | 新命令 `retell-check <复述> --plan <对话表>`、`check-format <问题单回答>`（核每答有引用、有 holds、有 reason；实施计划里并入与追问单共用的 `check-answers`，按回答引用的问题单版本选落点字段；它在 D6-0 后加的覆盖报告与跨记录一致性只对追问单回答出）、`plan-text-consistency <正文> --plan <对话表>`（S 对齐部分） | S（记录）／M（复述、回答） | 夹具 |
 | 17 | 新命令 `feedback-ingest <文件>`：飞书评论 JSON／改稿 md／原话记录 → writer-note、反例、对照对、`drafted` 约定、`drafted` 问 | S | 对本项目 7 条批注跑通，产物可追溯 |
 | 18 | 新命令 `outline-capacity <集纲> --media <档案> --corpus <语料>`：信息清单粗估时长对目标；超限写 `changeProposal`（三选一）；**退出码 0**（提案不是失败） | S | 超限时提案文件存在且退出码 0 |
 | 19 | `episode-check`：加口播量、估时（只报，不判）；`min_chars` 留在 `legacy-aigc` 预设 | S | 夹具 |
@@ -945,7 +966,7 @@ R 级（mali-story 服务端）无新增；对话表、目标、约定、问题�
 
 | 文档 | 关系 |
 | --- | --- |
-| [集纲层架构 v1.1](drama-studio-outline-layer-architecture-2026-10-13.md) | **上游**（2026-10-14 起）。本稿 §2.2 C4 一行由它 §4 细化；`infoLedger`、`presence`、知识账是对话表的输入；容量第一次算在它的 C3c；C5a 的退回通路 `changeProposal(targetLayer: C4|C3c)` |
+| [集纲层架构 v1.2](drama-studio-outline-layer-architecture-2026-10-13.md) | **上游**（2026-10-14 起）。本稿 §2.2 C4 一行由它 §4 细化；`infoLedger`、`presence`、知识账是对话表的输入；容量第一次算在它的 C3c；C5a 的退回通路 `changeProposal(targetLayer: C4|C3c)` |
 | [统一实施计划（D6）](drama-studio-outline-dialogue-implementation-plan-2026-10-14.md) | 两份方案的合并排期；取代本稿 §16；§8 列了本稿 §15 五条的默认做法；§2.6 列了对本稿的修正点 |
 | [系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md) | 内容模型、权威划分、S/R/M、上下文构建器**不受影响**。**待修订**：§5.1 C4/C5/C6 交接对象；§8.5 增补语料缓存条款（§12.4）；§11 证据类别加冷读复述、处境对照、设计依据一致性 |
 | [实施路线 v1.1](drama-studio-implementation-roadmap-2026-09-29.md) | D2“台词实现回 C5”细化为 C5a/C5b；D4 反馈回流由 `feedback-ingest`→writer-note 承接 |
@@ -958,4 +979,4 @@ R 级（mali-story 服务端）无新增；对话表、目标、约定、问题�
 
 ---
 
-本稿只修订这一份文档。没有修改技能文件、脚本、schema、项目文件或知识卡；没有写第 6 集的新稿；没有向编剧确认任何一条约定；语料实测只取了 1 部的 2 集（另有本地导出 1 部），数字标了样本量且只作语速默认值与样本描述；所有 S 级都是设计层级，实现后才成立。v3.1 只改了状态行、修订记录、§15 与 §16 的引言、§20 两行和本段；v3 的结论一条未改。
+本稿只修订这一份文档。没有修改技能文件、脚本、schema、项目文件或知识卡；没有写第 6 集的新稿；没有向编剧确认任何一条约定；语料实测只取了 1 部的 2 集（另有本地导出 1 部），数字标了样本量且只作语速默认值与样本描述；所有 S 级都是设计层级，实现后才成立。v3.1 只改了状态行、修订记录、§15 与 §16 的引言、§20 两行和本段；v3.2 只改了状态行、修订记录、§8.2 末段、§8.3 第 16 问、§17 的 #6、#8、#16 和本段，依据是 D6-0 准备阶段暴露的共用项问题——D6-0 没有走到台词层，没有为本稿的主体设计增加证据；v3 的结论一条未改。
