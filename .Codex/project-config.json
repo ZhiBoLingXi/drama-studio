@@ -1,0 +1,92 @@
+{
+  "project_name": "drama-studio",
+  "project_desc": "短剧创作工作室：可分发 AI 技能 + 本地标准库工具，远端权威为 mali-story",
+  "org": "ZhiBoLingXi",
+  "repo": "ZhiBoLingXi/drama-studio",
+  "default_repo": "drama-studio",
+  "runtime": "python3.10+ (stdlib only)",
+  "package_manager": "none",
+  "test_cmd": "python3 -B -m unittest discover -s tests -v",
+  "typecheck_cmd": "python3 -B scripts/validate.py",
+  "dev_cmd": "",
+  "build_cmd": "python3 -B scripts/install.py package --host workbuddy",
+  "install_cmd": "",
+  "health_endpoint": "",
+  "dev_port": "",
+  "github_project": {
+    "number": 1,
+    "project_id": "PVT_kwDODziW6s4BOP3w",
+    "status_field_id": "PVTSSF_lADODziW6s4BOP3wzg9AYFA",
+    "graphql_owner_type": "organization",
+    "option_ids": {
+      "inbox": "de5d77a9",
+      "backlog": "06b3d20c",
+      "needs_spec": "5cc3bb41",
+      "ready_for_spec": "b5cf7e37",
+      "speccing": "f5771e08",
+      "spec_audit": "31acc84b",
+      "ready": "32043b70",
+      "todo": "e082890b",
+      "ready_for_implement": "8200cdb6",
+      "ready_for_local": "8ac23d39",
+      "in_progress": "536e47c6",
+      "need_human": "f321f1b1",
+      "needs_human": "da4b595d",
+      "blocked": "d6facf21",
+      "reviewing": "b22c8551",
+      "verifying": "da1a8d5d",
+      "done": "c637f2e1"
+    }
+  },
+  "agency_project": {
+    "number": 4,
+    "project_id": "PVT_kwDODziW6s4BQdnB",
+    "status_field_id": "PVTSSF_lADODziW6s4BQdnBzg-kx9g",
+    "option_ids": {
+      "ready_for_planning": "fa93fc27",
+      "planning": "2f24afb9",
+      "ready_for_work": "f949503e",
+      "in_progress": "2b1d102f",
+      "needs_human": "36863ea8",
+      "blocked": "cb94aba7",
+      "done": "ff173714",
+      "ready_for_browser_test": "752b5124",
+      "browser_testing": "da5867a1",
+      "browser_testing_done": "e220ae61",
+      "ready_for_research": "76a2819f",
+      "researching": "e49c790c",
+      "done_research": "b4ce462e",
+      "ready_for_triage": "ad51d642",
+      "triaging": "cdb83073",
+      "done_triage": "468eb717"
+    }
+  },
+  "initiative": null,
+  "repo_choices": [
+    {
+      "name": "drama-studio",
+      "repo": "ZhiBoLingXi/drama-studio"
+    },
+    {
+      "name": "mali-story",
+      "repo": "ZhiBoLingXi/mali-story"
+    },
+    {
+      "name": "mali-common",
+      "repo": "ZhiBoLingXi/mali-common"
+    },
+    {
+      "name": "mali-production",
+      "repo": "ZhiBoLingXi/mali-production"
+    },
+    {
+      "name": "mali-data-service",
+      "repo": "ZhiBoLingXi/mali-data-service"
+    },
+    {
+      "name": "mali-agency",
+      "repo": "ZhiBoLingXi/mali-agency"
+    }
+  ],
+  "all_projects": {}
+}
