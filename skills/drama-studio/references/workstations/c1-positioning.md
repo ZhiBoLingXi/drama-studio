@@ -7,7 +7,7 @@
 | 必读本剧依据 | 用户要求、作者偏好、制作边界、已有授权；对照作品的已读范围 |
 | 主要知识 | K1 生活／职业、K6 类型与市场证据、K8 相似结构；没有知识缺口时可以不检索 |
 | 产出 | 选题候选或创作简报：类型承诺、核心矛盾、创作立场、明确限制、独特性依据、未知与不做项（mali-story kind：`research`、`adaptation_options`） |
-| 交接 | `run-handoff`；C1 没有上游工位，`changeProposals` 留空；方向本身有问题时写进 `unfinished` 并请用户决定 |
+| 交接 | `run-handoff`；C1 没有上游工位，`changeProposals` 留空；方向本身有问题时写进 `unfinished` 并请用户决定。C1 不用 `context-pack` 装包时 `contextSnapshotId` 写 `null`，并在 `noSnapshotReason` 写明为什么没有装包 |
 
 ## 方法要点
 

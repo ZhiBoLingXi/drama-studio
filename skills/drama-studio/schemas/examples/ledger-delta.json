@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "drama-studio/ledger-delta/v0",
+  "episode": 3,
+  "track": "planned",
+  "reads": [
+    "L-proc-001"
+  ],
+  "writes": [
+    {
+      "entryId": "L-obj-001",
+      "change": {
+        "location": "镇仓库登记簿存档"
+      },
+      "reason": "仓管翻登记簿证实已退",
+      "supportedBy": "3-2.b1"
+    },
+    {
+      "entryId": "new",
+      "change": {
+        "id": "L-kn-005",
+        "kind": "knowledge",
+        "title": "老陈知道箱子已被退回",
+        "origin": "designed",
+        "status": "asserted",
+        "introducedAt": "ep3",
+        "who": "老陈",
+        "knows": "箱子三年前已被退回",
+        "since": "3-2.b1",
+        "how": "仓管告知",
+        "notKnows": [
+          "王姨为什么没说"
+        ],
+        "realityRef": [],
+        "inquiryRef": [],
+        "dependents": [],
+        "patchCount": 0,
+        "history": []
+      },
+      "reason": "老陈在仓库被告知",
+      "supportedBy": "3-2.b1"
+    }
+  ]
+}

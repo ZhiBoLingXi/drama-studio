@@ -1,0 +1,58 @@
+{
+  "id": "corpus-label-vocabulary",
+  "version": "v1",
+  "description": "语料标注词表的收敛规则（阶段 A 报告 §4、§8.4：function 近义项合并；relation 同时成立时取更具体的）。corpus agree 双跑比对时先按这里收敛再比；收敛只用于判一致，不改写原标注。source: assumed（按阶段 A 双跑里实际混用的词定，未经更大样本复核）。",
+  "source": "assumed",
+  "functionGroups": [
+    {
+      "group": "请求",
+      "members": [
+        "请求",
+        "求助",
+        "商量",
+        "讨价"
+      ]
+    },
+    {
+      "group": "宣告",
+      "members": [
+        "宣告",
+        "下命令"
+      ]
+    },
+    {
+      "group": "安抚",
+      "members": [
+        "安抚",
+        "哄",
+        "相认"
+      ]
+    },
+    {
+      "group": "问清",
+      "members": [
+        "问清",
+        "试探"
+      ]
+    }
+  ],
+  "relationParents": {
+    "亲人-父母子女": [
+      "大人对孩子",
+      "上对下"
+    ],
+    "亲人-兄妹": [
+      "孩子对孩子"
+    ],
+    "大人对孩子": [
+      "上对下"
+    ],
+    "师徒": [
+      "上对下"
+    ],
+    "办事人员对群众": [
+      "上对下"
+    ]
+  },
+  "relationRule": "两次标注的关系相同，或一个是另一个的上位（relationParents 里写的），算一致；一致时取更具体的那个"
+}

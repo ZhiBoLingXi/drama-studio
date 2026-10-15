@@ -2,7 +2,7 @@
 
 写正文、续写和改稿默认按这些工位走，步骤见 [工位流程](../writing.md#工位流程)；一次写多批时按 [整季分批](season-run.md) 编排。
 
-六个工位是六种创作责任，不是六个 Agent 或六次人审。每次工位运行都用同一组对象交接，对象格式见 `../../schemas/`，每种对象在 `../../schemas/examples/` 有一份可通过的示例；用 `scripts/drama_tools.py contract-check <对象> <文件>` 校验。无法确知的内容写进 `unknowns`（每种对象都有这个字段），不要在 ID 字段里编造。
+六个工位是六种创作责任，不是六个 Agent 或六次人审；C3 内部分 C3a、C3b、C3c 三个运行。每次工位运行都用同一组对象交接，对象格式见 `../../schemas/`，每种对象在 `../../schemas/examples/` 有一份可通过的示例；用 `scripts/drama_tools.py contract-check <对象> <文件>` 校验。无法确知的内容写进 `unknowns`（每种对象都有这个字段），不要在 ID 字段里编造。
 
 引用（`ref`）的 `id` 不能为空。mali-story 页面写 `{"kind": "remote_page", "id": "<pageId>", "revision": <n>}`（架构 v1.2：pageId 跨修订不变，revision 每次写入递增）；迁移前的历史候选仍按 `remote_artifact` 引用。还不存在的页面没有 pageId，写入范围里写 `slot:<名称>`（如 `slot:episode-21`）作占位；完全不知道身份的材料写 `unknown:<简述>`，并在 `unknowns` 说明。
 
@@ -11,7 +11,7 @@
 ## 每次运行的固定协议
 
 1. **任务**（`task`）：目标、非目标、读取范围、写入范围、授权来源、返修上限。读取范围可以大于写入范围；授权为 `none` 时不写任何东西。
-2. **上下文**（`context-snapshot`）：本次实际给了哪些版本、原文区间和知识卡，各自理由，以及遗漏项。必需材料缺失时 `completeness` 只能是 `incomplete`；超出预算就缩小工作单元，不静默截断。宿主（模型）先写选材清单（`selection`，格式见 `../../schemas/selection.schema.json`），再用 `scripts/drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role <角色> --budget <字数>` 从 `.drama/cache/`、`knowledge/cards/` 以及项目 `.drama/`、`runs/` 内的本地文件（`local_file`，见 [定向修订单独装包](#定向修订单独装包)）组装快照：工具按实际截取文本计算 `chars` 与 sha256，核对缓存指纹，按角色过滤用途，超预算退出码 2 且不写文件。选什么由模型判断，工具不做相关性排序。
+2. **上下文**（`context-snapshot`）：本次实际给了哪些版本、原文区间和知识卡，各自理由，以及遗漏项。必需材料缺失时 `completeness` 只能是 `incomplete`；超出预算就缩小工作单元，不静默截断。宿主（模型）先写选材清单（`selection`，格式见 `../../schemas/selection.schema.json`），再用 `scripts/drama_tools.py context-pack <项目> --task <task.json> --selection <selection.json> --role <角色> --budget <字数>` 从 `.drama/cache/`、`knowledge/cards/` 以及项目 `.drama/`、`runs/`、`planning/` 内的本地文件（`local_file`，见 [定向修订单独装包](#定向修订单独装包)）组装快照：工具按实际截取文本计算 `chars` 与 sha256，核对缓存指纹，按角色过滤用途，超预算退出码 2 且不写文件。选什么由模型判断，工具不做相关性排序。
 3. **产出**：完整可读的作品材料。联网时写成 mali-story 页面：新页面 `create_page`，已有页面 `update_page`（`expected_revision` 取读到的当前修订）；写入的新修订立即成为当前内容。实际工具名以当前会话可用工具为准（源码为 mali-story v0.20.0，见 [页面读写、版本标签与恢复](../mali-story.md#页面读写版本标签与恢复)）。写的是产出，不是上下文快照。主创验收用 `label_page_revision` 给修订打标签（如“主创通过”）；**标签不等于制作采用**，交接里不要把打了标签写成已采用。回退用 `restore_page`，它追加新修订，不改历史。写完用 `read_page` 读回全文，`drama_tools.py receipt cache` 落到本地缓存（`.drama/cache/<pageId>@r<revision>.md`）。迁移前的历史候选只读，见 [候选保存与对账](../mali-story.md#候选保存与对账)。
 4. **交接**（`run-handoff`）：输出引用、状态变化提案、上游变更提案、未完成项和下一动作。只写本层的页面；涉及上游决定时提出 `changeProposals`，不静默改写。两个可选字段：`finishedAt` 写运行结束时间（ISO 8601，带时区，如 `2026-10-07T16:30:00+08:00`），`status` 判断“最近运行”时优先用它，缺失才回落到文件修改时间；一次运行读了不止一个上下文包（如 C6 首读、次读）时，第一个填 `contextSnapshotId`，其余写进 `additionalSnapshotIds`，`impact` 对其中任一快照失效都把运行标为 `stale`。旧记录不写这两个字段也照样有效。
 5. **远端回执**（`remote-receipt`）：每次页面写入（`create_page`、`update_page`、`restore_page`、`label_page_revision`）与读取都记录 `requestId` 与输入指纹，成功时 `remote` 记 `pageId` 与 `revision`。`update_page` 返回 409 记 `rejected_conflict`：先 `read_page` 读最新修订，合并后用新 requestId 再写。结果未知时先对账，不盲目重试：mali-story 的修订列表不带 requestId，`receipt pending` 给出两条路——用 `list_page_revisions` 按正文指纹与 producer 找 `expected_revision` 之后的修订（宿主判断），或用原 request_id 原样重发（服务端重放，可按 request_id 核实）。只有确认过的写入才算写入；`unchanged: true`、`replayed: true` 都不是新写入。没有连接或未获授权时记 `outcome: not_sent`，`pageId`（新页面）与 `revision` 必须为 null。回执用 `drama_tools.py receipt record` 生成，方法见 [页面读写、版本标签与恢复](../mali-story.md#页面读写版本标签与恢复)；迁移前历史候选的回执与对账仍按 [候选保存与对账](../mali-story.md#候选保存与对账)。
@@ -21,11 +21,40 @@
 | 约束 | 层级 | 说明 |
 | --- | --- | --- |
 | 快照不超声明的预算、同一来源不混用多个修订、不带入评估材料、列入 `omitted` 的必需材料使包不完整、区间合法 | S | `contract-check context-snapshot` 拒绝；用 `context-pack` 装包时 `chars` 与 sha256 由工具从本地缓存／知识卡实际截取计算，缺失的引用自动列入 `omitted`；单独运行 `contract-check` 仍只看字段，不核对实际字数，手写快照里没列入 `omitted` 的缺失无法发现（M） |
-| 观众效果（`reader_effect`）包和台词读（`dialogue_read`）包不含作者计划分区 | S | 同上 |
+| 观众效果（`reader_effect`）包不含作者计划分区 | S | 同上 |
 | 知识卡首版只允许项目私有 | S | `contract-check knowledge-card` 拒绝 studio／public |
 | 变更提案只能指向上游工位 | S | `contract-check run-handoff` 拒绝 |
 | 本地字段不能宣称已采用 | S | `contract-check task` 要求 `adoptionEvidence` 为 `remote_receipt` 引用；回执内容真假由服务端核对（R） |
 | 其他脚本规则：回执未发送／未知／已确认的字段要求、事实问题需引文、串行自评不得称独立、估算用量不得写 token、非合成知识需来源 | S | 完整列表见 `scripts/checks/contract_check.py` 与 `schemas/` |
+| 等人的决定都带默认：决定队列每条 `default` 必填且是选项之一；默认选项不得让功能句落空；`decided` 须有 `humanWords` | S | `contract-check decision-queue`、`decision check`；`season-check --outline` 的 `outline-decision-default`；流程按默认继续、编排方不以“等人确认”暂停是 M |
+| 系统不替主创删功能：`losesFunctions[]` 非空的候选不得 `selected`；季编排的删线（`drop_function`）不作默认 | S | `contract-check function-map`、`decision-queue`；用户给定实现不成立时默认保留并标 `license_pending` 的判断是 M |
+| 承重的不成立必须有去处：每条 `loadBearing: true` 的 `notHolds` 带 `disposition`，引用的核对记录、底账条目或决定队列条目存在且状态相符 | S | `check-answers --decisions --ledger --records`；承不承重、是否真不成立是 M，不进验收 |
+| 写作方的自报不作证据：`closes[]` 每项须有新上下文核对记录（`confirmedBy`）；带 `patch` 的缺口不计入 | S | `contract-check function-map`／`answers`、`function-map check` |
+| 不打补丁：`patchCount ≥ 2` 的实现或条目不得再原地修订，回 C3a 换实现 | S | `season-check --outline` 的 `outline-patch-cap`；换 id 但只改一句（`renamed_patch`）只能靠 `dup-check` 提示（M） |
+| 审读 finding 带 `cites`（`functionId`／`ledgerId`／`targetClause`／`factEvidence`），一项都没有的是 `kind: preference`，不进修订单 | S | 启用集纲层的项目，审读对象在 `planning/episodes/` 下时，每条 finding 必带 `cites` 或标 `preference`；声明了 `cites` 或 `kind` 的 finding 由 `contract-check review-record` 核。旧记录两者都不写仍通过 |
+| 戏剧假定如实标：`accepted_license` 须有 `humanWords`；`notAsked` 的条目不得 `verified` | S | `contract-check ledger-entry`、`ledger check`（`license-has-words`、`not-asked-not-verified`）；两种戏剧假定全部进送审包清单 |
+| 底账自洽：delta 可应用、物件单链、知识单调、说话人知情、钱的来去闭合、在场与时间线一致、选定后 `contested` 为零 | S | `ledger check`（`--stage pre-select` 时矛盾与空字段只报不拦）、`plan-check`；只核结构，核不出“写错了但自洽”（M） |
+| 分集计划按季编排写、带计划轨 delta、容量为 `fits` 或带默认的提案、现实依据不引用 `contested` 条目、有冷读复述 | S | `season-check --outline`（项目有 `planning/season-plan.json` 时，`ruleSet: outline-layer`） |
+| 冷读包只装一项（`plan-events` 导出的本集 events，或本集正文），不装作者材料 | S | `context-pack --role cold_reader` 多装或装整份分集计划即拒（退出码 2） |
+| C4 作者包必有季编排、底账修订（不是 delta）与功能地图 | S | `context-pack --role author` 在集纲层项目里缺任一件退出码 2 |
+| 没有装包的运行只限 C1、C2：`contextSnapshotId: null` 时必须写 `noSnapshotReason`；其他工位为 null，或写了 `noSnapshotReason`，都报错 | S | `contract-check run-handoff` |
+| 数字不当裁判：媒介档案拒绝配额字段；`capacity` 超出只登记提案、退出码 0 | S | schema 与 `capacity`；估时触发的是“选一个动作”，不是“不合格” |
+| 编排方不下数值型台词约束或“不动集数／标题／★、只改一次”类约束 | S | `contract-check task` 按 `schemas/data/constraint-blocklist.json` 扫 `constraints[]`，命中即拒，不论 `origin` |
+| 如实标未核实：`unverified` 条目带到分集计划 `realityRefs` 与送审包未核清单；K1 卡外部来源标 `external_not_checked` | S＋M | 字段与计数由脚本出；清单是否写进送审包靠编排方（M） |
+| 随包脚本不联网、不调模型；检索由宿主的检索代理做并留出处 | S | 随包命令只读本地文件，测试在断网下运行新命令；K1 卡 `evidence.sources[]` 必有；检索做得好不好是 M |
+| C5a、C5b、审正文的 C6 任务引用台词目标 `dialogueTarget`（`targetId@revision`） | S | `contract-check task` |
+| 对话表的结构项：每话题处境字段齐、`shape.reason` 引用处境、切换前有收尾、信息有承载交换或画面理由、说话人此前知道他承载的事实 | S | `contract-check dialogue-plan`、`dialogue-plan-check`；处境写得对不对、走法是否由处境推出是 M |
+| C5a 包要求分集计划容量为 `fits` 或带默认的提案；C5b 包要求对话表通过 `contract-check` | S | `context-pack` 不满足时退出码 2 |
+| 样本不抄句：每话题至多两条正例、一条对照对，原句遮蔽后进包；语料原句不逐字，本剧编剧原句逐字用须标 `verbatimFrom` | S＋M | 装包规则由 `context-pack` 核；正文对装包样本与全库的字面命中由 `dup-check --list-hits`（8 字、13 字两档）列出，是否借了走法而非句子是 M |
+| 正文照对话表写：说话人序列、段边界、收尾位置对齐 | S | `plan-text-consistency`；走法与理由是否一致是 M（设计依据一致性的模型部分） |
+| 修订单（`.drama/checks/` 下的 `revision-list` 记录）不写替换台词、不下数值指令；任务约束带来源，编排方约束引用目标条款 | S | `contract-check revision-list`；`season-check --episodes` 的 `fixlist-no-lines`、`constraint-origin`、`no-numeric-dialogue-constraint` |
+| 首读封存：首读 `review-record` 的 `sealedSha256` 等于去掉该字段后规范 JSON 的 sha256（`.sha256` 旁注文件照认）；台词层项目里首读、次读只认审读对象是本集正文的记录 | S | `season-check --episodes` |
+| finding 的 `layer` 按层写：集纲层 `C3`（`claim` 里写明 a／b／c）、`C4`，台词层 `C5a`／`C5b`；`C5` 只留给旧记录 | S | `contract-check review-record` 核取值；归哪一层对不对是 M |
+| 修订后再做冷读复述 | S | `season-check --episodes` 的 `retell-after-revise` |
+| 诊断数字只提示不判定 | S | `dialogue-diagnose` 不输出区间比较；`capacity` 退出码 0 |
+| `preserved`（不许动）只认人工来源：每项写 `{item, noteId}` 或 `{item, humanWords}`；集纲侧与正文侧同一规则 | S | 集纲侧：审读对象在 `planning/episodes/` 下的 `review-record` 由 `contract-check review-record` 核，纯字符串项直接拒；正文侧：有对话表的项目由 `season-check --episodes` 的 `preserved-human-source` 核；审读者看到的长处是模型判断，写进 `goalAssessments[].evidence`（以「审读者看到的长处（模型判断）」开头），不进不许动清单 |
+| 台词侧证据规则只对有对话表记录的项目核；旧项目的声音卡、台词遍、台词读记录加 `--legacy-dialogue` 查，这时输出与 0.3.6 相同 | S | `season-check --episodes` |
+| 追问单与对话问题单的答案、承重判断、冷读复述是否诚实、功能句是否成立 | M | 模型作答；每答落到动作、给原因、涉出处引卡，让错判事后可见 |
 | 页面修订冲突（409 VERSION_CONFLICT）、request_id 幂等重放、标签与恢复 | R | mali-story 服务端；标签不是采用 |
 | 首读不看作者解释（`context-pack` 只按分区拦 `current_plan`；放进其他分区的作者说明工具不识别）、状态变化如实上报、不越权改稿、远端 ID 不编造 | M | 本文件约定；只能靠审读抽查发现违反 |
 
@@ -33,10 +62,10 @@ S 通过只说明格式与脚本规则满足，不说明引用在远端存在、
 
 ## 定向修订单独装包
 
-按审读意见定向修订一集时，单独装一个包，不沿用写初稿时的快照：
+按审读意见定向修订一集时，单独装一个包，不沿用写初稿时的快照。正文的修订先改对话表再改正文：C5a 的修订包装对话表与审读记录，C5b 的修订包装新对话表、原正文与审读记录。
 
-- 被修订稿列为 `current_plan`（要在它上面改）或 `project_facts`（只作事实依据）；已写成页面的按 `remote_page` 引用其 pageId 与修订号，迁移前的历史候选按 `remote_artifact`。
-- 审读记录、修改单等本地文件以 `local_file` 列入：`ref.id` 写项目内的相对路径，只能在 `.drama/`（不含 `.drama/cache/`，缓存一律按 `remote_artifact` 经 manifest 装入）或 `runs/` 之内，如 `.drama/reviews/rev-ep45-1.json`、`runs/ep45/fix-list.md`；绝对路径、`..`、反斜杠和解析到这两个目录之外的符号链接都被拒绝（退出码 1 或 2）。`revision` 写 `null`，或写希望钉住的 `sha256:<hex>`（与文件不符时退出码 2）；工具读取原字节，把实际 sha256 同时写进快照的 `revision` 与 `sha256`。文件不存在时列入 `omitted`。
+- 被修订稿（对话表或正文）列为 `current_plan`（要在它上面改）或 `project_facts`（只作事实依据）；已写成页面的按 `remote_page` 引用其 pageId 与修订号，迁移前的历史候选按 `remote_artifact`。
+- 审读记录、修改单等本地文件以 `local_file` 列入：`ref.id` 写项目内的相对路径，只能在 `.drama/`（不含 `.drama/cache/`，缓存一律按 `remote_artifact` 经 manifest 装入）、`runs/` 或 `planning/` 之内，如 `.drama/reviews/rev-ep45-1.json`、`runs/ep45/fix-list.md`、`planning/season-plan.json`；绝对路径、`..`、反斜杠和解析到这三个目录之外的符号链接都被拒绝（退出码 1 或 2）。`revision` 写 `null`，或写希望钉住的 `sha256:<hex>`（与文件不符时退出码 2）；工具读取原字节，把实际 sha256 同时写进快照的 `revision` 与 `sha256`。文件不存在时列入 `omitted`。
 - 这样修订的输入都留在快照里，换会话也能知道这次修订依据的是哪一版审读意见。`impact` 只评估 `remote_page`（`--page`）、`remote_artifact`（`--slot`／`--artifact`）与知识卡依赖：快照里的 `local_file`（任务文件除外）一律报 `unknown`（“该引用类型的依赖未评估”），本地文件改动后需要人判断是否重跑。
 
 ## 并行子代理的临时文件
@@ -92,10 +121,28 @@ python3 -B scripts/drama_tools.py knowledge show <项目> <cardId> [--revision N
 | --- | --- | --- |
 | C1 创作定位 | 写谁的什么困境、提供什么体验、独特性在哪 | [c1-positioning.md](c1-positioning.md) |
 | C2 人物与世界 | 人物如何争取、如何冲突，规则怎样产生代价 | [c2-characters-world.md](c2-characters-world.md) |
-| C3 全剧与段落结构 | 选择如何造成下一段，结局怎样由前文生成 | [c3-structure.md](c3-structure.md) |
-| C4 分集集纲 | 本集谁怎样改变局面，留下什么后果 | [c4-episode-outline.md](c4-episode-outline.md) |
-| C5 正文 | 人物此刻怎样做、怎样说、怎样影响对方 | [c5-screenplay.md](c5-screenplay.md) |
+| C3a 全剧功能地图 | 每条线要完成什么功能、用哪个实现完成、结局怎样由前文生成 | [c3a-function-map.md](c3a-function-map.md) |
+| C3b 底账与现实核对 | 世界是什么样：时间线、钱、物件、知识、程序、各方图谋，各自有没有出处 | [c3b-ledger.md](c3b-ledger.md) |
+| C3c 季编排 | 功能分到哪一集、每集装不装得下、装不下怎么办 | [c3c-season-plan.md](c3c-season-plan.md) |
+| C4 分集计划 | 本集谁怎样改变局面，底账怎样变，留下什么后果 | [c4-episode-outline.md](c4-episode-outline.md) |
+| C5a 对话设计 | 每场谁和谁说什么话题、此刻的处境、由处境推出的走法、哪句承载哪条信息 | [c5a-dialogue-plan.md](c5a-dialogue-plan.md) |
+| C5b 正文 | 照对话表，人物此刻怎样做、怎样说、怎样影响对方 | [c5b-text.md](c5b-text.md) |
 | C6 审读与整合 | 哪些成立、哪里不足、应修哪一层 | [c6-review.md](c6-review.md) |
 | 整季分批 | 多批之间怎样分、怎样交接、怎样对账 | [season-run.md](season-run.md) |
 
-新剧的两个人审点（选题确认、送审包审批）见 [两次审批与接续](../approval-flow.md)，工位完成不等于用户选择或正式采用。
+C3a、C3b、C3c 是 C3 内的三个运行：任务写 `workstation: C3` 加 `layer: C3a`／`C3b`／`C3c`，交接写 `workstation: C3`；顺序与方法见 [集纲层总览](../outline-layer.md#1-总览c3a--c3b--c3c--c4两处人审不变)。
+
+新剧的两个人审点（选题确认、送审包审批）见 [两次审批与接续](../approval-flow.md)，工位完成不等于用户选择或正式采用。集纲层的前提、戏剧假定和容量取舍走决定队列并带默认，流程按默认继续，不是新的人审点。
+
+### 返修上限按层解释
+
+`task.revisionBudget` 的单位由任务所属层（`task.layer`）决定：
+
+| 层 | 算什么 | 到顶之后 |
+| --- | --- | --- |
+| C3a | 换实现的次数，默认 2；只改描述不换 id 的修补另计 `patchCount` | 不再换；仍在的承重缺口登记为戏剧假定（`license_pending`）或进决定队列并带默认，流程继续，见 [修订规则](../outline-layer.md#7-修订规则四种不允许的修法patchcount换实现预算-2-次后登记并继续) |
+| C4，及 C6 | 本层产出的返修次数 | 不再改；未处理的审读意见写进交接 `unfinished`（`goal: partially_met`，写明瓶颈），并 `decision add --from-handoff` 登记进决定队列、带默认，流程继续 |
+| C5a | 对话表的修订次数，默认 1；审正文后的修订先改表再改文，算一次 | 同 C4 一行：写进交接 `unfinished` 并登记进决定队列、带默认，流程继续 |
+
+预算用完后，决定队列的默认是“按现稿交付”时不再改；主创或默认选了“再改一次”时，由编排方为那一层开一次新运行，另计预算 1 次，交接的 `decisionRefs[]` 写该决定的队列 id（`contract-check run-handoff <交接> --decisions planning/decisions.json` 核它存在）。下层提给上层的变更按默认要改上层文件时，同样由编排方开一次上层运行去改。
+| 其他层与不填 `layer` 的任务 | 本工位产出的返修次数 | 交付未达标候选并写明瓶颈 |

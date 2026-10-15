@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "drama-studio/season-plan/v0",
+  "revision": "v0",
+  "basedOn": {
+    "functionMap": "function-map-v1",
+    "ledgerRev": "ep000",
+    "mediaProfile": "media-profile-v0"
+  },
+  "episodes": [
+    {
+      "episode": 3,
+      "functions": [
+        "F-box-1"
+      ],
+      "eventsRough": [
+        "老陈去仓库问箱子"
+      ],
+      "star": false,
+      "capacity": {
+        "infoCount": 6,
+        "pictureBeats": 1,
+        "estimateSec": 67.8,
+        "targetSec": 120,
+        "status": "fits",
+        "action": null,
+        "actionDetail": null
+      }
+    },
+    {
+      "episode": 4,
+      "functions": [
+        "F-box-2"
+      ],
+      "eventsRough": [
+        "刘叔拿出账本当众对质"
+      ],
+      "star": true,
+      "capacity": {
+        "infoCount": 18,
+        "pictureBeats": 3,
+        "estimateSec": 200.4,
+        "targetSec": 120,
+        "status": "exceeds",
+        "action": "split",
+        "actionDetail": "拆成 4A、4B：4A 到刘叔摊开账本收尾"
+      }
+    }
+  ],
+  "threads": [
+    {
+      "plantId": "P-box-1",
+      "plantedAt": 3,
+      "payAt": 4
+    }
+  ],
+  "decisions": [
+    "D-001"
+  ]
+}

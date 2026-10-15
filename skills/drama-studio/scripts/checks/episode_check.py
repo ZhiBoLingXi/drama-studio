@@ -11,9 +11,10 @@ EP_RE = re.compile(r"^#{1,2}\s*第([0-9一二三四五六七八九十百零〇]+
 SCENE_START_RE = re.compile(r"^(?:场|###\s+(?:场|\d))")
 SCENE_ID_RE = re.compile(r"^(?:场\s*|###\s+(?:场\s*)?)(\d+)[-–](\d+)(?:\s+(.*))?$")
 # Unknown time tokens must not silently become part of a guessed location.
+# a day word may lead the time and an order word may follow it: 「次日晚」「次日晚稍后」「当天傍晚」 (D6-3 walkthrough #19)
 SCENE_DETAIL_RE = re.compile(
-    r"^(.+?)\s+(日|夜|晨|暮|黄昏|清晨|深夜|黎明|后半夜|前半夜|凌晨|傍晚|白天|"
-    r"午后|下午|上午|正午|拂晓|晚上|早晨|入夜)\s+(内|外)\s*$")
+    r"^(.+?)\s+((?:次日|当日|当天|翌日|隔天|第二天|同日|同一天)?(?:日|夜|晨|暮|黄昏|清晨|深夜|黎明|后半夜|前半夜|凌晨|傍晚|白天|"
+    r"午后|下午|上午|正午|拂晓|晚上|早晨|入夜|晚|早)(?:稍后|稍早|前|后)?)\s+(内|外)\s*$")
 SEPARATOR_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 DIALOG_RE = re.compile(r"^([^△#场\s【（(：:]{1,12})(（[^）]*）|\([^)]*\))?\s*[：:]\s*(.+)$")
 
@@ -204,7 +205,17 @@ def analyze_episode(name: str, lines: list[str], constraints: dict, sources: dic
     return stats
 
 
-def run_episode_check(path: str, *, config_path=None, preset=None, **overrides) -> dict:
+def speech_volume(lines: list[str]) -> dict:
+    """口播量：对白行冒号后的汉字数（去括注、人名、△ 行与场头），只统计不估时（估时在 capacity text）。"""
+    from checks.text_lines import parse_lines, speech_chars
+
+    chars, counted = speech_chars(parse_lines("\n".join(lines)))
+    return {"speech_chars": chars, "dialogue_lines_counted": counted,
+            "note": "口播汉字数，不含括注与人名；不换算时长"}
+
+
+def run_episode_check(path: str, *, config_path=None, preset=None, speech=False, **overrides) -> dict:
+    """`speech=True` 时每集多一个 `speech` 统计块；不给时输出与退出码与原来逐字一致。"""
     constraints, sources, warnings = resolve_constraints(config_path, preset, **overrides)
     episodes = split_episodes(Path(path).read_text(encoding="utf-8"))
     if not episodes:
@@ -213,6 +224,9 @@ def run_episode_check(path: str, *, config_path=None, preset=None, **overrides) 
     if len(set(names)) != len(names):
         return {"ok": False, "error": "存在重复集标题，先核对集序"}
     results = [asdict(analyze_episode(name, lines, constraints, sources)) for name, lines in episodes]
+    if speech:
+        for result, (_, lines) in zip(results, episodes):
+            result["speech"] = speech_volume(lines)
     statuses = [check["status"] for result in results for check in result["checks"]]
     status = ("not_configured" if not constraints else "unmet" if "unmet" in statuses else
               "not_evaluable" if "not_evaluable" in statuses else "met")

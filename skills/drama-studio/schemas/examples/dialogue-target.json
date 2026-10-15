@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "drama-studio/dialogue-target/v0",
+  "targetId": "town-dialogue-target",
+  "revision": "v0.1",
+  "project": "local-demo",
+  "status": "drafted",
+  "mediaProfile": "planning/media-profile.json",
+  "corpusManifest": "corpus/manifest.json",
+  "checkQuestions": "dialogue-check-questions@v1",
+  "conventions": [
+    {
+      "id": "C1",
+      "text": "大人对孩子一次只说一件事，等孩子应一声",
+      "status": "drafted",
+      "sourceNotes": [
+        "WN-007"
+      ],
+      "conflictsWith": []
+    }
+  ],
+  "infoCarriageDefault": "dialogue",
+  "changelog": [
+    {
+      "revision": "v0.1",
+      "date": "2026-10-15",
+      "by": "feedback-ingest",
+      "change": "新增约定 C1"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "drama-studio/question-set/v0",
+  "id": "town-check-questions",
+  "version": "v2",
+  "kind": "reality-check",
+  "answerStates": [
+    "holds",
+    "notHolds",
+    "not_evaluable",
+    "n/a"
+  ],
+  "questions": [
+    {
+      "q": 1,
+      "title": "更省事的做法",
+      "text": "这个人要达到目的，现实里最省事的做法是什么？他为什么没做？",
+      "answerKind": "tristate",
+      "source": "集纲方案 §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 2,
+      "title": "去掉实现",
+      "text": "不用这个实现，功能能不能用别的方式完成？",
+      "answerKind": "informational",
+      "source": "集纲方案 §6.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 3,
+      "title": "镇上的规矩",
+      "text": "镇上的人遇到这种事通常先找谁？",
+      "answerKind": "tristate",
+      "source": "writer-note WN-007",
+      "addedIn": "v2",
+      "status": "drafted",
+      "noteId": "WN-007"
+    }
+  ]
+}

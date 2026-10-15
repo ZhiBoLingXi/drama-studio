@@ -223,5 +223,21 @@ class ContractCliTests(unittest.TestCase):
         self.assertEqual(run.returncode, 1)
 
 
+class D6ExtensionTests(unittest.TestCase):
+    """D6-1: the six extended contracts keep their old examples valid; data files ship next to the schemas."""
+
+    def test_extended_contracts_still_accept_their_d0_examples(self):
+        for name in ("task", "review-record", "run-handoff", "context-snapshot", "selection", "knowledge-card"):
+            self.assertEqual(contracts.check_contract(name, example(name)), [], name)
+
+    def test_data_files_are_bundled_beside_the_schemas(self):
+        spec_install = importlib.util.spec_from_file_location("install", ROOT / "scripts/install.py")
+        install = importlib.util.module_from_spec(spec_install)
+        spec_install.loader.exec_module(install)
+        files = install.inventory(install.SOURCE)
+        for name in ("reality-check-questions.json", "dialogue-check-questions.json", "constraint-blocklist.json"):
+            self.assertIn(f"schemas/data/{name}", files)
+
+
 if __name__ == "__main__":
     unittest.main()

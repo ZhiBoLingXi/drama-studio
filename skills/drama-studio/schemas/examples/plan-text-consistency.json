@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "drama-studio/plan-text-consistency/v0",
+  "plan": "planning/dialogue/dialogue-plan-003.json",
+  "text": "runs/b1/ep-003.c5b.md",
+  "reproduceCommand": "python3 -B skills/drama-studio/scripts/drama_tools.py plan-text-consistency .drama/checks/plan-text-map-003.json --dialogue-plan planning/dialogue/dialogue-plan-003.json --episode-plan planning/episodes/episode-plan-003.json",
+  "rules": {
+    "speaker-sequence": {
+      "status": "pass",
+      "items": []
+    },
+    "topic-boundary": {
+      "status": "fail",
+      "items": [
+        {
+          "topic": "T1",
+          "line": 22,
+          "note": "切到下一话题前没有收尾拍"
+        }
+      ]
+    }
+  },
+  "topics": [
+    {
+      "topicId": "T1",
+      "verdict": "inconsistent",
+      "note": "表写仓管短答，正文他连说三句"
+    }
+  ]
+}

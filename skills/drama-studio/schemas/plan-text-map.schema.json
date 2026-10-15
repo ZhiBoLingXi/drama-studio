@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/plan-text-map/v0",
+  "title": "对照表：正文行与对话表的对应（C5b 产出，plan-text-consistency 的输入）",
+  "description": "exchangeToLines 把对话表的每个交换落到正文行号；lineToPlan 逐行写它是什么（kind）、属于哪个交换（exchangeId）、是不是某段的收尾（closerOf）、承载哪些信息（carries）、逐字取自哪句人工句（verbatimFrom）；verbatimFrom 汇总逐字采用的行。contract-check 核：exchangeToLines 指到的每一行在 lineToPlan 里标了同一个交换；verbatimFrom 写明出处。开放对象：未列出的字段允许（D6-0 的真实产物带 staging、note、checks 等）。",
+  "type": "object",
+  "required": [
+    "text",
+    "exchangeToLines",
+    "lineToPlan"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/plan-text-map/v0"
+    },
+    "episode": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "正文文件（项目内路径）"
+    },
+    "dialoguePlan": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exchangeToLines": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "lineToPlan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "line",
+          "kind"
+        ],
+        "properties": {
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "title",
+              "scene",
+              "cast",
+              "action",
+              "dialogue",
+              "other"
+            ]
+          },
+          "exchangeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "null: a line no exchange of the dialogue plan holds (a picture beat's cry, say)"
+          },
+          "speaker": {
+            "type": "string",
+            "minLength": 1
+          },
+          "closerOf": {
+            "type": "string",
+            "minLength": 1
+          },
+          "carries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "verbatimFrom": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "verbatimFrom": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "line",
+          "from"
+        ],
+        "properties": {
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "where": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

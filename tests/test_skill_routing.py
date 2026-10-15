@@ -90,7 +90,9 @@ class SkillRoutingTests(unittest.TestCase):
         self.assertEqual(len(steps), 10)
         for needle in ("init-project", "drama_tools.py status", "--role author", "reader_effect", "sha256", "changeProposals",
                        "receipt record", "receipt cache", "not_sent", ".drama/runs/", "contract-check", "season-check",
-                       "runs/state/after-ep-", "一集一个作者运行", "dialogue_author", "dialogue_read"):
+                       # D6-3 (plan §4.4 exit condition) changed this on purpose: dialogue_author, dialogue_read (the retired
+                       # dialogue pass and dialogue read) were needles; the steps now go through C5a and the C6 reads
+                       "runs/state/after-ep-", "一集一个作者运行", "dialogue_designer", "cold_reader", "situation_checker"):
             self.assertIn(needle, flow, needle)
 
     def test_offline_fallback_names_the_real_constraints(self):
@@ -107,6 +109,58 @@ class SkillRoutingTests(unittest.TestCase):
         self.assertNotIn("docs/", text)  # the installed skill has no docs/ folder
         index = (SKILL / "references/workstations/README.md").read_text(encoding="utf-8")
         self.assertIn("(season-run.md)", index)
+
+
+class DialogueLayerRoutingTests(unittest.TestCase):
+    """D6-3: writing.md no longer has the dialogue pass or the dialogue read as steps; the tool table names --legacy-dialogue."""
+
+    def test_writing_steps_have_no_dialogue_pass_or_read(self):
+        flow = section((SKILL / "references/writing.md").read_text(encoding="utf-8"), "## 工位流程")
+        steps = [line for line in flow.splitlines() if re.match(r"\d+\. ", line)]
+        for retired in ("台词遍", "台词读"):
+            self.assertFalse([s for s in steps if retired in s], retired)
+
+    def test_tool_table_names_the_legacy_flag(self):
+        tools = section((SKILL / "SKILL.md").read_text(encoding="utf-8"), "## 随包工具")
+        row = next(line for line in tools.splitlines() if "drama_tools.py season-check" in line)
+        self.assertIn("--legacy-dialogue", row)
+
+
+class OutlineLayerRoutingTests(unittest.TestCase):
+    """D6-2: the outline layer (C3a -> C3b -> C3c -> C4) is the default route; C3 is split into three workstation files."""
+
+    def test_planning_route_reads_planning_and_the_outline_layer(self):
+        rows = [line for line in section((SKILL / "SKILL.md").read_text(encoding="utf-8"), "## 选择当前阶段").splitlines()
+                if line.startswith("| ") and "原创选题" in line.split("|")[1]]
+        self.assertEqual(len(rows), 1, rows)
+        for needle in ("(references/planning.md)", "(references/outline-layer.md)"):
+            self.assertIn(needle, rows[0], needle)
+
+    def test_full_run_step_six_goes_c3a_to_c4(self):
+        steps = section((SKILL / "SKILL.md").read_text(encoding="utf-8"), "## 一次完整创作")
+        six = next(line for line in steps.splitlines() if line.startswith("6. "))
+        positions = [six.find(name) for name in ("C3a", "C3b", "C3c", "C4")]
+        self.assertTrue(all(p >= 0 for p in positions) and positions == sorted(positions), six)
+        for needle in ("(references/outline-layer.md)", "决定队列", "plan-check"):
+            self.assertIn(needle, six, needle)
+
+    def test_c3_is_three_files_linked_from_the_index(self):
+        folder = SKILL / "references/workstations"
+        index = (folder / "README.md").read_text(encoding="utf-8")
+        for name in ("c3a-function-map.md", "c3b-ledger.md", "c3c-season-plan.md"):
+            self.assertTrue((folder / name).is_file(), name)
+            self.assertIn(f"({name})", index, name)
+        self.assertFalse((folder / "c3-structure.md").exists())
+        stale = [str(path.relative_to(SKILL)) for path in SKILL.rglob("*.md") if "c3-structure.md" in path.read_text(encoding="utf-8")]
+        self.assertEqual(stale, [], "仍链到已删的 c3-structure.md")
+        self.assertTrue((SKILL / "references/outline-layer.md").is_file())
+
+    def test_writing_step_three_has_no_key_choice_hard_item(self):
+        flow = section((SKILL / "references/writing.md").read_text(encoding="utf-8"), "## 工位流程")
+        three = next(line for line in flow.splitlines() if line.startswith("3. "))
+        self.assertNotIn("关键选择", three)
+        for needle in ("plan-check", "capacity.status", "(outline-layer.md"):
+            self.assertIn(needle, three, needle)
 
 
 if __name__ == "__main__":

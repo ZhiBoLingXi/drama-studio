@@ -2,6 +2,8 @@
 
 日期：2026-10-10 · 状态：P1（方法与契约）和 P3（关口）已在 0.3.5 实施，P0 试点未按原计划做，但 2026-10-11 有一次实际改稿可作旁证（见第 8 节），其余未实施；第 7 节的三项已由主创决定（2026-10-10，同日修订） · 依据：[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)、[知识设计](drama-studio-knowledge-harness-design-2026-09-29.md)、[实施路线图](drama-studio-implementation-roadmap-2026-09-29.md)
 
+> **2026-10-15 状态行（D6-5）**：§4.4、§4.5 的三条 S 关口（声音卡、台词遍、台词读）已被[台词系统架构 v3](drama-studio-dialogue-structure-architecture-2026-10-13.md) 取代，台词遍与台词读在 D6-3（技能 0.6.0）退役，旧记录可用 `season-check --legacy-dialogue` 复查；§1 的问题判断与 §3 的分层被台词方案吸收，概念仍有效。排期见[统一实施计划](./drama-studio-outline-dialogue-implementation-plan-2026-10-14.md) §2.7。
+
 ## 1. 问题与结论
 
 编剧反馈：AI 写的台词“AI 味重，不像人说的话”，并手写了正例。对照后差别集中在五处：没有称呼对象、省主语和对仗的格言句、只陈述不带态度、书面用词、一句话用来塞信息而不是表态。

@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/revision-list/v0",
+  "title": "修订单（C6 → C5a／C5b 的定向修订）",
+  "description": "每项指出问题、引用依据、说明改哪一层，不写替换台词（SPEAKER 格式行）、不下数值型台词指令（constraint-blocklist 的 numeric_dialogue 类）；contract-check revision-list 执行这两条，season-check 的 fixlist-no-lines 用同一个扫描。where、cites 等定位字段不扫。开放对象：未列出的字段允许（D6-0 的真实产物带 foundBy、deferred 等）。",
+  "type": "object",
+  "required": [
+    "target",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/revision-list/v0"
+    },
+    "target": {
+      "type": [
+        "string",
+        "object"
+      ],
+      "description": "被修订的稿（文件路径，或 {episode, file}）"
+    },
+    "basis": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "修订单依据的记录"
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "problem"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "layer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "where": {
+            "type": "string"
+          },
+          "cites": {
+            "type": "object",
+            "properties": {
+              "functionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ledgerId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "targetClause": {
+                "type": "string",
+                "minLength": 1
+              },
+              "factEvidence": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "problem": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

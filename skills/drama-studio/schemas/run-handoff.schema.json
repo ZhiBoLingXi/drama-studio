@@ -47,8 +47,17 @@
       "minLength": 1
     },
     "contextSnapshotId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "null only for C1/C2 runs, which pack no context (D6-2); they say why in noSnapshotReason"
+    },
+    "noSnapshotReason": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Required when contextSnapshotId is null (C1/C2 only)"
     },
     "additionalSnapshotIds": {
       "type": "array",
@@ -137,6 +146,49 @@
           },
           "evidence": {
             "$ref": "#/$defs/ref"
+          },
+          "ledgerDelta": {
+            "type": "object",
+            "required": [
+              "episode",
+              "track",
+              "reads",
+              "writes"
+            ],
+            "properties": {
+              "episode": {
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              },
+              "track": {
+                "type": "string",
+                "enum": [
+                  "planned",
+                  "actual"
+                ]
+              },
+              "reads": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "writes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "entryId",
+                    "change",
+                    "reason"
+                  ]
+                }
+              }
+            },
+            "description": "Optional (D6): structured ledger-delta; the old claim/evidence pair stays valid"
           }
         }
       }
@@ -195,6 +247,53 @@
           },
           "needsDecision": {
             "type": "boolean"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "setting_conflict",
+              "premise",
+              "license",
+              "capacity",
+              "upstream_change",
+              "other"
+            ],
+            "description": "Optional (D6): decision-queue kind, for decision add --from-handoff"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "optionId",
+                "text"
+              ],
+              "properties": {
+                "optionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "description": "Optional (D6): options the lead can choose from"
+          },
+          "default": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional (D6): the optionId the flow follows until the lead decides"
+          },
+          "defaultReason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decisionId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional (D6): the decision-queue entry this proposal was registered as"
           }
         }
       }
@@ -247,6 +346,24 @@
         "minLength": 1
       },
       "description": "Honest unknowns that no other field can express"
+    },
+    "readScope": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      },
+      "description": "Optional (D6): what this run actually read (self-reported, for the checker to know what to re-check)"
+    },
+    "decisionRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Optional (D6-3): ids of the decision-queue entries this run acts on (e.g. a revision the lead or the default chose after the budget ran out); contract-check run-handoff --decisions checks they exist"
     }
   },
   "$defs": {

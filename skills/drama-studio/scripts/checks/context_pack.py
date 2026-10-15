@@ -2,8 +2,29 @@
 
 Deterministic assembly only: no semantic selection, no truncation, no network, no model. Reads --task,
 --selection, <project>/.drama/cache/ (through its manifest v0 or v1: remote_page by pageId@revision, remote_artifact by artifactId), <project>/knowledge/cards/ and, for local_file
-items, files inside <project>/.drama/ (not its cache) or <project>/runs/; writes only
+items, files inside <project>/.drama/ (not its cache), <project>/runs/ or <project>/planning/, or a bundled question set
+by id ("question-set:reality-check-questions@v1", read from the skill's schemas/data/); writes only
 <project>/.drama/snapshots/, and never overwrites an existing snapshot.
+
+D6-1 roles add package rules: a cold_reader gets exactly one project_facts item and nothing authored (of an episode
+plan, only its plan-events export; D6-2); a C5a
+(dialogue_designer) package needs this episode's plan with capacity.status fits, or proposal:<id> whose decision has a
+default; a C5b package (task.layer C5b) needs a dialogue plan that passes contract-check. Samples (--exemplars,
+--contrast-pairs) are the corpus positives and contrast pairs the packed dialogue plan cites, at most two positives and
+one pair per topic, added first positives, then pairs, then second positives while the budget lasts; the rest are
+listed as omitted for budget. Samples are the one thing the package leaves out to fit, and it says so.
+
+D6-3: samples go into their own samples partition (no longer current_plan) as masked sample records (situation,
+walkthrough, skeleton, maskedLines), never raw transcript rows. --exemplars is a JSONL of such records, or the dialogue
+plan itself, whose exemplars.positives objects are packed as their own character ranges. --quotes-per-topic caps the
+masked lines a topic's samples carry in all (default 2, 0 for none); a sample that would pass the cap is left out whole
+(reason quote_cap). A written package appends its samples to .drama/packs/history.json, and a sample the previous
+episode's package also held is reported under samples.repeatedFromPreviousEpisode (reported, not refused).
+
+D6-2: in a project that has started the outline layer (season_check.outline_project: planning/season-plan.json or
+planning/function-map.json, or a JSON record under planning/ledger/ or planning/episodes/; the empty folders
+init-project creates do not count, and 0.3.6-era projects have none of these), a C4 author package must hold the season plan and a ledger (season-check's
+outline-season-assigned and outline-ledger-delta read them), else exit 2. Other projects' C4 packages are unchanged.
 """
 from __future__ import annotations
 
@@ -13,11 +34,17 @@ import os
 from pathlib import Path
 import re
 
-from .contract_check import check_contract
+from .contract_check import COMPARISON_ROLES, DATA_DIR, check_contract
 from .receipt import MANIFESTS, effective_entries
+from .season_check import layer_records, outline_project, record_kind
 
-PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns"]
-LOCAL_ROOTS = (".drama", "runs")  # the only folders a local_file selection item may read from
+PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns", "samples"]  # samples: D6-3, no longer in current_plan
+QUOTES_PER_TOPIC = 2  # masked corpus lines (positives) per topic (D6-3 decisions §1, plan §8 #2); 0 packs none
+HISTORY = ".drama/packs/history.json"  # which samples went into which episode's package
+LOCAL_ROOTS = (".drama", "runs", "planning")  # the only folders a local_file selection item may read from
+SAMPLE_ROOTS = (".drama", "runs", "knowledge", "planning", "corpus")  # corpus exchanges, project contrast pairs, a dialogue plan;
+# corpus/ at the project root is where a new project keeps its corpus (D6-4 decisions §2)
+SAMPLE_ROLES = ("dialogue_designer", "author")
 
 
 def _sha(data: bytes) -> str:
@@ -119,9 +146,9 @@ def _read_card(cards: Path, ref: dict, where: str, project_id: str, errors: list
 
 
 def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
-    """A local_file (#26): a project-relative path inside .drama/ or runs/, read as is and pinned by its sha256.
+    """A local_file (#26): a project-relative path inside .drama/, runs/ or planning/, read as is and pinned by its sha256.
 
-    Absolute paths, `..`, backslashes and anything resolving outside those two folders (symlinks included) are input
+    Absolute paths, `..`, backslashes and anything resolving outside those folders (symlinks included) are input
     errors. The revision is null or the sha256 the host expects; the snapshot records the file's actual sha256 as both.
     """
     name = ref["id"]
@@ -129,7 +156,7 @@ def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
     if (not name or name.startswith("/") or "\\" in name or "\0" in name or any(part in ("", ".", "..") for part in parts)
             or parts[0] not in LOCAL_ROOTS or len(parts) < 2):
         raise ValueError(f"{where}: local_file id must be a relative path inside {' or '.join(f'{folder}/' for folder in LOCAL_ROOTS)} "
-                         "without '..' (e.g. .drama/reviews/rev-ep45-1.json or runs/ep45/review.md)")
+                         "without '..' (e.g. .drama/reviews/rev-ep45-1.json, runs/ep45/review.md or planning/season-plan.json)")
     if parts[:2] == [".drama", "cache"]:
         raise ValueError(f"{where}: cached pages and artifacts are packed as remote_page or remote_artifact through the cache manifest, not as local_file")
     if ref["revision"] is not None and not (isinstance(ref["revision"], str) and re.fullmatch(r"sha256:[a-f0-9]{64}", ref["revision"])):
@@ -151,6 +178,27 @@ def _read_local(root: Path, ref: dict, where: str, errors: list[str]):
     return "ok", data
 
 
+QUESTION_SET = "question-set:"  # a bundled question set packed by id@version (D6-2 §5 #22)
+LEXICON = "lexicon:"  # a bundled genre lexicon packed the same way (D6-3 walkthrough #9)
+BUNDLED = {QUESTION_SET: "*-questions.json", LEXICON: "*-lexicon.json"}
+
+
+def _read_question_set(ref: dict, where: str, errors: list[str]):
+    """local_file "question-set:<id>@<version>" or "lexicon:<id>@<version>": a question set or genre lexicon bundled
+    under schemas/data/, read only, never copied into the project; pinned by its sha256 like any local_file."""
+    prefix = next(p for p in BUNDLED if ref["id"].startswith(p))
+    wanted = ref["id"][len(prefix):]
+    for path in sorted(DATA_DIR.glob(BUNDLED[prefix])):
+        data = path.read_bytes()
+        doc = json.loads(data.decode("utf-8"))
+        if f"{doc.get('id')}@{doc.get('version')}" == wanted:
+            if ref["revision"] is not None and ref["revision"] != _sha(data):
+                errors.append(f"{where}: revision pins {ref['revision']} but the bundled question set is {_sha(data)}")
+                return "error", None
+            return "ok", data
+    raise ValueError(f"{where}: no bundled {prefix[:-1]} {wanted!r} under schemas/data/ (ids look like reality-check-questions@v1, genre-lexicon@v1)")
+
+
 def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) -> list[str]:
     named = []
     for error in errors:
@@ -161,12 +209,15 @@ def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) 
 
 
 def run_context_pack(project, task, selection, role: str, budget: int, dry_run: bool = False,
-                     allow_unverified: bool = False) -> dict:
+                     allow_unverified: bool = False, exemplars: str | None = None, contrast_pairs: str | None = None,
+                     quotes_per_topic: int = QUOTES_PER_TOPIC) -> dict:
     root = Path(project).expanduser().absolute()
     if not root.is_dir():
         raise ValueError(f"Project directory not found: {root}")
     if budget < 1:
         raise ValueError("--budget must be a positive number of chars")
+    if quotes_per_topic < 0:
+        raise ValueError("--quotes-per-topic must be 0 or more")
     task_bytes = Path(task).read_bytes()
     task_doc = _load_json(Path(task), "task")
     problems = check_contract("task", task_doc)
@@ -188,7 +239,7 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
               "partition": "task", "required": True, "usage": "project_text", "chars": len(task_bytes.decode("utf-8")),
               "sha256": task_hash, "reason": "任务定义（context-pack 按 --task 自动装入）"}]
     item_labels, omitted, omitted_labels = [f"task {task_doc['taskId']}"], [], []
-    errors, unknowns = [], list(chosen.get("unknowns", []))
+    errors, unknowns, packed_docs = [], list(chosen.get("unknowns", [])), []
     cache, cards = root / ".drama" / "cache", root / "knowledge" / "cards"
     for folder, what in ((cache, ".drama/cache"), (cards, "knowledge/cards")):
         if folder.exists():
@@ -198,7 +249,7 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         ref = item["ref"]
         where = f"selection.items[{index}] ({_label(ref)})"
         if ref["kind"] not in ("remote_page", "remote_artifact", "knowledge_card", "local_file"):
-            raise ValueError(f"{where}: kind must be remote_page or remote_artifact (cache), knowledge_card or local_file (.drama/ or runs/)")
+            raise ValueError(f"{where}: kind must be remote_page or remote_artifact (cache), knowledge_card or local_file (.drama/, runs/ or planning/)")
         if ref["kind"] != "local_file" and (not isinstance(ref["revision"], int) or isinstance(ref["revision"], bool)):
             raise ValueError(f"{where}: revision must pin an integer revision" + (" (a remote_page is pageId + revision)" if ref["kind"] == "remote_page" else ""))
         span = ref.get("range")
@@ -209,7 +260,8 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
             entries = _manifest(cache) if entries is None else entries
             status, loaded = _read_cache(root, cache, entries, ref, where, allow_unverified, errors, unknowns)
         elif ref["kind"] == "local_file":
-            status, loaded = _read_local(root, ref, where, errors)
+            reader = _read_question_set if ref["id"].startswith(tuple(BUNDLED)) else (lambda r, w, e: _read_local(root, r, w, e))
+            status, loaded = reader(ref, where, errors)
             loaded = (loaded, None) if status == "ok" else loaded
         else:
             status, loaded = _read_card(cards, ref, where, task_doc["project"]["localId"], errors)
@@ -253,14 +305,28 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         clean["sha256"] = _sha(data)
         if usage == "evaluation_only" and role != "evaluation":
             errors.append(f"{where}: evaluation_only material cannot enter the {role} package")
-        if usage == "comparison_only" and role not in ("similarity_review", "evaluation"):
-            errors.append(f"{where}: comparison_only material is limited to similarity_review/evaluation, not {role}")
-        if role in ("reader_effect", "dialogue_read") and item["partition"] == "current_plan":
+        if usage == "comparison_only" and role not in COMPARISON_ROLES:
+            errors.append(f"{where}: comparison_only material is limited to {'/'.join(COMPARISON_ROLES)}, not {role}")
+        if role in ("reader_effect", "dialogue_read", "cold_reader") and item["partition"] == "current_plan":
             errors.append(f"{where}: a {role} package must not include current_plan (author plans)")
+        if text.lstrip().startswith("{"):
+            try:
+                packed_docs.append((where, json.loads(text)))
+            except ValueError:
+                pass
         items.append({"ref": clean, "partition": item["partition"], "required": item["required"], "usage": usage,
                       "chars": len(text), "sha256": _sha(text.encode("utf-8")), "reason": item["reason"]})
         item_labels.append(where)
 
+    errors.extend(_role_rules(root, role, task_doc, items, item_labels, packed_docs))
+    samples = None
+    if exemplars or contrast_pairs:
+        if role not in SAMPLE_ROLES or (role == "author" and task_doc.get("layer") != "C5b"):
+            raise ValueError("--exemplars/--contrast-pairs pack samples for C5a (dialogue_designer) or C5b (author with task.layer C5b) only")
+        samples = _pack_samples(root, packed_docs, exemplars, contrast_pairs, budget - sum(i["chars"] for i in items),
+                                items, item_labels, omitted, omitted_labels, quotes_per_topic)
+        history = _history(root)
+        samples["repeatedFromPreviousEpisode"] = _repeats(history, samples)
     partition_chars = {name: sum(i["chars"] for i in items if i["partition"] == name) for name in PARTITIONS}
     total = sum(partition_chars.values())
     if total > budget:
@@ -275,6 +341,8 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
               "omitted": [{"ref": label, "required": o["required"], "reason": o["reason"]} for label, o in zip(omitted_labels, omitted)],
               "completeness": completeness, "written": False, "existing": False,
               "network_used": False, "models_called": False, "remote_verified": False}
+    if samples is not None:
+        result["samples"] = samples
     if errors:
         return {**result, "passed": False, "errors": errors}
 
@@ -313,6 +381,9 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         _inside(folder, root, ".drama/snapshots")
         written = [path.name for path, content in ((target, body), (sidecar, sidecar_body)) if _publish(path, content)]
         result.update(written=target.name in written, existing=target.name not in written, written_files=written)
+        if samples is not None and samples["keys"]:
+            _record_history(root, history, snapshot_id, task_doc["taskId"], samples)
+            result["historyPath"] = str(root / HISTORY)
     return {**result, "passed": True, "errors": []}
 
 
@@ -332,3 +403,240 @@ def _publish(path: Path, content: bytes) -> bool:
         return False
     finally:
         temp.unlink()
+
+
+def _role_rules(root: Path, role: str, task_doc: dict, items: list, labels: list, docs: list) -> list[str]:
+    """Package rules of the D6 roles that need more than one item to judge (implementation plan §2.2 #13)."""
+    errors = []
+    if role == "cold_reader":
+        facts = [label for label, item in zip(labels, items) if item["partition"] == "project_facts"]
+        if len(facts) != 1:
+            errors.append(f"cold_reader: the package takes exactly one project_facts item (this episode's text or its plan events), found {len(facts)}: {facts}")
+        errors += [f"{label}: a cold_reader package takes no {item['partition']}" for label, item in zip(labels, items)
+                   if item["partition"] == "knowledge"]
+        # D6-2 §5 #9: of an episode plan, the cold reader gets the plan-events export only, never the whole plan
+        errors += [f"{where}: a cold_reader package takes the plan's events export (drama_tools.py plan-events), not the whole "
+                   "episode plan with its moves, infoLedger and saysFact" for where, doc in docs
+                   if record_kind(doc) == "episode-plan" or (isinstance(doc, dict) and record_kind(doc) != "episode-plan-events"
+                                                               and ("infoLedger" in doc or "moves" in doc))]
+    if role == "dialogue_designer":
+        plans = [(where, doc) for where, doc in docs if record_kind(doc) == "episode-plan"]
+        if not plans:
+            errors.append("dialogue_designer (C5a): the package holds no episode-plan, so its capacity cannot be checked")
+        queues = [d for _, d in layer_records(root).get("decision-queue", [])] + [d for _, d in docs if record_kind(d) == "decision-queue"]
+        decisions = {entry.get("id"): entry for doc in queues for entry in doc.get("entries", []) if isinstance(entry, dict)}  # packed wins
+        for where, plan in plans:
+            status = (plan.get("capacity") or {}).get("status") if isinstance(plan.get("capacity"), dict) else None
+            if isinstance(status, str) and status.startswith("proposal:"):
+                proposal = decisions.get(status.split(":", 1)[1])
+                if proposal is None:
+                    errors.append(f"{where}: capacity.status {status} names a proposal that no decision queue (packed or under planning/) holds")
+                elif not proposal.get("default"):
+                    errors.append(f"{where}: capacity.status {status} names a proposal without a default; C5a packs only a plan the flow can follow")
+            elif status != "fits":
+                errors.append(f"{where}: capacity.status is {status!r}; C5a packs a plan that fits or names a proposal:<id> with a default")
+    if role == "author" and "C4" in (task_doc["workstation"], task_doc.get("layer")) and outline_project(root):
+        kinds = {record_kind(doc) for _, doc in docs}
+        # the C4 package checklist (c4-episode-outline.md, D6-2 §5 #10), the same one season-check outline-structure reads
+        for kind, what, rule in (("season-plan", "season plan (planning/season-plan.json)", "outline-season-assigned"),
+                                 ("ledger-entry", "ledger (planning/ledger/ledger-ep000.json or a replayed revision)", "outline-ledger-delta"),
+                                 ("function-map", "function map (planning/function-map.json)", "outline-structure")):
+            if kind not in kinds:
+                errors.append(f"C4 author: the package holds no {what}; an episode plan is written from the season plan, the ledger "
+                              f"and the function map (season-check {rule}); this project uses the outline layer")
+    if task_doc.get("layer") == "C5b":
+        plans = [(where, doc) for where, doc in docs if record_kind(doc) == "dialogue-plan"]
+        if not plans:
+            errors.append("C5b: the package holds no dialogue-plan; C5b writes from a dialogue plan that passes contract-check")
+        for where, plan in plans:
+            problems = check_contract("dialogue-plan", plan)
+            if problems:
+                errors.append(f"{where}: the dialogue plan fails contract-check dialogue-plan: " + "; ".join(problems[:5]))
+    return errors
+
+
+def _sample_file(root: Path, path: str, what: str) -> tuple[str, bytes, dict, dict]:
+    """A JSONL sample file inside the project: (project-relative id, bytes, key -> (start, end) of its line, key -> row)."""
+    resolved = Path(path).expanduser().absolute().resolve()
+    if not resolved.is_relative_to(root.resolve()) or resolved.relative_to(root.resolve()).parts[0] not in SAMPLE_ROOTS:
+        raise ValueError(f"{what} must be a file inside {', '.join(f'{f}/' for f in SAMPLE_ROOTS)} of the project: {path}")
+    data = resolved.read_bytes()
+    plan = _plan_exemplars(data.decode("utf-8"))
+    if plan is not None:
+        return (resolved.relative_to(root.resolve()).as_posix(), data, *plan)
+    spans, rows, offset = {}, {}, 0
+    for line in data.decode("utf-8").splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        if body.strip():
+            try:
+                row = json.loads(body)
+            except ValueError as error:
+                raise ValueError(f"{what} line at char {offset} is not JSON: {error}") from error
+            key = row.get("exchangeId") or row.get("pairId") if isinstance(row, dict) else None
+            if key:
+                spans.setdefault(key, (offset, offset + len(body)))
+                rows.setdefault(key, row)
+        offset += len(line)
+    return resolved.relative_to(root.resolve()).as_posix(), data, spans, rows
+
+
+def _plan_exemplars(text: str):
+    """When --exemplars is a dialogue plan (D6-3 ruling): (ref -> (start, end) of its exemplars.positives object in the
+    file, ref -> that object), so each sample is packed as that object's own character range; None for a JSONL file."""
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        return None
+    if record_kind(doc) != "dialogue-plan":
+        return None
+    wanted = {p.get("ref") for scene in doc.get("scenes") or [] for topic in scene.get("topics") or [] if isinstance(topic, dict)
+              for p in ((topic.get("exemplars") or {}).get("positives") or []) if isinstance(p, dict)}
+    spans, rows, stack, in_string, escaped = {}, {}, [], False, False
+    for index, char in enumerate(text):  # every JSON object's span, strings respected
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            stack.append(index)
+        elif char == "}" and stack:
+            start = stack.pop()
+            try:
+                obj = json.loads(text[start:index + 1])
+            except ValueError:
+                continue
+            if isinstance(obj, dict) and obj.get("ref") in wanted and "source" in obj:
+                spans.setdefault(obj["ref"], (start, index + 1))
+                rows.setdefault(obj["ref"], obj)
+    return spans, rows
+
+
+def _masked_problem(row: dict) -> str | None:
+    """A sample goes into a package as a masked sample record (situation, note, skeleton, maskedLines), never as a raw
+    transcript: a row with `lines` or without a maskedLines list is refused (D6-3, plan §8 #2)."""
+    masked_only = "; the samples partition takes masked sample records (situation, walkthrough, skeleton, maskedLines) only"
+    if "lines" in row:
+        return "是原始转写（带 lines）" + masked_only
+    if "pairId" in row and not (row.get("provenance") or row.get("fromNotes")):
+        return "没有来源（provenance 或 fromNotes）；无来源的条目不进包"  # D6-4
+    if not isinstance(row.get("maskedLines"), list) and "pairId" not in row:
+        return "没有 maskedLines（遮蔽后的原句）" + masked_only
+    return None
+
+
+def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, omitted, omitted_labels,
+                  quotes_per_topic=QUOTES_PER_TOPIC) -> dict:
+    """Two corpus positives and one contrast pair per topic of the packed dialogue plan(s), as masked sample records
+    (situation, walkthrough, skeleton, maskedLines; a raw transcript row is refused), into the samples partition in priority
+    order while the budget lasts. A topic's samples carry at most quotes_per_topic masked lines in all (default 2, 0 for
+    none): a sample that would pass that is left out whole (reason quote_cap), so is one that does not fit the budget.
+    Nothing is cut inside a sample."""
+    plans = [doc for _, doc in docs if record_kind(doc) == "dialogue-plan"]
+    if not plans:
+        raise ValueError("samples follow the topics of a packed dialogue plan; the selection holds none")
+    files = {"positive": _sample_file(root, exemplars, "--exemplars") if exemplars else None,
+             "contrast": _sample_file(root, contrast_pairs, "--contrast-pairs") if contrast_pairs else None}
+    tiers, seen, unresolved = ([], [], []), set(), []
+    for plan in plans:
+        for scene in plan.get("scenes") or []:
+            for topic in scene.get("topics") or [] if isinstance(scene, dict) else []:
+                shown = (topic.get("exemplars") or {}) if isinstance(topic, dict) else {}
+                refs = [("positive", p.get("ref")) for p in shown.get("positives") or [] if isinstance(p, dict) and p.get("source") == "corpus"]
+                refs += [("contrast", c.get("pairId")) for c in shown.get("contrast") or [] if isinstance(c, dict)]
+                taken = {"positive": 0, "contrast": 0}
+                for kind, ref in refs:
+                    file = files[kind]
+                    if file is None or not isinstance(ref, str) or taken[kind] >= (2 if kind == "positive" else 1):
+                        continue
+                    key = next((k for k in (ref, ref.split("#")[-1]) if k in file[2]), None)
+                    if key is None:
+                        unresolved.append(f"{topic.get('topicId')}:{ref}")
+                        continue
+                    problem = _masked_problem(file[3][key])
+                    if problem:
+                        raise ValueError(f"sample {key} (topic {topic.get('topicId')}) {problem}")
+                    taken[kind] += 1
+                    if (kind, key) in seen:
+                        continue
+                    seen.add((kind, key))
+                    tier = 1 if kind == "contrast" else (0 if taken[kind] == 1 else 2)
+                    tiers[tier].append((topic.get("topicId"), kind, key, file))
+    packed, left, capped, keys, quotes = 0, 0, 0, [], {}
+    for topic, kind, key, (ident, data, spans, rows) in [entry for tier in tiers for entry in tier]:
+        start, end = spans[key]
+        text = data.decode("utf-8")[start:end]
+        ref = {"kind": "local_file", "id": ident, "revision": _sha(data), "sha256": _sha(data), "range": {"start": start, "end": end}}
+        label = f"sample {topic} {'正例' if kind == 'positive' else '对照对'} {key}"
+        masked = len(rows[key].get("maskedLines") or [])
+        if quotes.get(topic, 0) + masked > quotes_per_topic:  # whole sample out: its masked lines would pass the topic's cap
+            capped += 1
+            omitted.append({"ref": ref, "required": False, "reason": "quote_cap"})
+            omitted_labels.append(label)
+            continue
+        if len(text) <= room:
+            quotes[topic] = quotes.get(topic, 0) + masked
+            room -= len(text)
+            packed += 1
+            keys.append({"kind": kind, "key": key, "topicId": topic})
+            items.append({"ref": ref, "partition": "samples", "required": False, "usage": "creative_reference",
+                          "chars": len(text), "sha256": _sha(text.encode("utf-8")),
+                          "reason": f"样本：话题 {topic} 的{'正例' if kind == 'positive' else '对照对'} {key}（对话表引用）"})
+            labels.append(label)
+        else:
+            left += 1
+            omitted.append({"ref": ref, "required": False, "reason": "budget"})
+            omitted_labels.append(label)
+    episodes = [plan.get("episode") for plan in plans if plan.get("episode") is not None]
+    return {"packed": packed, "omittedForBudget": left, "omittedForQuoteCap": capped, "unresolved": unresolved,
+            "quotesPerTopic": quotes_per_topic, "maskedLinesPerTopic": quotes,
+            "episode": episodes[0] if episodes else None, "keys": keys,
+            "policy": f"每话题至多 2 个语料正例＋1 个对照对，样本须是遮蔽后的样本记录；一个话题所有样本的 maskedLines 合计不超过 "
+                      f"{quotes_per_topic} 句，超出的样本整条不装（reason: quote_cap）；先各话题第一正例、再对照对、再第二正例，"
+                      "装到预算为止；不截断单条样本"}
+
+
+def _episode_number(value):
+    match = re.match(r"^(?:ep|episode)?[-_]?0*(\d{1,4})", str(value).strip().lower()) if value is not None else None
+    return int(match.group(1)) if match else None
+
+
+def _history(root: Path) -> list:
+    path = root / HISTORY
+    if not path.is_file():
+        return []
+    doc = _load_json(_inside(path, root, HISTORY), "pack history")
+    return doc.get("packs", []) if isinstance(doc, dict) and isinstance(doc.get("packs"), list) else []
+
+
+def _repeats(packs: list, samples: dict) -> list:
+    """Samples of this package that the package of the episode just before also held (D6-3: no sample two episodes
+    running). Episodes are compared by number; 6A and 6B count as consecutive."""
+    n, label = _episode_number(samples["episode"]), str(samples["episode"])
+    if n is None:
+        return []
+    before = [p for p in packs if isinstance(p, dict) and str(p.get("episode")) != label
+              and _episode_number(p.get("episode")) in (n - 1, n)]
+    mine = {(k["kind"], k["key"]) for k in samples["keys"]}
+    return sorted({f"{p.get('episode')}:{k['kind']}:{k['key']}" for p in before for k in p.get("samples") or []
+                   if isinstance(k, dict) and (k.get("kind"), k.get("key")) in mine})
+
+
+def _record_history(root: Path, packs: list, snapshot_id: str, task_id: str, samples: dict) -> None:
+    """Append this package's samples to .drama/packs/history.json (one entry per snapshot; never rewrites one)."""
+    if any(isinstance(p, dict) and p.get("snapshotId") == snapshot_id for p in packs):
+        return
+    folder = root / ".drama" / "packs"
+    folder.mkdir(parents=True, exist_ok=True)
+    _inside(folder, root, ".drama/packs")
+    entry = {"snapshotId": snapshot_id, "taskId": task_id, "episode": samples["episode"],
+             "samples": [{"kind": k["kind"], "key": k["key"], "topicId": k["topicId"]} for k in samples["keys"]]}
+    body = json.dumps({"schemaVersion": "drama-studio/pack-history/v0", "packs": [*packs, entry]}, ensure_ascii=False, indent=2) + "\n"
+    temp = folder / f".history.{os.getpid()}.tmp"
+    temp.write_text(body, encoding="utf-8")
+    os.replace(temp, folder / "history.json")

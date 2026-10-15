@@ -6,6 +6,18 @@ episode whose package holds that episode's plan, the newest text of the episode 
 it, sealed first and second reads, at most one directed revision, and a confirmed save receipt for the final text.
 It never reads the texts' meaning, the network or chat history: passing proves the records are complete and
 consistent, not that the writing is good or that the remote holds them.
+
+Two rule sets live side by side (D6-1). `--outline` runs the outline-layer rules on top of the old ones only when the
+project has `planning/season-plan.json`; `--episodes` runs the dialogue-layer rules instead of voice-card,
+dialogue-pass and dialogue-read only when the project has a dialogue-plan record, and says so with `ruleSet:
+outline-layer` / `episodeRuleSet: dialogue-layer`. Otherwise neither key appears and the output is the 0.3.6 output. The new rules read records from `planning/`, `.drama/checks/` and
+`.drama/tasks/` (any depth), recognised by their schema marker or by the drama_tools command in their reproduceCommand.
+
+D6-2: in a project that has started the outline layer (`outline_project`, shared with context-pack), the old rules also
+recognise an episode-plan record under planning/ (by its schema marker) as that episode's plan, wherever it is a run
+output, a packed item or a review target, so `outline-run`, `outline-review` and the rest see C4's JSON plans. The
+outline-layer rule set itself still switches on `planning/season-plan.json` alone: its rules judge episodes against
+the season plan's assignment and cannot run before C3c has written one.
 """
 from __future__ import annotations
 
@@ -13,8 +25,10 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 
-from .contract_check import check_contract, finished_at
+from .contract_check import (NOT_SPEAKERS, SPEAKER, blocklist_hits, check_contract, finished_at, preserved_without_source,
+                             revision_list_problems)
 from .receipt import area, contained, drama_dir
 
 NOTE = ("只核对 .drama/ 里的记录是否齐全、彼此一致；不判断正文质量，不联网，也不证明远端已保存。"
@@ -22,11 +36,21 @@ NOTE = ("只核对 .drama/ 里的记录是否齐全、彼此一致；不判断�
 EPISODE = re.compile(r"(?:^|[^a-z])(?:ep|episode|outline)[-_]?0*(\d{1,4})(?!\d)|第0*(\d{1,4})集")
 STATE = re.compile(r"^(?:runs|\.drama)/state/after-ep-0*(\d{1,4})\.md$")
 UPSTREAM = ("C1", "C2", "C3")
-# a dialogue line: a short speaker name, an optional bracketed direction, a colon, then the words
-SPEAKER = re.compile(r"^\s*([^\s:：（(#*|>\-△▲【\[]{1,10})\s*(?:[（(][^）)\n]{0,40}[）)])?\s*[:：]\s*\S")
 HEADING = re.compile(r"^\s*(#{1,6}\s|场\s*\d|[｜|])")  # episode titles and scene headings
-NOT_SPEAKERS = {"人物", "出场人物", "地点", "时间", "场景", "道具", "字幕", "标题", "备注", "注", "特写", "画面", "镜头", "旁白", "音效", "闪回", "转场"}
 VOICED_FROM = 3  # a speaker with this many lines in an episode needs a voice card
+LAYER_DIRS = ("planning", ".drama/checks", ".drama/tasks")  # where the D6 records are looked up
+SEASON_PLAN = "planning/season-plan.json"
+OUTLINE_FILES = (SEASON_PLAN, "planning/function-map.json")  # C3c and C3a outputs
+OUTLINE_FOLDERS = ("planning/ledger", "planning/episodes")  # C3b and C4 outputs; the empty folders init-project makes do not count
+# schema markers written two ways in D6-0 (drama-studio/<kind>/v0, <kind>/v0-pilot) and their aliases
+MARKER = re.compile(r"^(?:drama-studio/)?([a-z][a-z-]*)/v")
+MARKER_KINDS = {"dialogue-check": "answers", "reality-check": "answers", "decisions": "decision-queue", "ledger": "ledger-entry"}
+# saved tool output, recognised by the drama_tools subcommand (or the module) in its reproduceCommand
+COMMAND_KINDS = {"plan-text-consistency": "plan-text-consistency", "plan_text_consistency.py": "plan-text-consistency",
+                 "answers-consistency": "consistency", "consistency.py": "consistency",
+                 "lexicon": "genre-scan", "lexicon.py": "genre-scan", "retell-check": "retell-check",
+                 "dup-check": "dup-hits", "dup_check.py": "dup-hits"}
+NAME_FIELDS = ("textFile", "text", "file", "fileA", "plan")
 
 
 def _speaker(line: str) -> str | None:
@@ -109,10 +133,51 @@ def _pages(receipts: list[dict]) -> dict[str, dict]:
     return pages
 
 
+def outline_project(root: Path) -> bool:
+    """The project has started the outline layer (docs/d6/d6-2-decisions.md §1): planning/season-plan.json or
+    planning/function-map.json, or a JSON record under planning/ledger/ or planning/episodes/. 0.3.6-era projects have
+    none of these (their planning/ holds markdown), nor does a project init-project has just made."""
+    return any((root / name).is_file() for name in OUTLINE_FILES) or \
+        any(next((root / folder).glob("*.json"), None) is not None for folder in OUTLINE_FOLDERS if (root / folder).is_dir())
+
+
+DIALOGUE_DIRS = ("planning", ".drama")  # any depth; .drama/cache and .drama/snapshots hold no records
+DIALOGUE_SKIP = (".drama/cache", ".drama/snapshots")
+
+
+def dialogue_plans(root: Path) -> list[tuple[str, dict]]:
+    """[(project-relative path, document)] of every dialogue-plan record under planning/ or .drama/ (any depth)."""
+    found = []
+    for folder in DIALOGUE_DIRS:
+        base = root / folder
+        if not base.is_dir() or not base.resolve().is_relative_to(root.resolve()):
+            continue
+        for path in sorted(base.rglob("*.json")):
+            relative = path.relative_to(root).as_posix()
+            if relative.startswith(DIALOGUE_SKIP):
+                continue
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if record_kind(doc) == "dialogue-plan":
+                found.append((relative, doc))
+    return found
+
+
+def dialogue_project(root: Path) -> bool:
+    """The project has started the dialogue layer (docs/d6/d6-3-decisions.md §2): a dialogue-plan record anywhere under
+    planning/ or .drama/. Judged by records, like outline_project; 0.3.6-era projects have none."""
+    return bool(dialogue_plans(root))
+
+
 def _classify(ref: dict, partition: str | None, pages: dict) -> tuple[str, int | None]:
-    """('state'|'plan'|'text'|'other', episode) for a snapshot item or run output."""
+    """('state'|'plan'|'text'|'other', episode) for a snapshot item or run output. `pages` maps pageIds to what the
+    receipts say about them and, in an outline-layer project, the paths of local episode-plan records to their episode."""
     kind, ident = ref.get("kind"), ref.get("id") or ""
     if kind == "local_file":
+        if (pages.get(ident) or {}).get("semantic") == "episode_plan":
+            return "plan", pages[ident]["episode"]
         state = STATE.match(ident)
         if state:
             return "state", int(state.group(1))
@@ -131,7 +196,17 @@ def _classify(ref: dict, partition: str | None, pages: dict) -> tuple[str, int |
     return "other", None
 
 
+CARD_FILE = re.compile(r"^knowledge/cards/(.+)@r(\d+)\.json$")
+
+
+def _card_ref(ref: dict) -> dict:
+    """A knowledge card a handoff names by its file is the card the package holds as a knowledge_card item (D6-2 §5 #10)."""
+    match = CARD_FILE.match(ref.get("id") or "") if ref.get("kind") == "local_file" else None
+    return {"kind": "knowledge_card", "id": match.group(1), "revision": int(match.group(2))} if match else ref
+
+
 def _same(a: dict, b: dict) -> bool:
+    a, b = _card_ref(a), _card_ref(b)
     if a.get("kind") != b.get("kind") or a.get("id") != b.get("id"):
         return False
     return a.get("kind") != "remote_page" or a.get("revision") == b.get("revision")
@@ -147,9 +222,80 @@ def _range(text: str) -> tuple[int, int]:
     return first, last
 
 
+def _ep_int(value) -> int | None:
+    """6, "006", "6A", "ep006A" -> 6: split episodes (6A, 6B) belong to the episode number they split."""
+    match = re.match(r"^(?:ep|episode)?[-_]?0*(\d{1,4})", str(value).strip().lower()) if value is not None else None
+    return int(match.group(1)) if match else None
+
+
+def _command(doc: dict) -> list[str]:
+    try:
+        return shlex.split(doc.get("reproduceCommand") or "")
+    except ValueError:
+        return []
+
+
+def record_kind(doc) -> str | None:
+    """The D6 object a record is: its schema marker, else the command that produced it."""
+    if not isinstance(doc, dict):
+        return None
+    marker = doc.get("schemaVersion") or doc.get("schema")
+    match = MARKER.match(marker) if isinstance(marker, str) else None
+    if match:
+        return MARKER_KINDS.get(match.group(1), match.group(1))
+    tokens = _command(doc)
+    for index, token in enumerate(tokens):
+        name = PurePosixPath(token).name
+        if name == "drama_tools.py":
+            words = [t for t in tokens[index + 1:index + 3] if not t.startswith("-")]
+            kind = next((COMMAND_KINDS[w] for w in words if w in COMMAND_KINDS), None)
+        elif name in COMMAND_KINDS:
+            kind = COMMAND_KINDS[name]
+        else:
+            continue
+        return None if kind == "dup-hits" and "--list-hits" not in tokens else kind
+    return None
+
+
+def record_episode(doc: dict, name: str) -> int | None:
+    """The episode a record belongs to: its own field, its target, the file it checked, or its file name."""
+    target = doc.get("target") if isinstance(doc.get("target"), dict) else {}
+    for value in (doc.get("episode"), target.get("episode")):
+        if _ep_int(value) is not None:
+            return _ep_int(value)
+    tokens = _command(doc)
+    named = [doc.get(key) for key in NAME_FIELDS] + [target.get("file")]
+    if isinstance(doc.get("target"), str):  # a record whose target is the file it is about (D6-0 revision lists)
+        named.append(doc["target"])
+    named += [tokens[i + 1] for i, t in enumerate(tokens[:-1]) if t == "--new"]
+    for value in named:
+        if isinstance(value, str) and _episode_of_name(value) is not None:
+            return _episode_of_name(value)
+    return _episode_of_name(name)
+
+
+def layer_records(root: Path) -> dict[str, list[tuple[str, dict]]]:
+    """kind -> [(project-relative path, document)] for every readable JSON record under LAYER_DIRS; unreadable files
+    are skipped here (contract-check reports them), so a project without these folders reads as having none."""
+    found: dict[str, list[tuple[str, dict]]] = {}
+    for folder in LAYER_DIRS:
+        base = root / folder
+        if not base.is_dir() or not base.resolve().is_relative_to(root.resolve()):
+            continue
+        for path in sorted(base.rglob("*.json")):
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            kind = record_kind(doc)
+            if kind:
+                found.setdefault(kind, []).append((path.relative_to(root).as_posix(), doc))
+    return found
+
+
 def run_season_check(project: str, episodes: str | None = None, batch_size: int = 10, allow_offline: bool = False,
                      outline: str | None = None, outline_batch: int = 15, skip_dialogue: bool = False,
-                     revise: bool = False, since: str | None = None) -> dict:
+                     revise: bool = False, since: str | None = None, legacy_dialogue: bool = False) -> dict:
     if episodes is None and outline is None:
         raise ValueError("give --episodes (written episodes) and/or --outline (episode outlines) as N or A-B")
     first, last = _range(episodes) if episodes is not None else (1, 0)
@@ -178,6 +324,16 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         warn("project", "project", "读不出 .drama/project.json，按没有远端项目处理")
     remote_project = project_doc.get("remoteProjectId") if isinstance(project_doc, dict) else None
     pages = _pages(receipts)
+    records = layer_records(root)
+    if outline_project(root):  # C4's JSON plans count as plans for the old rules too; legacy projects add nothing
+        pages.update({path: {"episode": record_episode(doc, path), "semantic": "episode_plan"}
+                      for path, doc in records.get("episode-plan", []) if record_episode(doc, path) is not None})
+    outline_layer = outline_range is not None and (root / SEASON_PLAN).is_file()
+    plans_found = dialogue_plans(root) if episodes is not None else []
+    dialogue_layer = bool(plans_found)
+    if dialogue_layer:  # the dialogue plans anywhere under planning/ or .drama/ (layer_records only reads three folders)
+        records["dialogue-plan"] = plans_found
+    dialogue_rules: dict[str, list] = {}
 
     # runs in finish order; a run without a valid finishedAt cannot be placed and fails
     ordered = []
@@ -205,6 +361,8 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
     def snapshot_items(run: dict) -> tuple[list[dict], list[str]]:
         items, missing = [], []
         for snap_id in [run["contextSnapshotId"], *run.get("additionalSnapshotIds", [])]:
+            if snap_id is None:  # a C1/C2 run that packed nothing (noSnapshotReason)
+                continue
             if snap_id in snaps:
                 items += snaps[snap_id][1]["items"]
             else:
@@ -255,6 +413,8 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             fail(scope, "c4", "没有覆盖本集的 C4 运行交接（集纲确认或修改单），且须早于作者运行")
         if not writers:
             fail(scope, "author", "没有产出本集正文的 C5 运行交接")
+            if dialogue_layer:  # the dialogue-layer rules judge records; without a handoff they still say what is there
+                _text_layer(scope, n, entry, records, [], ordered, snapshot_items, role, pages, fail, warn, None, dialogue_rules)
             continue
         author_when, author = writers[0]
         entry["authorRun"] = author["runId"]
@@ -316,15 +476,30 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             (warn if allow_offline and not remote_project else fail)(scope, "saved", message)
         else:
             fail(scope, "saved", "最终稿没有 confirmed 保存回执" + ("（有未决回执，先对账）" if "unknown" in outcomes else ""))
-        if not skip_dialogue:
+        if dialogue_layer:
+            _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role, pages, fail, warn, final, dialogue_rules)
+        # D6-3: voice-card, dialogue-pass and dialogue-read only check old records, on request (--legacy-dialogue)
+        if legacy_dialogue and not skip_dialogue:
             _dialogue(scope, n, entry, root, writers, polish, ordered, final, items, snapshot_items, role, text_outputs, pages, fail)
         covering = []
         for path, review, data in reviews:
             refs = [review["target"], *review.get("additionalTargets", []), *review["readingScope"]]
             if any(_classify(ref, None, pages) == ("text", n) for ref in refs):
                 covering.append((path, review, data))
-        firsts = [c for c in covering if c[1]["firstReadWithoutAuthorNotes"]]
-        seconds = [c for c in covering if not c[1]["firstReadWithoutAuthorNotes"]]
+        if dialogue_layer:  # D6-3: preserved only keeps what a person asked to keep (writer-note id or their own words)
+            dialogue_rules.setdefault("preserved-human-source", []).append(scope)
+            for path, review, _ in covering:
+                unsourced = preserved_without_source(review)
+                if unsourced:
+                    fail(scope, "preserved-human-source", f"{review['reviewId']} 的 {'、'.join(unsourced[:3])} 没有人工来源"
+                         "（noteId 或 humanWords）；preserved 只认人要求保留的东西")
+        if dialogue_layer:  # D6-3 walkthrough #13: first and second reads are reviews of the text, judged by their target
+            covering_reads = [c for c in covering if any(_classify(ref, None, pages) == ("text", n)
+                                                         for ref in [c[1]["target"], *c[1].get("additionalTargets", [])])]
+        else:
+            covering_reads = covering
+        firsts = [c for c in covering_reads if c[1]["firstReadWithoutAuthorNotes"]]
+        seconds = [c for c in covering_reads if not c[1]["firstReadWithoutAuthorNotes"]]
         entry["firstRead"] = [c[1]["reviewId"] for c in firsts]
         entry["secondRead"] = [c[1]["reviewId"] for c in seconds]
         if not firsts:
@@ -332,7 +507,8 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
         unsealed = []
         for path, review, data in firsts:
             sidecar = path.with_suffix(".sha256")
-            if not sidecar.is_file() or sidecar.read_text(encoding="utf-8").split()[:1] != [hashlib.sha256(data).hexdigest()]:
+            if (not sidecar.is_file() or sidecar.read_text(encoding="utf-8").split()[:1] != [hashlib.sha256(data).hexdigest()]) \
+                    and not _sealed_inside(review):
                 unsealed.append(review["reviewId"])
             targets = [review["target"], *review.get("additionalTargets", [])]
             size = len({_classify(ref, None, pages)[1] for ref in targets} - {None})
@@ -353,14 +529,16 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             (warn if n == first else fail)(scope, "reader-previous-text", f"首读包没有第{n - 1}集正文")
 
     per_outline = _outlines(outline_range, outline_batch, ordered, snapshot_items, reviews, receipts, pages,
-                            remote_project, allow_offline, fail, warn) if outline_range else {}
+                            remote_project, allow_offline, fail, warn, outline_project(root)) if outline_range else {}
+    if outline_layer:
+        outline_rules = _outline_layer(outline_range, records, root, per_outline, fail)
 
     failed_episodes = sorted({int(re.match(r"第(\d+)集", f["scope"]).group(1)) for f in failures if f["scope"].startswith("第")})
     failed_outlines = sorted({int(re.match(r"集纲第(\d+)集", f["scope"]).group(1)) for f in failures if f["scope"].startswith("集纲第")})
     by_rule: dict[str, int] = {}
     for item in failures:
         by_rule[item["rule"]] = by_rule.get(item["rule"], 0) + 1
-    return {"ok": True, "command": "season-check", "project": str(drama.parent), "episodes": f"{first}-{last}" if episodes is not None else None,
+    result = {"ok": True, "command": "season-check", "project": str(drama.parent), "episodes": f"{first}-{last}" if episodes is not None else None,
             "outline": f"{outline_range[0]}-{outline_range[1]}" if outline_range else None, "outlineBatch": outline_batch,
             "batchSize": batch_size, "allowOffline": allow_offline, "dialogueChecked": not skip_dialogue, "revise": revise, "since": since, "remoteProjectId": remote_project,
             "passed": not failures, "failureCount": len(failures), "failuresByRule": by_rule,
@@ -368,6 +546,35 @@ def run_season_check(project: str, episodes: str | None = None, batch_size: int 
             "perEpisode": {str(n): per_episode[n] for n in sorted(per_episode)},
             "perOutline": {str(n): per_outline[n] for n in sorted(per_outline)},
             "network_used": False, "models_called": False, "remote_verified": False, "note": NOTE}
+    # only a side that switched to the new rules says so; a legacy project's output stays the 0.3.6 output byte for byte
+    if outline_layer:
+        result["ruleSet"] = "outline-layer"
+        failed = {f["rule"] for f in failures}
+        result["outlineLayerRules"] = {rule: {"status": "failed" if rule in failed else "passed" if scopes else "not_evaluated",
+                                              "evaluatedOn": scopes} for rule, scopes in outline_rules.items()}
+    if dialogue_layer:
+        result["episodeRuleSet"] = "dialogue-layer"
+        failed = {f["rule"] for f in failures}
+        result["dialogueLayerRules"] = {rule: {"status": "failed" if rule in failed else "passed" if scopes else "not_evaluated",
+                                               "evaluatedOn": scopes} for rule, scopes in dialogue_rules.items()}
+        # re-run N1: without a corpus the 13-char tier did not run; say so beside the status rather than hide it in passed
+        skipped13 = [f"第{n}集" for n in sorted(per_episode) if (per_episode[n].get("dupTwoTier") or {}).get("13", "").startswith("not_evaluable")]
+        if skipped13 and "dup-two-tier" in result["dialogueLayerRules"]:
+            result["dialogueLayerRules"]["dup-two-tier"].update(notEvaluatedTiers=["13"], notEvaluatedTiersOn=skipped13,
+                                                                notEvaluatedWhy="本项目无语料（台词目标 corpusManifest: null）")
+    if episodes is not None and not legacy_dialogue:  # with the flag the output is the 0.3.6 output byte for byte
+        result["legacyDialogueRules"] = "not_run (voice-card, dialogue-pass, dialogue-read: --legacy-dialogue)"
+    return result
+
+
+def _sealed_inside(review: dict) -> bool:
+    """D6-3: a first read may keep its seal in sealedSha256: the sha256 of its canonical JSON (sorted keys, no spaces,
+    sealedSha256 left out). A record carrying none is judged by the .sha256 sidecar alone, as before."""
+    seal = review.get("sealedSha256")
+    if not isinstance(seal, str):
+        return False
+    body = json.dumps({k: v for k, v in review.items() if k != "sealedSha256"}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return seal == "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _saved(ref: dict, receipts: list[dict]) -> set[str]:
@@ -375,9 +582,26 @@ def _saved(ref: dict, receipts: list[dict]) -> set[str]:
             or ((r.get("remote") or {}).get("pageId") == ref["id"] and r["remote"].get("revision") == ref.get("revision"))}
 
 
-def _outlines(span, batch, ordered, snapshot_items, reviews, receipts, pages, remote_project, allow_offline, fail, warn) -> dict:
+C4_PACKAGE = (("planning/season-plan.json", "季编排"), ("planning/function-map.json", "功能地图"))  # plus a ledger revision
+
+
+def _c4_package_gaps(refs: list[dict]) -> list[str]:
+    """What the outline-layer C4 package checklist (c4-episode-outline.md, 整季集纲怎么写 #3) misses among packed refs:
+    the season plan, the function map and a ledger revision (planning/ledger/ledger-*.json, not a delta)."""
+    ids = {ref.get("id") for ref in refs if ref.get("kind") == "local_file"}
+    gaps = [f"{what}（{path}）" for path, what in C4_PACKAGE if path not in ids]
+    if not any(str(i).startswith("planning/ledger/ledger-") for i in ids):
+        gaps.append("底账当前修订（planning/ledger/ledger-*.json）")
+    return gaps
+
+
+def _outlines(span, batch, ordered, snapshot_items, reviews, receipts, pages, remote_project, allow_offline, fail, warn,
+              outline_layer=False) -> dict:
     """Episode outlines (C4): written in order, in segments, from the characters, the structure, the outline before
-    and the state of what is already written; reviewed in a context that did not write them; saved."""
+    and the state of what is already written; reviewed in a context that did not write them; saved. In an outline-layer
+    project, a C4 run that wrote episode-plan records is held to the C4 package checklist (season plan, function map,
+    ledger revision) instead of every output of the latest C3 run (C3 is three runs since D6-2, and C3c also writes the
+    media profile); a C4 run that wrote markdown outlines keeps the old rule."""
     def plans(run: dict) -> dict[int, dict]:
         found = {}
         for ref in run["outputs"]:
@@ -410,6 +634,11 @@ def _outlines(span, batch, ordered, snapshot_items, reviews, receipts, pages, re
             earlier = [run for at, run in ordered if run["workstation"] == station and at <= when]
             if not earlier:
                 fail(scope, rule, f"写集纲之前没有 {station} 的运行交接（{what}）")
+            elif station == "C3" and outline_layer and any((pages.get(ref.get("id")) or {}).get("semantic") == "episode_plan"
+                                                           for ref in author["outputs"]):  # a C4 run that wrote episode-plan records
+                gaps = _c4_package_gaps(refs)
+                if gaps:
+                    fail(scope, rule, f"集纲包缺 C4 清单里的：{'、'.join(gaps)}")
             elif not all(any(_same(ref, out) for ref in refs) for out in earlier[-1]["outputs"]):
                 fail(scope, rule, f"集纲包没有装 {station} 最新产出的{what}（{earlier[-1]['runId']} 的产出）")
         if n == segment[0]:
@@ -479,3 +708,246 @@ def _dialogue(scope, n, entry, root, writers, polish, ordered, final, author_ite
     entry["dialogueRead"] = [r["runId"] for r in readers]
     if not readers:
         fail(scope, "dialogue-read", "台词遍之后没有台词读：新上下文里只给正文的 C6 运行（dialogue_read 包）")
+
+
+def _ep_label(value) -> str:
+    """"006A" and "6A" name the same planned episode."""
+    return re.sub(r"^(?:ep|episode)?[-_]?0*(?=\d)", "", str(value).strip().lower()).upper()
+
+
+def _entries(records: dict, kind: str, field: str) -> dict:
+    """id -> entry across every record of a kind, later files (by path) overriding earlier ones."""
+    found = {}
+    for _, doc in records.get(kind, []):
+        for entry in doc.get(field, []) if isinstance(doc.get(field), list) else []:
+            if isinstance(entry, dict) and entry.get("id"):
+                found[entry["id"]] = entry
+    return found
+
+
+OUTLINE_LAYER_RULES = ("outline-season-assigned", "outline-ledger-delta", "outline-capacity", "outline-reality-refs",
+                       "outline-retell", "outline-decision-default", "outline-patch-cap")
+
+
+def _outline_layer(span, records, root, per_outline, fail) -> dict:
+    """The outline-layer rules (implementation plan §2.2 #12): season assignment, a planned ledger delta backed by
+    the episode's own scenes or beats, capacity that fits or names a proposal with a default, reality refs that exist
+    and are not contested, a cold retell of the plan's events; and, project-wide, defaults on open decisions and the
+    patch cap. They judge records, not the plan's quality. Returns rule -> the scopes it was evaluated on, so the output
+    can list rules that ran and passed (D6-2 §5 #25), and say so when a rule never ran."""
+    ran: dict[str, list] = {rule: [] for rule in OUTLINE_LAYER_RULES}
+    try:
+        season = json.loads((root / SEASON_PLAN).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        season = {}
+        fail("季编排", "outline-season-assigned", f"{SEASON_PLAN} 读不出：{error}")
+    assigned = {_ep_int(e.get("episode")) for e in season.get("episodes", []) if isinstance(e, dict)} if isinstance(season, dict) else set()
+    plans: dict[int, list] = {}
+    for path, doc in records.get("episode-plan", []):
+        plans.setdefault(record_episode(doc, path), []).append((path, doc))
+    ledger = _entries(records, "ledger-entry", "entries")
+    decisions = _entries(records, "decision-queue", "entries")
+    retold = {_ep_label(doc["target"].get("episode")) for _, doc in records.get("retell-record", [])
+              if isinstance(doc.get("target"), dict) and doc["target"].get("kind") == "episode_plan_events"}
+    for n in range(span[0], span[1] + 1):
+        scope, entry = f"集纲第{n}集", per_outline.setdefault(n, {})
+        ran["outline-season-assigned"].append(scope)
+        ran["outline-ledger-delta"].append(scope)
+        if n not in assigned:
+            fail(scope, "outline-season-assigned", f"第{n}集不在 {SEASON_PLAN} 的 episodes 里；集纲按季编排的分配写")
+        found = plans.get(n, [])
+        entry["episodePlans"] = [path for path, _ in found]
+        if not found:
+            fail(scope, "outline-ledger-delta", "没有本集的分集计划记录（planning/ 下的 episode-plan），ledgerDelta、容量、现实依据与冷读都无从核对")
+            continue
+        for rule in ("outline-capacity", "outline-reality-refs", "outline-retell"):
+            ran[rule].append(scope)
+        unverified = 0
+        for path, plan in found:
+            label = f"{path}（{plan.get('episode')}）"
+            delta = plan.get("ledgerDelta")
+            events = plan.get("events") if isinstance(plan.get("events"), dict) else {}
+            anchors = {s.get("sceneId") for s in events.get("scenes", []) if isinstance(s, dict)}
+            anchors |= {b.get("beatId") for s in events.get("scenes", []) if isinstance(s, dict) for b in s.get("beats", []) if isinstance(b, dict)}
+            if not isinstance(delta, dict) or not (delta.get("writes") or delta.get("reads")):
+                fail(scope, "outline-ledger-delta", f"{label} 没有声明 ledgerDelta 的 reads/writes（计划轨）")
+            else:
+                for index, write in enumerate(delta.get("writes") or []):
+                    support = write.get("supportedBy") if isinstance(write, dict) else None
+                    cited = support if isinstance(support, list) else [support]
+                    if not cited or any(ref not in anchors for ref in cited):
+                        fail(scope, "outline-ledger-delta", f"{label} ledgerDelta.writes[{index}] 的 supportedBy {support!r} 不是本集的场或拍")
+            status = (plan.get("capacity") or {}).get("status") if isinstance(plan.get("capacity"), dict) else None
+            if isinstance(status, str) and status.startswith("proposal:"):
+                proposal = decisions.get(status.split(":", 1)[1])
+                if proposal is None:
+                    fail(scope, "outline-capacity", f"{label} capacity.status {status} 指向的提案不在决定队列里")
+                elif not proposal.get("default"):
+                    fail(scope, "outline-capacity", f"{label} capacity.status {status} 指向的提案没有 default，流程无法按默认走")
+            elif status != "fits":
+                fail(scope, "outline-capacity", f"{label} capacity.status 是 {status!r}；应为 fits 或 proposal:<决定队列 id>（超出时登记提案，不是失败）")
+            for ref in plan.get("realityRefs") or []:
+                ident = ref.get("id") if isinstance(ref, dict) else ref
+                known = ledger.get(ident)
+                if known is None:
+                    fail(scope, "outline-reality-refs", f"{label} realityRefs 引用的 {ident} 不在底账里")
+                elif known.get("status") == "contested":
+                    fail(scope, "outline-reality-refs", f"{label} realityRefs 引用的 {ident} 处于 contested；矛盾解决前不能作依据")
+                elif known.get("status") == "unverified":
+                    unverified += 1
+            if _ep_label(plan.get("episode")) not in retold:
+                fail(scope, "outline-retell", f"{label} 没有只读 events 的冷读复述记录（retell-record，target.kind episode_plan_events）")
+        entry["unverifiedRealityRefs"] = unverified
+    ran["outline-decision-default"].append("决定队列")
+    ran["outline-patch-cap"].append("功能地图与底账")
+    for ident, decision in decisions.items():
+        if decision.get("status") not in ("decided", "closed", "withdrawn") and not decision.get("default"):
+            fail("决定队列", "outline-decision-default", f"{ident} 还没定，却没有 default；每条等人的决定都要带默认走法")
+    maps = records.get("function-map", [])
+    if maps:
+        path, doc = maps[-1]
+        for thread in doc.get("threads", []) if isinstance(doc.get("threads"), list) else []:
+            for function in thread.get("functions", []) if isinstance(thread, dict) else []:
+                for candidate in function.get("candidates", []) if isinstance(function, dict) else []:
+                    # rejected candidates keep their history; only the implementation in use is capped
+                    if isinstance(candidate, dict) and candidate.get("status") == "selected" \
+                            and isinstance(candidate.get("patchCount"), int) and candidate["patchCount"] >= 3:
+                        fail("功能地图", "outline-patch-cap", f"{path} {candidate.get('candidateId')} patchCount {candidate['patchCount']}："
+                             "到 2 之后又原地修订；应回 C3a 换实现（新 id，计数归零）")
+    for ident, item in ledger.items():
+        if item.get("status") != "retired" and isinstance(item.get("patchCount"), int) and item["patchCount"] >= 3:
+            fail("底账", "outline-patch-cap", f"{ident} patchCount {item['patchCount']}：到 2 之后又原地修订")
+    return ran
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
+DIALOGUE_LAYER_RULES = ("dialogue-plan", "target-ref", "plan-text-align", "cold-retell", "situation-check", "consistency-record",
+                        "retell-after-revise", "constraint-origin", "no-numeric-dialogue-constraint", "fixlist-no-lines",
+                        "dup-two-tier", "genre-lexicon", "preserved-human-source")
+
+
+def _text_layer(scope, n, entry, records, writers, ordered, snapshot_items, role, pages, fail, warn, final=None, ran=None) -> None:
+    """The dialogue-layer rules (implementation plan §2.2 #12), run instead of voice-card, dialogue-pass and
+    dialogue-read when the project keeps dialogue plans: each is a record that must exist or a field that must hold.
+    `ran` collects rule -> the episodes it was evaluated on, for dialogueLayerRules."""
+    ran = ran if ran is not None else {}
+    for rule in DIALOGUE_LAYER_RULES:
+        ran.setdefault(rule, [])
+
+    def evaluated(*rules):
+        for rule in rules:
+            ran[rule].append(scope)
+
+    def mine(kind):
+        return [(path, doc) for path, doc in records.get(kind, []) if record_episode(doc, path) == n]
+
+    plans = mine("dialogue-plan")
+    entry["dialoguePlans"] = [path for path, _ in plans]
+    evaluated("dialogue-plan", "plan-text-align", "cold-retell", "situation-check", "dup-two-tier", "genre-lexicon")
+    if writers:  # whether the text was revised is read from the C5 runs; without them it cannot be told
+        evaluated("retell-after-revise")
+    if not plans:
+        fail(scope, "dialogue-plan", "没有本集的对话表记录（C5a 的 dialogue-plan）")
+    else:
+        evaluated("target-ref")
+    target_ids = [doc["targetId"] for _, doc in records.get("dialogue-target", []) if isinstance(doc.get("targetId"), str)]
+    for path, plan in plans:
+        errors = check_contract("dialogue-plan", plan)
+        if errors:
+            fail(scope, "dialogue-plan", f"{path} contract-check dialogue-plan 不通过：" + "; ".join(errors[:5]))
+        based = plan.get("basedOn") if isinstance(plan.get("basedOn"), dict) else {}
+        cited = " ".join(_strings([based.get("target"), based.get("dialogueTarget")]))
+        if not cited:
+            fail(scope, "target-ref", f"{path} 的 basedOn 没有引用台词目标（target）")
+        elif not any(ident in cited for ident in target_ids):
+            fail(scope, "target-ref", f"{path} 引用的台词目标不在项目的 dialogue-target 记录里（{cited[:80]}）")
+    if not mine("plan-text-consistency"):
+        fail(scope, "plan-text-align", "没有本集正文对照对话表的 plan-text-consistency 记录")
+    text_retells = [doc for _, doc in mine("retell-record") if doc["target"].get("kind") == "episode_text"]
+    if not text_retells:
+        fail(scope, "cold-retell", "没有只读本集正文的冷读复述记录（retell-record，target.kind episode_text）")
+    situation = [(path, doc) for path, doc in mine("answers")
+                 if str(doc.get("questionsVersion") or doc.get("schema") or "").startswith("dialogue-check")]
+    checks = [path for path, _ in situation]
+    entry["situationChecks"] = checks
+    # two independent checks of the same draft need a consistency record; checks of different drafts (the original and the
+    # revision) are not compared (D6-3 walkthrough #6). Records without target.file count as one draft, as before.
+    by_draft: dict = {}
+    for path, doc in situation:
+        target = doc.get("target") if isinstance(doc.get("target"), dict) else {}
+        by_draft.setdefault(target.get("file"), []).append(path)
+    doubled = {draft: paths for draft, paths in by_draft.items() if len(paths) > 1}
+    if not checks:
+        fail(scope, "situation-check", "没有本集正文的处境核对记录（对话问题单的回答记录）")
+    elif doubled:
+        evaluated("consistency-record")
+        if not mine("consistency"):
+            draft, paths = next(iter(doubled.items()))
+            fail(scope, "consistency-record", f"同一稿{f'（{draft}）' if draft else ''}有 {len(paths)} 份处境核对，"
+                 "却没有它们之间的 answers-consistency 记录")
+    # retell-after-revise (D6-3): once the text was revised (a C5 run after the author run), the revised text needs a cold
+    # retell of its own: a cold_reader run after the last revision, or a retell record whose target.file is the final text
+    cold = [when for when, run in ordered if run["workstation"] == "C6" and role(run) == "cold_reader"
+            and any(_classify(i["ref"], i["partition"], pages) == ("text", n) for i in snapshot_items(run)[0])]
+    final_id = (final or {}).get("id") or ""
+    retold_final = bool(final_id) and any(_same_file(doc["target"].get("file"), final_id) for doc in text_retells)
+    # with cold-read runs on record their order decides (as in D6-1); a records-only project needs a retell of the final
+    revised_unread = (any(when > min(cold) for when, _ in writers) and not any(when > writers[-1][0] for when in cold)) if cold \
+        else len(writers) > 1 and bool(text_retells) and not retold_final  # no retell at all is cold-retell's failure
+    if revised_unread:
+        fail(scope, "retell-after-revise", f"正文改过（{writers[-1][1]['runId']}），改后的稿没有冷读复述"
+             f"（改后的冷读运行，或 target.file 为 {final_id or '最终稿'} 的复述记录）")
+    tasks = {doc.get("taskId"): (path, doc) for path, doc in records.get("task", [])}
+    found = [tasks[run["taskId"]] for _, run in writers if run["taskId"] in tasks]
+    if not found:
+        warn(scope, "constraint-origin", "没有本集作者运行的任务记录（.drama/tasks/），任务约束的来源与禁词未核")
+    else:
+        evaluated("constraint-origin", "no-numeric-dialogue-constraint")
+    for path, task in found:
+        for index, constraint in enumerate(task.get("constraints") or []):
+            text, origin = constraint.get("text") or "", constraint.get("origin")
+            if not origin or (origin == "orchestrator" and not constraint.get("cite")):
+                fail(scope, "constraint-origin", f"{path} constraints[{index}] 没有来源，或编排方约束没有引用台词目标条款")
+            for category, hit in blocklist_hits(text):
+                fail(scope, "no-numeric-dialogue-constraint", f"{path} constraints[{index}] 命中 {category} 禁词（{hit!r}），不论来源都拒")
+    fixlists = mine("revision-list")
+    if fixlists:
+        evaluated("fixlist-no-lines")
+    cast = {ex.get("speaker") for _, plan in plans for scene in plan.get("scenes") or [] if isinstance(scene, dict)
+            for topic in scene.get("topics") or [] if isinstance(topic, dict)
+            for ex in topic.get("exchanges") or [] if isinstance(ex, dict) and ex.get("speaker")}
+    cast |= {row.get("speaker") for _, ptm in mine("plan-text-map") for row in ptm.get("lineToPlan") or []
+             if isinstance(row, dict) and row.get("speaker")}
+    for path, fixlist in fixlists:
+        problems = revision_list_problems(fixlist, cast or None)
+        if problems:
+            fail(scope, "fixlist-no-lines", f"{path}：{problems[0]}；修订单只指问题与引用，不写台词、不下数值指令")
+    tiers = {doc.get("k") for _, doc in mine("dup-hits")}
+    # D6-3 walkthrough #1: a project without a corpus (its dialogue target says corpusManifest: null) has no pool for the
+    # 13-char tier, which is then not_evaluable; the 8-char tier is owed only when the plan cites corpus samples
+    no_corpus = any("corpusManifest" in doc and doc["corpusManifest"] is None for _, doc in records.get("dialogue-target", []))
+    cites_samples = any(p.get("source") == "corpus" for _, plan in plans for scene in plan.get("scenes") or [] if isinstance(scene, dict)
+                        for topic in scene.get("topics") or [] if isinstance(topic, dict)
+                        for p in ((topic.get("exemplars") or {}).get("positives") or []) if isinstance(p, dict))
+    owed = ({8} if cites_samples or not no_corpus else set()) | (set() if no_corpus else {13})
+    if no_corpus:
+        entry["dupTwoTier"] = {"13": "not_evaluable（本项目无语料）", "8": "owed" if 8 in owed else "passed（没有装语料样本）"}
+    if not owed <= tiers:
+        fail(scope, "dup-two-tier", f"逐条命中记录缺 {sorted(owed - tiers)} 字档（装包样本 8 字、全库 13 字）")
+    if not mine("genre-scan"):
+        fail(scope, "genre-lexicon", "没有本集正文的题材禁词扫描记录（corpus lexicon）")
+
+
+def _same_file(cited, final_id: str) -> bool:
+    """A retell's target.file names the final text: the same project path, or the same file name."""
+    return isinstance(cited, str) and bool(cited) and (cited == final_id or PurePosixPath(cited).name == PurePosixPath(final_id).name)

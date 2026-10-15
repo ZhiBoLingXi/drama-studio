@@ -334,7 +334,7 @@ def _own_outputs(found: list[dict], run: dict, entries: list[dict]) -> tuple[lis
 
 def _snapshot_ids(doc: dict) -> list[str]:
     """contextSnapshotId first, then the optional additionalSnapshotIds (#26), each once."""
-    return list(dict.fromkeys([doc["contextSnapshotId"], *doc.get("additionalSnapshotIds", [])]))
+    return [snap for snap in dict.fromkeys([doc["contextSnapshotId"], *doc.get("additionalSnapshotIds", [])]) if snap is not None]
 
 
 def _judge_run(item: dict, loaded: dict[str, dict], snapshots: dict[str, dict], judge, entries: list[dict], card=None) -> dict:
@@ -689,7 +689,8 @@ def _run_summary(item: dict, staleness: dict) -> dict:
     modified = datetime.fromtimestamp(item["file"].stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
     extra = {"additionalSnapshotIds": doc["additionalSnapshotIds"]} if "additionalSnapshotIds" in doc else {}
     return {"runId": doc["runId"], "path": item["path"], "taskId": doc["taskId"], "workstation": doc["workstation"],
-            "contextSnapshotId": doc["contextSnapshotId"], **extra, "status": doc["status"], "unfinished": doc["unfinished"],
+            "contextSnapshotId": doc["contextSnapshotId"], **extra,
+            **({"noSnapshotReason": doc["noSnapshotReason"]} if doc["contextSnapshotId"] is None else {}), "status": doc["status"], "unfinished": doc["unfinished"],
             "nextAction": doc["nextAction"], "modifiedAt": modified, "finishedAt": doc.get("finishedAt"),
             "recencyBasis": _recency(item)[1], **staleness}
 
@@ -760,8 +761,13 @@ def run_status(project: str) -> dict:
     latest = runs[0] if runs else None
     return {"ok": True, "command": "status", "project": str(drama.parent), "nextAction": _next_action(receipts, invalid, latest),
             "receipts": {key: receipts[key] for key in ("pending", "read_only_unknown", "unreconcilable_unknown", "resolved_verified", "resolved_host_judged")},
+            # open keeps its 0.4.0 meaning (not finished, or finished with unfinished items); the two lists below split it
+            # so a run that finished and handed over is never shown as not finished (D6-2 §5 #24)
             "runs": {"count": len(records), "recencyBasis": basis, "latest": latest,
-                     "open": [run for run in runs if run["status"]["run"] in OPEN_RUNS or run["unfinished"]]},
+                     "open": [run for run in runs if run["status"]["run"] in OPEN_RUNS or run["unfinished"]],
+                     "notFinished": [run["runId"] for run in runs if run["status"]["run"] in OPEN_RUNS],
+                     "finishedWithUnfinished": [run["runId"] for run in runs
+                                                if run["status"]["run"] not in OPEN_RUNS and run["unfinished"]]},
             "snapshots": snapshots, "invalid": invalid,
             "note": "只读取 .drama/ 下的本地记录，不读聊天记录；不证明远端状态、采用或质量。" + recency +
                     "失效提示只比较本地缓存 manifest 里的可信条目，不说明远端有没有更新的修订。",
@@ -770,7 +776,7 @@ def run_status(project: str) -> dict:
 
 def _run_lines(label: str, run: dict) -> list[str]:
     lines = [f"- {label}：{run['runId']}（{run['workstation']}，{run['status']['run']}/{run['status']['goal']}，任务 {run['taskId']}，"
-             f"快照 {'、'.join([run['contextSnapshotId'], *run.get('additionalSnapshotIds', [])])}，"
+             f"快照 {'、'.join(_snapshot_ids(run)) or '无（' + str(run.get('noSnapshotReason') or '未装包') + '）'}，"
              + (f"完成于 {run['finishedAt']}，" if run["finishedAt"] else "") + f"修改于 {run['modifiedAt']}）", f"    下一步：{run['nextAction']}"]
     lines += [f"    未完成：{'；'.join(run['unfinished'])}"] if run["unfinished"] else []
     lines += [f"    可能已失效：快照引用 {_what(item)} 的 r{item['pinnedRevision']}，本地缓存已有可信的 r{item['staleAgainstRevision']}；"
@@ -817,7 +823,7 @@ def render_status(result: dict) -> str:
         lines += _run_lines("最近", runs["latest"])
     for run in runs["open"]:
         if run["runId"] != runs["latest"]["runId"]:
-            lines += _run_lines("未结束", run)
+            lines += _run_lines("未结束" if run["status"]["run"] in OPEN_RUNS else "已结束、留有未完成项", run)
     lines += ["", f"快照（{len(result['snapshots'])}）"]
     for item in result["snapshots"]:
         lines.append(f"- {item['snapshotId']}：{'完好' if item['intact'] else '有问题'}，completeness: {item['completeness'] or '未知'}")

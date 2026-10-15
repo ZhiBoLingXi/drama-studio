@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "drama-studio/retell-record/v0",
+  "target": {
+    "kind": "episode_text",
+    "episode": 3,
+    "file": "drafts/ep-003.md"
+  },
+  "readingScope": [
+    "drafts/ep-003.md"
+  ],
+  "promptVersion": {
+    "id": "cold-read-text",
+    "version": "v1"
+  },
+  "events": [
+    {
+      "order": 1,
+      "who": [
+        "老陈"
+      ],
+      "what": "去仓库问箱子",
+      "why": "刘叔提了一句",
+      "sourceLine": "L8"
+    }
+  ],
+  "onlyFromPicture": [
+    {
+      "what": "登记簿上的签名",
+      "gettableOnScreen": "约两秒，能看清",
+      "sourceLine": "L20"
+    }
+  ],
+  "unclear": [
+    {
+      "what": "王姨为什么没说",
+      "whyExpectedHere": "本集没交代，可能是后文的事"
+    }
+  ],
+  "stopsAt": "老陈走出仓库",
+  "factRefs": [
+    {
+      "factId": "I1-f1",
+      "status": "retold",
+      "retellRefs": [
+        1
+      ],
+      "lines": [
+        "L20"
+      ],
+      "why": "第 1 条复述说到登记簿上的签收人"
+    }
+  ]
+}

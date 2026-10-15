@@ -1,0 +1,512 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/function-map/v0",
+  "title": "功能地图：线 → 功能 → 候选实现（C3a）",
+  "description": "开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "threads"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/function-map/v0"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "premises": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/premise"
+      }
+    },
+    "threads": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/thread"
+      },
+      "minItems": 1
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "thread": {
+      "type": "object",
+      "required": [
+        "threadId",
+        "functions"
+      ],
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "user_given",
+            "user_given_modified",
+            "designed",
+            "writer_revised"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/function"
+          }
+        },
+        "threadLevel": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "ending": {
+              "type": "string"
+            },
+            "irreversibles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "plantsAndPays": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "function": {
+      "type": "object",
+      "required": [
+        "functionId",
+        "audienceFeels",
+        "whoLearnsWhat",
+        "situationChange",
+        "status",
+        "candidates"
+      ],
+      "properties": {
+        "functionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audienceFeels": {
+          "type": "string",
+          "minLength": 1
+        },
+        "whoLearnsWhat": {
+          "type": "string",
+          "minLength": 1
+        },
+        "situationChange": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "selected",
+            "dropped"
+          ]
+        },
+        "droppedCost": {
+          "type": "string"
+        },
+        "alsoServes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "outOfScope": {
+          "type": [
+            "boolean",
+            "string"
+          ]
+        },
+        "currentEpisodes": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "candidateId",
+        "origin",
+        "description",
+        "steps",
+        "ledgerDeps",
+        "inquiryRef",
+        "status",
+        "patchCount"
+      ],
+      "properties": {
+        "candidateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "user_given",
+            "user_given_modified",
+            "designed",
+            "writer_revised"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          },
+          "minItems": 1
+        },
+        "ledgerDeps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ledgerDep"
+          }
+        },
+        "inquiryRef": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "追问单记录 checkId；键必有，尚未追问时为 null"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "candidate",
+            "selected",
+            "rejected"
+          ]
+        },
+        "rejectedBecause": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "object"
+            ]
+          }
+        },
+        "patchCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "迁移旧项目查不到时为 null，patch-cap 不触发"
+        },
+        "requiresPremise": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "dependsOnCandidates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "weakensFunctions": {
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "string"
+            ]
+          }
+        },
+        "losesFunctions": {
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "string"
+            ]
+          },
+          "description": "选它会让哪些功能句落空；非空的候选不得 selected"
+        },
+        "closes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "defectId"
+            ],
+            "properties": {
+              "defectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "confirmedBy": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "stepId",
+        "who",
+        "did",
+        "where"
+      ],
+      "properties": {
+        "stepId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "who": {
+          "type": "string",
+          "minLength": 1
+        },
+        "did": {
+          "type": "string",
+          "minLength": 1
+        },
+        "where": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "规范写法 {source, episode}；旧图里是自由文本",
+          "properties": {
+            "source": {
+              "type": "string",
+              "minLength": 1
+            },
+            "episode": {
+              "type": [
+                "integer",
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "user_given",
+            "user_given_modified",
+            "designed",
+            "writer_revised"
+          ]
+        }
+      }
+    },
+    "ledgerDep": {
+      "type": "object",
+      "required": [
+        "depId",
+        "kind",
+        "claim"
+      ],
+      "properties": {
+        "depId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "timeline",
+            "money",
+            "object",
+            "knowledge",
+            "procedure",
+            "agenda"
+          ]
+        },
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entryId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assertion": {
+          "type": "string",
+          "enum": [
+            "stated",
+            "required_unstated",
+            "absence"
+          ]
+        },
+        "conflictsWith": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "where": {
+          "type": "string"
+        },
+        "realWorldRule": {
+          "type": "boolean",
+          "description": "Optional (D6-2): false marks a required_unstated money/object dep that rests on no real-world rule, so function-map topics asks no search for it"
+        }
+      }
+    },
+    "premise": {
+      "type": "object",
+      "required": [
+        "premiseId",
+        "question"
+      ],
+      "properties": {
+        "premiseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "string"
+            ]
+          }
+        },
+        "default": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decisionRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

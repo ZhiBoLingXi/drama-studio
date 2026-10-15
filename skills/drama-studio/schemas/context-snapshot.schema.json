@@ -55,7 +55,13 @@
             "dialogue_read",
             "fact_check",
             "similarity_review",
-            "evaluation"
+            "evaluation",
+            "function_mapper",
+            "ledger_keeper",
+            "season_planner",
+            "dialogue_designer",
+            "situation_checker",
+            "cold_reader"
           ]
         }
       }
@@ -123,7 +129,8 @@
               "project_facts",
               "current_plan",
               "knowledge",
-              "unknowns"
+              "unknowns",
+              "samples"
             ]
           },
           "required": {
@@ -179,7 +186,8 @@
               "missing",
               "stale",
               "not_relevant",
-              "not_provided"
+              "not_provided",
+              "quote_cap"
             ]
           }
         }

@@ -1,0 +1,185 @@
+{
+  "id": "dialogue-check-questions",
+  "version": "v1",
+  "kind": "dialogue-check",
+  "answerStates": [
+    "holds",
+    "notHolds",
+    "not_evaluable",
+    "n/a"
+  ],
+  "defectKinds": [
+    "missing",
+    "internal_conflict",
+    "knowledge_gap",
+    "situation_mismatch",
+    "listener_knows_mismatch",
+    "info_not_carried",
+    "emotion_not_in_line_shape",
+    "unmotivated_repeat",
+    "closer_missing",
+    "address_term",
+    "speaker_basis_missing"
+  ],
+  "questions": [
+    {
+      "q": 1,
+      "group": "A",
+      "title": "想要的东西要了没有",
+      "text": "开启这个话题的人此刻想要的东西（speakerWants），他的话里要了没有？引用那句。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 2,
+      "group": "A",
+      "title": "回应到点上没有",
+      "text": "听的人有没有回应到点上——答的是对方问的事，还是答了别的？引用问与答。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 3,
+      "group": "A",
+      "title": "拿到／拒了／打断了",
+      "text": "对方要的东西到话题结束拿到了没有、还是被明确拒了、还是被打断了？引用收尾那句。如果三者都不是，这个话题是不是没收住就跳走了？",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 4,
+      "group": "B",
+      "title": "话题收住了没有",
+      "text": "这个话题收住了没有就换了下一个话题或下一个人？引用切换处的前后两句。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 5,
+      "group": "B",
+      "title": "替对方把话说完",
+      "text": "有没有人替对方把话说完（对方该答的，说话人自己接着说了）？引用。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 6,
+      "group": "B",
+      "title": "连说几件事中间没人接",
+      "text": "有人连说了几件事，中间听的人一句没接——在这个处境里（对方的情绪、关系），听的人会让他说完吗？引用连说的句子，用处境答。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 7,
+      "group": "B",
+      "title": "问句没人答",
+      "text": "有问句没人答——在这个处境里，不答成立吗（怕、躲、被打断都可能成立），还是单纯没人接？引用。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 8,
+      "group": "C",
+      "title": "省略的主语宾语补得出来吗",
+      "text": "这一句省掉的主语或宾语，只听这一句的人补得出来吗？引用那句，写补出来的是什么、或补不出来。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 9,
+      "group": "C",
+      "title": "观众明白的信息从哪句知道",
+      "text": "这个话题要让观众明白的信息（audienceLearns），是从哪句对白里知道的？如果只在动作行或画面里，对话表登记了画面承载的理由吗？",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 10,
+      "group": "C",
+      "title": "交代了听的人已经知道的事",
+      "text": "说话人向听的人交代了听的人已经知道的事（对照 listenerKnows）？引用。如果有，是在替观众说，还是这个处境里他有理由重复（确认、强调、对方没听进去）？",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 11,
+      "group": "D",
+      "title": "对孩子换说法了吗",
+      "text": "对孩子说话时，有没有换成孩子听得懂的说法——术语、抽象词、长而绕的句子？引用，写出孩子听得懂的替代说法是否出现。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 12,
+      "group": "D",
+      "title": "先接情绪还是直接说事",
+      "text": "对气头上、害怕、防备的人说话时，说话人有没有先接住对方的情绪再说事，还是直接说事？在这个处境里哪种成立？引用。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 13,
+      "group": "D",
+      "title": "称呼口气权力方向对得上吗",
+      "text": "说话人的称呼、口气与关系和权力方向（relation、powerDirection）对得上吗？引用。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 14,
+      "group": "E",
+      "title": "情绪在句子形状里",
+      "text": "对话表写了说话人此刻的情绪（emotion），正文里他的话是那种情绪的人会说出来的形状吗——发火的人是不是一截一截、撒谎的人是不是话多且绕、怕的人是不是短、交代程序的人是不是说得全？引用。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 15,
+      "group": "E",
+      "title": "更像正例还是反例",
+      "text": "对比正例的 walkthrough 和反例的 whyNotHere：这段对话在处境上更像哪一边？只写哪一处像、哪一处不像，引用句子，不打分。",
+      "answerKind": "tristate",
+      "source": "dialogue-arch §8.3",
+      "addedIn": "v1"
+    },
+    {
+      "q": 16,
+      "group": "F",
+      "title": "凭什么此刻知道／是不是为问而问",
+      "text": "这句里的事实，说话人在此刻凭什么知道？引用他知道的来源行；这个问题是这个人在这个处境里会问的，还是为了让答案出口才让他问的。",
+      "answerKind": "tristate",
+      "source": "stage-d-report §十 2、4（合并）",
+      "addedIn": "v1"
+    },
+    {
+      "q": 17,
+      "group": "F",
+      "title": "信息重说在处境里有理由吗",
+      "text": "这条信息观众之前已经从哪句知道了，这次重说在处境里有理由吗。",
+      "answerKind": "tristate",
+      "source": "stage-d-report §十 3",
+      "addedIn": "v1"
+    }
+  ],
+  "formatNotes": [
+    "v1 题干与 D6-0 试用版逐字一致（d6-1-decisions #2）。",
+    "第 1–15 问抄自台词方案 §8.3；第 16 问合并 stage-d 报告 §十 第 2、4 条；第 17 问来源 §十 第 3 条。",
+    "全部 answerKind: tristate（实施计划 §2.1 #3 只把追问单第 14、15 问定为信息题）。",
+    "项目可增问不可删；增问带 source，drafted 问带 noteId。"
+  ]
+}

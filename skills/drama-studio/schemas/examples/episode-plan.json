@@ -1,0 +1,163 @@
+{
+  "schemaVersion": "drama-studio/episode-plan/v0",
+  "episode": 3,
+  "title": "箱子",
+  "entry": {
+    "ledgerRev": "ep002.actual",
+    "summary": "周三上午；老陈在小卖部帮工，不知道箱子已被退回"
+  },
+  "functions": [
+    {
+      "functionId": "F-box-1",
+      "progress": "推进到老陈起疑、要去仓库问"
+    }
+  ],
+  "events": {
+    "scenes": [
+      {
+        "sceneId": "3-1",
+        "time": "上午",
+        "place": "镇口小卖部",
+        "present": [
+          "老陈",
+          "刘叔"
+        ],
+        "beats": [
+          {
+            "beatId": "3-1.b1",
+            "who": "刘叔",
+            "text": "提起仓库在清退三年没人取的件",
+            "quote": "你那箱子，该不会也在里头？",
+            "offscreen": false,
+            "picture": false,
+            "saysFact": null
+          }
+        ]
+      },
+      {
+        "sceneId": "3-2",
+        "time": "中午",
+        "place": "镇仓库柜台",
+        "present": [
+          "老陈",
+          "仓管"
+        ],
+        "beats": [
+          {
+            "beatId": "3-2.b1",
+            "who": "仓管",
+            "text": "翻出登记簿指给老陈看",
+            "quote": "三年前就退了，签收的是你家里人",
+            "saysFact": "I1-f1"
+          }
+        ]
+      }
+    ]
+  },
+  "presence": {
+    "absences": [
+      {
+        "who": "王姨",
+        "scenes": [
+          "3-1",
+          "3-2"
+        ],
+        "why": "在家，没同去",
+        "ledgerRef": "L-tl-010"
+      }
+    ]
+  },
+  "moves": [
+    {
+      "who": "老陈",
+      "did": "去仓库问箱子",
+      "wants": "弄清箱子在不在",
+      "easierOption": "在家问王姨",
+      "whyNot": "他还没疑心王姨",
+      "cost": "回去没法不问"
+    }
+  ],
+  "infoLedger": [
+    {
+      "infoId": "I1",
+      "whyAudienceNeeds": "观众要先知道箱子被退了",
+      "laterDependents": [
+        "4"
+      ],
+      "knownByInStory": [
+        "L-kn-005"
+      ],
+      "facts": [
+        {
+          "factId": "I1-f1",
+          "text": "箱子三年前已退回，签收人是王姨",
+          "carrierBeat": "3-2.b1",
+          "keywords": [
+            "退回",
+            "签收"
+          ],
+          "ledgerRef": [
+            "L-tl-001"
+          ]
+        }
+      ]
+    }
+  ],
+  "ledgerDelta": {
+    "episode": 3,
+    "track": "planned",
+    "reads": [
+      "L-proc-001"
+    ],
+    "writes": [
+      {
+        "entryId": "L-obj-001",
+        "change": {
+          "location": "镇仓库登记簿存档"
+        },
+        "reason": "仓管证实已退",
+        "supportedBy": "3-2.b1"
+      }
+    ]
+  },
+  "realityRefs": [
+    "L-proc-001"
+  ],
+  "threads": {
+    "pays": [],
+    "plants": [
+      {
+        "plantId": "P-box-1",
+        "what": "老陈知道签收人是王姨",
+        "payAtEpisode": 4
+      }
+    ]
+  },
+  "exit": {
+    "ledgerRev": "ep003.planned",
+    "summary": "老陈知道签收人是王姨；王姨不知道他已知道",
+    "closingEvent": {
+      "beatRef": "3-2.b1"
+    }
+  },
+  "capacity": {
+    "infoCount": 1,
+    "sceneCount": 2,
+    "pictureBeats": 0,
+    "estimateSec": 10.8,
+    "targetSec": 120,
+    "basis": "media-profile-v0",
+    "status": "fits"
+  },
+  "pending": [
+    {
+      "decisionId": "D-001",
+      "defaultUsed": "按保留走：王姨签收后没说"
+    }
+  ],
+  "summary": {
+    "hook": "老陈知道了，王姨还不知道他知道",
+    "emotion": "克制的疑心",
+    "payoff": null
+  }
+}

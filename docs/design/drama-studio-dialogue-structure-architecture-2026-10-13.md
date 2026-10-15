@@ -1,6 +1,6 @@
 # 台词系统架构重设计 v3：节奏与长度由角色和情节推出，数字只做算术、诊断和描述
 
-日期：2026-10-13 · 状态：架构级设计方案 v3.2（主创已批准 v3；2026-10-14 记入上游集纲层方案的决定与统一实施计划，同日按 D6-0 中期报告改了与集纲层共用的几处，见修订记录；§15 五条仍未决），未实施；不改任何技能文件、脚本、契约、剧本或知识卡 · 上游：[集纲层架构 v1.2](drama-studio-outline-layer-architecture-2026-10-13.md)（本稿 §2.2 的 C4 一行由它 §4 细化） · 实施排期：[集纲层与台词层统一实施计划（D6）](drama-studio-outline-dialogue-implementation-plan-2026-10-14.md)，本稿 §16 的阶段划分由它取代 · 依据：`projects/qige-xiongdi/reviews/rca-dialogue-ep006-2026-10-13.md`（下称 RCA）与 `projects/qige-xiongdi/runs/input/feedback/writer-feedback-ep006-2026-10-13.md`（编剧 7 条批注、4 条总结） · 上游：[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)、[实施路线](drama-studio-implementation-roadmap-2026-09-29.md)、[工艺闭环设计](drama-studio-craft-loop-design-2026-10-10.md)、[台词库产品设计](drama-studio-voice-library-product-design-2026-10-12.md)、[台词样本知识库设计](drama-studio-dialogue-sample-library-design-2026-10-13.md)
+日期：2026-10-13 · 状态：架构级设计方案 v3.3（主创已批准 v3；2026-10-14 记入上游集纲层方案的决定与统一实施计划，同日按 D6-0 中期报告改了与集纲层共用的几处；2026-10-15 按实施计划 §2.6 回写修正点 #1–#14，见修订记录；§15 五条的默认做法见实施计划 §8），技能已按实施计划实施到 D6-3（0.6.0），本稿仍是设计论证，操作以技能的 `references/dialogue-structure.md` 为准 · 上游：[集纲层架构 v1.3](drama-studio-outline-layer-architecture-2026-10-13.md)（本稿 §2.2 的 C4 一行由它 §4 细化） · 实施排期：[集纲层与台词层统一实施计划（D6）](drama-studio-outline-dialogue-implementation-plan-2026-10-14.md)，本稿 §16 的阶段划分由它取代 · 依据：`projects/qige-xiongdi/reviews/rca-dialogue-ep006-2026-10-13.md`（下称 RCA）与 `projects/qige-xiongdi/runs/input/feedback/writer-feedback-ep006-2026-10-13.md`（编剧 7 条批注、4 条总结） · 上游：[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)、[实施路线](drama-studio-implementation-roadmap-2026-09-29.md)、[工艺闭环设计](drama-studio-craft-loop-design-2026-10-10.md)、[台词库产品设计](drama-studio-voice-library-product-design-2026-10-12.md)、[台词样本知识库设计](drama-studio-dialogue-sample-library-design-2026-10-13.md)
 
 ## 修订记录
 
@@ -41,6 +41,25 @@ v2 被撤回的设计在 §13.2 各留一句撤回原因。语料事实标“202
 2. **§8.3 问题单**：写入第 16 问的题干与来源；它与集纲层追问单的第 16 问同源，但各写各的题干。
 3. **§17 清单**：#6 写明回答记录与追问单共用 schema、落点字段各用各的；#8 加 `promptVersion`；#16 的 `check-format` 并入 `check-answers`。
 4. 状态行、本条修订记录与文末声明。
+
+**v3.2 → v3.3（2026-10-15，D6-5 回写）。** 把[统一实施计划](drama-studio-outline-dialogue-implementation-plan-2026-10-14.md) §2.6 的修正点 #1–#14 写进正文（v3.1 记录第 3 条说「D6-5 回写本稿正文」，即本次）。被取代的说法不并列保留，各处只交代一句：
+
+1. #1 容量：§2.1、§2.2 的 C4 行、§3.1、§3.5——粗估第一次在季编排层，送审后的超出登记为决定队列的 `capacity` 提案并带默认走法，C5a 按默认拆法写对话表；分集计划复核超目标两倍以上时也按这条走。取代「三选一进提案队列、标 `proposal_pending` 继续」。
+2. #2 信息清单：§6.1——对话表的 `infoLedger` 只引用分集计划的 `infoId`／`factId` 并加 `carriedBy`，不重新声明内容。
+3. #3 问题单：§8.3 加第 17 问（这条信息第几次出口、重说有没有处境理由）；第 16 问 v3.2 已写入。
+4. #4 话题分段：§6.1——`segments[]` 取代 `between` 链，每段 `between: [a, b]` 加 `closer`。
+5. #5 可数标记与信号：§6.1 `exchanges[]` 加 `oneItemPerLine`、`givesReason`（只作诊断提示）；§5.2 加 `INFO_REPEATED`、`ONE_ITEM_PER_LINE_MISMATCH`。
+6. #6 冷读提示词：v3.2 已写入，不再改。
+7. #7 取舍：§9.2 `writer-note` 加 `conflictsWith[]`；§10.1 约定条目加 `conflictsWith[]`，台词目标写明冲突时取哪条。
+8. #8 本剧样本：§6.1 `exemplars.positives[].source ∈ corpus / human / project`；§7.2 人工句可逐字用并在对照表标 `verbatimFrom`，不算「问题不在了」的证据。
+9. #9 样本上限：§7.2 删「每集 8 个正例、4 个对照对」，改为每话题 2 正例＋1 对照对、总量受包预算约束。
+10. #10 语料标注：§4.1 加 `speakerAttributionSuspect`、本地指纹引用；§4.2 词表收敛规则。
+11. #11 两口径：§3.2 加 `grossCharsPerMinute`；§3.3 两口径同时报。
+12. #12 合并：§3.5、§17——容量提案并入决定队列；`outline-capacity` 与估时合为 `capacity`；`check-format` 并入 `check-answers`；冷读角色只有一个 `cold_reader`。
+13. #13 版本号：§16 阶段 2 的版本句改为按阶段递增（实施计划 §0）。
+14. #14 语料为空：§7.1——`no_exemplar` 如实标，允许 `source: project` 的本剧人工句作同处境正例并写 `walkthrough`。
+
+本次只改上面列出的各处与状态行，v3 的结论不变。
 
 本稿回答的是“系统该换成什么结构”：删什么、合什么、重排什么。项目文件只引用结论和位置，不抄私有剧本的句子；举例处都是为说明而编；语料原句只少量引用作格式示例。每个结论标把握程度：**高**＝RCA 或实测有原句或数字直接支持；**中**＝多条间接证据一致；**低**＝推论。
 
@@ -97,8 +116,8 @@ v2 被撤回的设计在 §13.2 各留一句撤回原因。语料事实标“202
         │（只读，装包时检索）
         ▼
 C4 分集集纲（重构）
-   产出：集纲 ＋ 本集信息清单 ＋ 容量提案（口播估时对目标时长；装不下 → 减事件／拆集／接受更长三选一的提案）
-   不拦截：提案进队列，流程不等它；集纲如实标 capacity: proposal_pending 继续
+   产出：分集计划 ＋ 本集信息清单（infoLedger[].facts[]）＋ 容量复核（第一次粗估在季编排层 C3c）
+   不拦截：送审后再超 → 决定队列的 capacity 提案，必带默认走法；流程按默认继续，C5a 按默认拆法写
         │
         ▼
 C5a 对话设计（新）
@@ -133,7 +152,7 @@ C1–C3 不变。C4、C5、C6 的编号保留，C5 内部拆成 a／b 两个运�
 | 层 | 负责 | 不负责 | 输入 | 输出 | 交接条件 |
 | --- | --- | --- | --- | --- | --- |
 | 语料库 | 把拉片转写切成交换、过滤、按处境标注、为每条写结构说明；把被否定的稿和人工反馈变成带处境说明的反例；成对 | 判断哪段“适合本剧”；给任何分布区间 | 官方库 `get_deconstruction_evidence`、项目审读与修订记录、人工反馈文件 | `dialogue-exchange`（含 `walkthrough`）、`contrast-pair`（含 `whyNotHere`）、`corpus-manifest`、按形态的 `media-profile` 物理量默认值 | 每条样本带 `templateId@snapshotId`、过滤与标注记录；没有来源的不入库（S） |
-| C4 集纲 | 本集改变什么局面；观众必须拿到哪几条信息；按口播估时这一集装不装得下 | 怎么说、谁先问 | 全剧结构、前集实际正文、媒介档案、入口状态 | 集纲（现有六字段）＋ **信息清单**（每条：内容、为什么观众需要、后续哪集依赖）＋ **容量提案**（估时、超了多少、减事件／拆集／接受更长三选一） | 信息清单在；容量提案在（可为“无需调整”）；不得把超额无声留给 C5 |
+| C4 集纲 | 本集改变什么局面；观众必须拿到哪几条信息；按口播估时这一集装不装得下 | 怎么说、谁先问 | 全剧结构、前集实际正文、媒介档案、入口状态 | 分集计划（集纲层 §4 的 14 字段）＋ **信息清单**（`infoLedger[].facts[]`，一条一事实）＋ **容量复核**（`capacity.status: fits` 或 `proposal:<决定 id>`） | 信息清单在；容量为 `fits`，或提案在决定队列里且带默认；不得把超额无声留给 C5 |
 | C5a 对话设计 | 每场的对话结构：参与者、话题序列；每话题的处境与理由；每条信息由哪句承载；谁替观众发问、打断与收尾、独白许可、动作留白点；为每个话题选同类处境的正反例 | 具体措辞；事件与事实；任何句数字数目标 | 集纲＋信息清单、媒介档案、台词目标、检索到的正例与对照对、入口状态、声音索引 | 对话表（结构化＋一段可读说明），每话题带 `situation`、`shapeReason`、`exemplars[]` | 信息清单每条都有承载句或登记了画面承载理由；每话题的处境字段齐、理由非空；每次对象切换有收尾拍（结构项）；不满足只能回 C4 提案 |
 | C5b 正文生成 | 按对话表逐话题写台词与动作行；按每话题的处境与理由写节奏；参照正例的走法；按禁词表避开别的题材的腔 | 增删话题、改信息分配、改事件 | 对话表、台词目标、对话表引用的正例（骨架＋结构说明＋遮蔽原句）、禁词表、入口状态 | 剧本正文 ＋ 偏离对话表登记 | 正文与对话表对齐（脚本核对说话人序列与话题边界）；偏离逐条登记；13 字档对语料零命中 |
 | C6 首读 | 观众效果（保留现行） | 台词口语判断 | 本集（＋前一集）正文 | review-record | 现行封存规则 |
@@ -154,7 +173,7 @@ C1–C3 不变。C4、C5、C6 的编号保留，C5 内部拆成 a／b 两个运�
 
 | 用途 | 做什么 | 结果是什么 | 不是什么 |
 | --- | --- | --- | --- |
-| **容量算术** | 一集的目标时长装得下多少口播：口播量 ÷ 语速 ÷ (1 − 停顿比) 估时，与目标时长比 | 一个**提案**：减事件、拆集或接受更长，三选一进提案队列；集纲标 `capacity: proposal_pending` 继续 | 不是拦截；不是“超了不许存” |
+| **容量算术** | 一集的目标时长装得下多少口播：口播量 ÷ 语速 ÷ (1 − 停顿比) 估时，与目标时长比 | 一个**提案**：登记进决定队列，必带默认走法（默认拆法：按粗估比例拆成几段，本集只写第一段）；流程按默认继续 | 不是拦截；不是“超了不许存” |
 | **诊断信号** | 例如“换人次数四轮没变”“这条信息的关键词只出现在 △ 行”“这个问句之后没有人接” | 给作者和审读一个**提示**：去看哪一段；每条提示必须回到具体哪一段、因为什么处境 | 不出结论；不合成分数；不与任何区间比 |
 | **语料描述** | 样本自带的时长、句数、换人、每句字数 | 用于检索**排序**（同处境样本里先给结构更完整、时长更接近本话题预估的）和让人**知道样本长什么样** | 不是目标；不是区间；不与生成稿比 |
 
@@ -167,6 +186,7 @@ C1–C3 不变。C4、C5、C6 的编号保留，C5 内部拆成 a／b 两个运�
 | `format` | 成片形态（live / anime） | 项目设置里有就用；没有时从集纲／选题里的制作约束推断，`formatSource: inferred`；都没有时按 `live` 跑并标 `assumed`，两套语速同时报 | 决定取哪套语速；决定检索优先哪个形态的语料 |
 | `targetSeconds` | 每集目标时长 | 项目写了就用；没写用对标语料中位数 | 容量算术的分母 |
 | `speechRate` | 口播语速（汉字/秒） | 语料按形态量：有声台词汉字 ÷ 时间码覆盖时长（2026-10-13 实测：真人约 172 字/分、漫剧约 128 字/分，样本小，见 §3.4） | 容量算术 |
+| `grossCharsPerMinute` | 每集每分钟台词汉字（含停顿），作对照口径 | 语料量：有声台词汉字 ÷ 集时长 | 容量算术的第二口径，与 `speechRate ÷ (1 − pauseShare)` 同时报，直到有 `project_measured` |
 | `pauseShare` | 一集里没有台词的时间占比 | 语料量：（集时长 − 有声台词时间码覆盖）÷ 集时长 | 容量算术 |
 | `calibration` | 校准状态 | `corpus_default`；本剧有成片实测后转 `project_measured` | 标注估时的可信度 |
 
@@ -177,7 +197,7 @@ C1–C3 不变。C4、C5、C6 的编号保留，C5 内部拆成 a／b 两个运�
 全部由脚本从正文算（S）；说话人行按 `season_check.py` 现有的 SPEAKER 正则认，OS／文字／电话按括注认（沿用 RCA 统计脚本的口径）。对语料转写，说话人行按 Speaker／State／Content 块认，说话人含“内心独白／OS／旁白”的记独白。
 
 - **口播量** ＝ 有声台词行去掉说话人与括注后的汉字数。OS 另计。
-- **估时** ＝ 口播量 ÷ `speechRate` ÷ (1 − `pauseShare`)。动作行不折算字数。这是容量算术唯一用到的公式。
+- **估时** ＝ 口播量 ÷ `speechRate` ÷ (1 − `pauseShare`)。动作行不折算字数。另报第二口径：口播量 ÷ `grossCharsPerMinute`。两口径总是同时报，不选一个当准；读者能看到两者偏差的量级（第 6 集两口径差 <10%）。
 - **换人** ＝ 同一场内相邻两条有声台词说话人不同的次数。只作诊断信号。
 - **问句未接** ＝ 问句之后下一条有声台词不是别人说的。只作诊断信号。
 - **对象切换无收尾** ＝ 同一说话人相邻两条有声台词对象不同，且中间没有对方的应答（对话表给对象，脚本对齐后算）。这是结构项，对话表层面核（`thenSwitchTo` 非空须有 `closer`）。
@@ -206,7 +226,7 @@ C4 产出信息清单后，脚本按两步估时：
 1. 粗估（C4 时）：每条信息至少一个来回，按同类处境语料交换的中位时长（语料描述，§3.1 第三行）相加，与 `targetSeconds` 比。
 2. 精估（C5b 后）：按正文口播量 ÷ 语速 ÷ (1 − 停顿比)。
 
-任一步估时明显超过目标时长，脚本写一份**容量提案**（`changeProposal`）：列出哪些节拍可以挪到下一集、哪些信息可以延后、或者接受更长的一集，三选一，进项目的提案队列；集纲页面是送审对象，改它仍需主创审批（`approval-flow.md` 不变）。流程**不停**：C5a 按当前集纲继续，对话表与正文标 `capacity: proposal_pending`，`run-handoff` 写明估时与目标。主创哪天批了提案，下一批按新集纲走。
+粗估第一次发生在季编排层（集纲层 C3c），送审前装不下的在那里重排或拆集。送审后任一步估时明显超过目标时长，写一份**容量提案**，登记进决定队列（`kind: capacity`；容量提案与决定队列是同一个对象），**必须带默认走法**；分集计划的 `capacity.status` 写 `proposal:<决定 id>`。流程**不停**：C5a 按默认走法写对话表——默认拆法是按粗估比例拆成几段，本集只写第一段，其余登记为下一集的入口；分集计划复核超目标两倍以上时同样按这条走，不先写一份拍不了的长稿。提案没有默认时 C5a 不装包（S）。主创哪天改了决定，`affects[]` 列出要重写的集。
 
 “2 分钟是硬是软”不再是问题：目标时长是算术的分母，估时偏离是一份提案的触发条件，不是拦截条件。
 
@@ -242,7 +262,10 @@ dialogue-exchange
   anchors: {outlineFields[]: 核心爽点|核心看点|结尾钩子|情绪铺垫, keywordHits}   # §4.4
   quality: {tier: 1|2|excluded, reasons[], labelConfidence, labelRuns}             # §4.4–4.6
   masked: {lines[]}                                                # 实体遮蔽后的句子（§7.3）
+  speakerAttributionSuspect: bool                                  # S：转写的说话人归属可疑（同一人连续两段被标成不同人等）
 ```
+
+引用一个交换写 `templateId@snapshotId#exchangeId`；服务端没给 `snapshotId` 时允许用本地指纹 `localSha256` 并标 `refKind: local_fingerprint`。
 
 `features` 是语料描述（§3.1 第三行）：只用于排序和让人知道样本长什么样，不进任何比较。
 
@@ -258,6 +281,8 @@ dialogue-exchange
 | **谁知道什么** `speakerWants` / `listenerKnows` | 各一句话：说话人此刻想从对方那里得到什么；听的人已经知道什么、不知道什么 | `topics[].situation.speakerWants` / `listenerKnows` |
 | **情绪状态** `emotion` | 说话人与听者各一个：平静／急／怒／怕／羞／哄／疲／撒娇／强撑…；转写的 State 字段作证据保留原文 | `topics[].situation.emotion` |
 | **题材与形态** `series.genre` / `series.format` | 现实／仙侠／都市／年代…；live／anime | 项目设置或媒介档案 `format` |
+
+词表收敛规则：功能里的近义项合并成一个（如「安抚」与「哄」只保留在词表里有区分的那一层用法）；关系同时成立几种时取更具体的那个（「亲人」与「大人对孩子」同时成立取后者）。
 
 为什么是这六个：它们正是决定一段对话该几个来回、话该多长的东西。功能和关系决定“取哪类样本”，信息模式决定“这个话题怎么开怎么收”，谁知道什么决定“哪句必须说、哪句不必说”，情绪决定“话是一截一截还是一口气”，题材形态用来防串腔（§7.4）。v2 把“节奏形态”（短促应答／长句陈述被打断／多人插话／稀疏）作为由特征推出的检索维度，v3 删掉：节奏是处境的结果，不是检索的键；它作为 `walkthrough` 里的一句话描述出现（“她插话三次，他每次只说半句”），不作为分类。
 
@@ -348,6 +373,8 @@ dialogue-exchange
 | `QUESTION_UNANSWERED` | 问句后无人接 | 去看：这个处境里对方会不会不答（怕、躲、被打断都可能成立） | T1“不一来一回” |
 | `MONOLOGUE_FALLBACK` | 信息清单项由 OS 承载且对话表无独白许可 | 去看：这条信息有没有对话对象 | RCA N2 |
 | `UNCHANGED_ACROSS_REVISIONS` | 同一位置的换人、交替串在修订前后不变 | 去看：这轮修订碰到结构了没有 | RCA 3.1 |
+| `INFO_REPEATED` | 同一 `facts` 项在第几个话题第几次出口 | 去看：重说在这个处境里有没有理由（确认、强调、对方没听进去） | stage-d §十 3 |
+| `ONE_ITEM_PER_LINE_MISMATCH` | 标了 `oneItemPerLine: true` 的来回里一行有多个动作 | 去看：这一来回是不是又一口气塞了几件事 | stage-d §十 6 |
 
 v2 的 `LONG_LINE`（句长 > 同类 p90）删除：句子长短由处境定，没有处境无法判断一句长话该不该长。
 
@@ -377,11 +404,11 @@ contrast-pair
 ```text
 dialogue-plan
   episode, planRevision, basedOn: {outline, infoLedger, target, mediaProfile}
-  infoLedger[]  id, content, whyAudienceNeedsIt, carriedBy: topicId/exchangeId | "picture" (+reason)
+  infoLedger[]  infoId, factId, carriedBy: {exchangeIds[]} | {pictureReason}   # 只引用分集计划的 infoLedger[].facts[]，不重新声明内容
   scenes[]
     sceneId, participants[], observers[]
     topics[]
-      topicId, about, between: [a, b]
+      topicId, about
       situation:                                   # 处境，全部一句话，不许空
         speakerWants                               # 开启话题的人此刻想从对方那里得到什么
         listenerKnows                              # 听的人已经知道什么、不知道什么
@@ -393,10 +420,11 @@ dialogue-plan
         lineLength: {a, b}: 短促 | 完整句 | 长而绕 | 半句就停 …（开放词表）
         reason                                     # 一句：为什么是这个走法，必须引用 situation 里的字段
       opener, openerMove
-      exchanges[]  who, move, carries[]            # move ∈ 问／答／反问／否认／交代／让步／收尾／打岔／安抚／指令；不写措辞
+      segments[]  segmentId, between: [a, b], closer   # 一个话题对几个人说时拆段；between 是说话的两个人，不许写成链；每段有收尾才许换对象（S）
+      exchanges[]  exchangeId, segmentId, speaker, addressee, move, carries[], oneItemPerLine?, givesReason?
+                                                   # move ∈ 问／答／反问／否认／交代／让步／收尾／打岔／安抚／指令；不写措辞；两个可数标记只作诊断提示
       askerForAudience, interruptedBy, interruptAt
-      closer, thenSwitchTo                         # 没有收尾拍不许切换（S）
-      exemplars: {positives: [exchangeRef…], pairs: [pairId…], styleIsolation: bool}
+      exemplars: {positives: [{ref, source: corpus|human|project, …}], pairs: [pairId…], styleIsolation: bool}
     monologues[]  who, mode, whyNoAddressee, carries[]
     pictureBeats[]
   deviationsFromOutline[]
@@ -460,12 +488,13 @@ topic B: about = 老梁要孩子别碰水、等他来
 
 ### 7.1 检索键
 
-由对话表每个话题的 `situation` 直接决定：`function`（从 `exchanges[].move` 的集合推主功能）＋ `relation` ＋ `addresseeIsChild` ＋ `emotion`；可选 `infoMode`（从 `askerForAudience`／`interruptedBy` 推）。`speakerWants`／`listenerKnows` 是自由文本，不作过滤键，但在模型从过滤结果里挑样本时作为对照依据。检索顺序：同题材同形态 Tier 1 → 同题材 Tier 2 → 跨题材 Tier 1（置 `styleIsolation: true`）→ 无则 `no_exemplar` 并记录。`knowledge search` 的做法沿用：脚本按字段过滤；过滤结果内按 `features.durationSec` 与本话题预估时长的接近程度、`recurrent`、`labelConfidence` 排序（这是语料描述的唯一用途）；取哪几条由模型在过滤结果里挑。
+由对话表每个话题的 `situation` 直接决定：`function`（从 `exchanges[].move` 的集合推主功能）＋ `relation` ＋ `addresseeIsChild` ＋ `emotion`；可选 `infoMode`（从 `askerForAudience`／`interruptedBy` 推）。`speakerWants`／`listenerKnows` 是自由文本，不作过滤键，但在模型从过滤结果里挑样本时作为对照依据。检索顺序：同题材同形态 Tier 1 → 同题材 Tier 2 → 跨题材 Tier 1（置 `styleIsolation: true`）→ 无则 `no_exemplar` 如实标，不拿近似处境充数；这时允许用 `source: project` 的本剧人工句（编剧改定稿里同处境的段落）作正例，并补写 `walkthrough`。`knowledge search` 的做法沿用：脚本按字段过滤；过滤结果内按 `features.durationSec` 与本话题预估时长的接近程度、`recurrent`、`labelConfidence` 排序（这是语料描述的唯一用途）；取哪几条由模型在过滤结果里挑。
 
 ### 7.2 每个话题装多少、预算
 
 - 每话题 2 个正例（各带 `walkthrough`）＋ 1 个对照对（有同处境反例时，带 `whyNotHere`）；没有本系统反例的处境只装正例。
-- 每集上限 8 个正例、4 个对照对；知识分区不超过包的四分之一（已有规则）。超了按 Tier、`recurrent`、`labelConfidence` 排序截断。
+- 不设每集固定条数：总量受包预算约束，知识分区不超过包的四分之一（已有规则）。超了按 Tier、`recurrent`、`labelConfidence` 排序截断。固定条数是把数字当上限，已删。
+- 本剧编剧写的句子（`grade: human`、来源 `writer-note`）可以逐字用，正文对照表里那一行标 `verbatimFrom: <noteId>`；校验时这些行单列，不算「问题不在了」的证据。语料原句仍只给遮蔽后的至多 2 句，永不逐字。
 - 人工正例（`grade: human`，来自编剧改稿）与语料正例并列候选，**不自动优先**：优先级在 §10.2 由“有记录的人工原话”保证，不由样本等级保证。它的作用是补语料没有的关系类型（本剧特有的人物组合），不是取代语料。
 - 同一条样本不连续两集出现（`context-pack` 记录装包历史，沿用样本库设计 §6.2）。
 
@@ -550,7 +579,9 @@ v2 的“分布距离”一行删除；v2 的“对照检查（勾闭合代码�
 
 16. 说话人凭什么知道他这句话里说的事——他在场、被告知、还是推断？对照知识账，他在说这句之前「知道」它吗？引用那句。如果这是一句问话：他是真的不知道才问，还是为了让观众听到答案而问（为问而问）？
 
-第 16 问的来源是第 6 集验证（stage-d §十 2、4：一个人物说出了他不该知道的事，而原 15 问全部答「成立」；「为问而问」并进这一问）。集纲层的追问单也从同一处加了第 16 问，但两份问题单**各写各的题干，不共用一句**：这里的落点是句子（行号加原句）；追问单的对象是候选实现与关键动作，没有句子可引，它问的是「行动者凭什么知道他据以行动的事实」（集纲方案 §6.3）。这一问有一个脚本版：分集计划里某一拍说出一个事实，说话人须在这一拍之前「知道」它（集纲方案 §10.2 `speaker-knows`）；脚本管得到的归脚本，这一问管脚本核不出的（推断、半知半解、为问而问）。stage-d §十 3 的另一问（这条信息第几次出口、重说有没有处境理由）是第 17 问，按实施计划 §2.1 #3，D6-5 回写进这里。
+17. 这条信息观众之前已经从哪句知道了？这次重说在处境里有理由吗（确认、强调、对方没听进去）？引用前后两处。
+
+第 16 问的来源是第 6 集验证（stage-d §十 2、4：一个人物说出了他不该知道的事，而原 15 问全部答「成立」；「为问而问」并进这一问）。集纲层的追问单也从同一处加了第 16 问，但两份问题单**各写各的题干，不共用一句**：这里的落点是句子（行号加原句）；追问单的对象是候选实现与关键动作，没有句子可引，它问的是「行动者凭什么知道他据以行动的事实」（集纲方案 §6.3）。这一问有一个脚本版：分集计划里某一拍说出一个事实，说话人须在这一拍之前「知道」它（集纲方案 §10.2 `speaker-knows`）；脚本管得到的归脚本，这一问管脚本核不出的（推断、半知半解、为问而问）。stage-d §十 3 的另一问（这条信息第几次出口、重说有没有处境理由）是上面的第 17 问；它也有脚本提示 `INFO_REPEATED`（§5.2）。
 
 问题单是数据（`dialogue-check-questions.json`，版本化，在台词目标里引用）；项目可以增问，不能删问；增问要带来源（人工批注或 `feedback-ingest` 派生）。脚本只核格式（每问有引用、有成立／不成立、有原因），不核答案对不对。
 
@@ -626,6 +657,7 @@ writer-note
   level ∈ 句 | 来回 | 话题 | 场结构 | 信息承载 | 对象约定 | 独白 | unknown   # 脚本推，推不出 unknown
   attachesTo: {exchangeRef, planRef: topicId/exchangeId/infoId | null, lineRef}
   outcome[]: {kind ∈ negative | humanPositive | conventionDraft | questionDraft | planTemplate, ref}
+  conflictsWith[]: noteId                     # 与另一条意见说法相反时标出，不自动取舍
 ```
 
 本项目的 7 条批注按这个对象入库：c1、c2、c7 推成信息承载，c4、c5 推成话题／来回，c3、c6 推成句与对象约定——与 RCA 一节的归类一致，脚本按“批注是否提到对象／顺序／信息”的词表推，推错就 `unknown`，不找人问。`questionDraft` 是 v3 新增：同类批注 ≥2 次且现有问题单覆盖不到的，自动起草一条新问题进 `dialogue-check-questions.json`，标 `drafted`。
@@ -653,7 +685,7 @@ dialogue-target
   mediaProfile: ref                          # §3.2，只含物理量
   corpusManifest: ref                        # 用的是哪个快照的语料
   checkQuestions: ref                        # §8.3 问题单的版本
-  conventions[]: {text, status: confirmed|drafted, sourceNotes[]}
+  conventions[]: {text, status: confirmed|drafted, sourceNotes[], conflictsWith[]}   # 两条约定冲突时写明，并在 changelog 记取哪条、为什么
   infoCarriageDefault: dialogue              # 信息默认由对白承载；画面承载须登记
   changelog[]
 ```
@@ -783,7 +815,7 @@ v2 第 5 位“语料分布区间（`acceptedBand`）与媒介档案”删除。
 | | 现行 | 新架构 v3 |
 | --- | --- | --- |
 | 模型运行／集 | C5 场面稿、台词遍、首读、次读、台词读、修订 ＝ 6 | C5a 对话表、C5b 生成、首读、次读、冷读复述、处境对照、一致性（M 部分）、修订（表＋文）、修订后冷读与复核 ＝ 9（冷读只装一集、输出短；处境对照与一致性可合并为一个运行，输出按问题单格式；合计约为一次半台词读的成本） |
-| 脚本／集 | `episode-check`、`season-check` | 加 `dialogue-diagnose`、`retell-check`、`check-format`、对齐、`dup-check` 两档、禁词、容量估时；全部离线 |
+| 脚本／集 | `episode-check`、`season-check` | 加 `dialogue-diagnose`、`retell-check`、`check-answers`、对齐、`dup-check` 两档、禁词、容量估时；全部离线 |
 | 一次性 | — | 语料取用约 695 次读调用（计费未确认）；切分＋双跑标注＋结构说明约 695 集 × 3–4 次模型调用（比 v2 多一次写 `walkthrough`）；语速与禁词表计算（脚本） |
 | 编排方人力 | 写任务、修订单、裁定（无留痕） | 加对话表审阅（看处境和理由写得像不像话）、约束来源标注；减去逐句裁定与字数指令 |
 | 编剧／主创人力 | 事后看稿、批注、全改 | **不新增**；给了反馈就回流 |
@@ -807,7 +839,7 @@ v2 第 5 位“语料分布区间（`acceptedBand`）与媒介档案”删除。
 | 语料取用被计费 | 先取 30 集看预算与回执变化；未确认前不取全库 |
 | 冷读者复述得“太好” | 只装本集、禁止推断、每条信息引用行号 |
 | 没有人判“好” | 有意接受；只宣称“可懂、处境上成立、与设计依据一致”；首读仍在；人工反馈随时可进；§8.6 写明 |
-| 容量提案没人批，集纲一直超 | 流程不停，稿子如实标 `proposal_pending`；提案队列在送审包里可见；这是主创的决定点，不是系统的拦截点 |
+| 容量提案没人批，集纲一直超 | 流程不停：提案登记在决定队列里且必带默认，C5a 按默认拆法写；决定队列随送审包可见；这是主创的决定点，不是系统的拦截点 |
 | 新对象太多，宿主模型不照做 | S 项拦住装包与存稿（没有对话表不给 C5b 装包，没有复述和问题单记录不算修订完成）；M 项按记录抽查报告 |
 
 ## 15. 需要主创决定的问题
@@ -866,7 +898,7 @@ v2 的第 4 条（本项目下一步）保留为本条 5；v1 的其余条目去
 
 - 计费确认后取全库约 695 集；重算语速与禁词表；台词目标升版。
 - `season-check` 新规则上线，旧三条退役；`writing.md`、`dialogue-structure.md`、工位文档改写；架构 §5.1、§8.5、§11 与路线图加注。
-- 发布技能 0.4.0；`validate.py`、全部测试通过。
+- 技能版本号按阶段递增，上游先于下游：集纲层 0.5.0 之后才是台词层 0.6.0（实施计划 §0）；`validate.py`、全部测试通过。
 
 ### 阶段 3：校准与第二部剧
 
@@ -890,18 +922,18 @@ v2 的第 4 条（本项目下一步）保留为本条 5；v1 的其余条目去
 | 9 | 新 `plan-text-consistency.schema.json`：逐话题一致／不一致＋说明 | S | 示例通过 |
 | 10 | `task.schema.json`：`dialogueTarget` 引用；`constraints[] {text, origin, cite}`；**任何**数值型台词约束（字数、行数、句数、换人数）被拒，不论 origin | S | 正反用例 |
 | 11 | `review-record.schema.json`：finding 加 `targetClause`／`factEvidence`；加 `adjudications[]` | S | 正反用例 |
-| 12 | `context-snapshot`／`selection`：role 加 `dialogue_designer`、`cold_reader`、`situation_checker`；`cold_reader` 包只允许一个 `project_facts` 项且为本集正文 | S | `context-pack` 拒绝多装 |
+| 12 | `context-snapshot`／`selection`：role 加 `dialogue_designer`、`cold_reader`、`situation_checker`；`cold_reader` 与集纲层的计划冷读是同一个角色，靠 `target.kind` 区分，包只允许一个 `project_facts` 项（本集正文或本集分集计划的 `events`） | S | `context-pack` 拒绝多装 |
 | 13 | `context-pack`：C5b 装包要求对话表带通过的 `contract-check`；样本以处境＋说明＋骨架＋遮蔽原句装入并记录装包历史；禁词表随包 | S | 缺任一退出码 2 |
 | 14 | 新命令组 `corpus {fetch|segment|label|walkthrough|filter|lexicon|rate}`：取证据（重试、断点、`expected_snapshot_id`）、S 切分候选、M 处境标注与结构说明的双跑比对、过滤、禁词表、语速与停顿比 | S（除 label／walkthrough 的 M 部分） | 夹具可复算；双跑不一致记录 `low` |
 | 15 | 新命令 `dialogue-diagnose <正文> --plan <对话表>`：§3.3 事实、§5.2 信号、对齐、禁词；输出信号＋位置＋处境；**无** `within/outside` | S | 夹具可复算；输出里出现区间比较字段即测试失败 |
-| 16 | 新命令 `retell-check <复述> --plan <对话表>`、`check-format <问题单回答>`（核每答有引用、有 holds、有 reason；实施计划里并入与追问单共用的 `check-answers`，按回答引用的问题单版本选落点字段；它在 D6-0 后加的覆盖报告与跨记录一致性只对追问单回答出）、`plan-text-consistency <正文> --plan <对话表>`（S 对齐部分） | S（记录）／M（复述、回答） | 夹具 |
+| 16 | 新命令 `retell-check <复述> --plan <对话表>`、`check-answers <问题单回答>`（核每答有引用、有 holds、有 reason；与追问单共用一个命令，按回答引用的问题单版本选落点字段；它在 D6-0 后加的覆盖报告与跨记录一致性只对追问单回答出）、`plan-text-consistency <正文> --plan <对话表>`（S 对齐部分） | S（记录）／M（复述、回答） | 夹具 |
 | 17 | 新命令 `feedback-ingest <文件>`：飞书评论 JSON／改稿 md／原话记录 → writer-note、反例、对照对、`drafted` 约定、`drafted` 问 | S | 对本项目 7 条批注跑通，产物可追溯 |
-| 18 | 新命令 `outline-capacity <集纲> --media <档案> --corpus <语料>`：信息清单粗估时长对目标；超限写 `changeProposal`（三选一）；**退出码 0**（提案不是失败） | S | 超限时提案文件存在且退出码 0 |
+| 18 | 新命令 `capacity {season|episode|text}`（与集纲层的季编排粗估合为一个命令、一套公式）：粗估、复核、精估时长对目标，两口径并报；超限写决定队列的提案占位（带默认）；**退出码 0**（提案不是失败） | S | 超限时提案文件存在且退出码 0 |
 | 19 | `episode-check`：加口播量、估时（只报，不判）；`min_chars` 留在 `legacy-aigc` 预设 | S | 夹具 |
 | 20 | `season-check` 新规则：`dialogue-plan`、`plan-text-align`、`cold-retell`、`situation-check`、`consistency-record`、`retell-after-revise`、`target-ref`、`constraint-origin`、`no-numeric-dialogue-constraint`、`fixlist-no-lines`、`dup-two-tier`、`genre-lexicon`；**删除** `voice-card`、`dialogue-pass`、`dialogue-read`（历史记录以 `--legacy-dialogue` 可查） | S | 逐条破坏只报对应规则 |
 | 21 | `dup-check --list-hits`、`--k 8` 对装包样本 | S | 命中片段与位置列出 |
 | 22 | `contract-check` 的知识卡规则不改；新增上述对象的 `scope` 规则 | S | 正反用例 |
-| 23 | `SKILL.md` 路由表：“台词 AI 味重”一行改指向新文档；工位流程第 4–7 步改写；命令表加 `corpus`、`dialogue-diagnose`、`retell-check`、`check-format`、`plan-text-consistency`、`feedback-ingest`、`outline-capacity`（`tests/test_skill_routing.py` 同步） | M | 新会话按文档走通 |
+| 23 | `SKILL.md` 路由表：“台词 AI 味重”一行改指向新文档；工位流程第 4–7 步改写；命令表加 `corpus`、`dialogue-diagnose`、`retell-check`、`check-answers`、`plan-text-consistency`、`feedback-ingest`、`capacity`（`tests/test_skill_routing.py` 同步） | M | 新会话按文档走通 |
 | 24 | `references/dialogue.md` 重写为 `references/dialogue-structure.md`（对话表与处境、容量算术、语料库与结构说明、正反例装包、冷读、问题单、一致性、诊断信号的用法与禁用法、反馈回流）；§8、§9 保留 | M | — |
 | 25 | 新 `references/corpus.md`：取用、切分、过滤、处境标注、结构说明、缓存、快照、计费观察的方法 | M | — |
 | 26 | `workstations/c4`、`c5`、`c6`、`season-run.md` §3 对应改写 | M | — |

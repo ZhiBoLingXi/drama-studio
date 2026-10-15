@@ -1,0 +1,117 @@
+{
+  "schema": "genre-lexicon/v1",
+  "id": "genre-lexicon",
+  "version": "v1",
+  "note": "台词方案 v3.2 §7.4：对两种题材的语料做词频对照，在 A 题材高频、B 题材近零的词进 B 题材项目的禁词表；这需要两个题材各自的真实语料做频次对照才能算出来。这份随包数据文件目前没有跨题材的真实语料可供对照计算频次（corpus 命令取用到的样本可能只覆盖一个题材），所以每张表都标 source: assumed——人工按常见题材知识列的高频词候选，不是方案要求的计算结果。项目若积累了跨题材样本，应按 §7.4 重算频次、替换成 source: measured_corpus 并记 n（参与对照的集数）。",
+  "lists": [
+    {
+      "fromGenre": "仙侠／古装玄幻",
+      "words": [
+        "为师",
+        "师尊",
+        "仙尊",
+        "宗门",
+        "灵根",
+        "历练",
+        "散修",
+        "元婴",
+        "筑基",
+        "金丹",
+        "法力",
+        "法诀",
+        "灵气",
+        "灵脉",
+        "丹田",
+        "修为",
+        "宗主",
+        "掌门",
+        "长老",
+        "妖兽",
+        "灵兽",
+        "渡劫",
+        "飞升",
+        "结丹",
+        "天劫",
+        "御剑",
+        "法器",
+        "灵石",
+        "殿下",
+        "娘子",
+        "本尊",
+        "道友",
+        "师兄",
+        "师姐",
+        "师妹",
+        "师弟",
+        "下山"
+      ],
+      "source": "assumed",
+      "measured": {
+        "n": {
+          "exchanges": 31,
+          "episodes": 8,
+          "series": 1,
+          "otherExchanges": 107
+        },
+        "confirmed": [
+          "下山",
+          "为师",
+          "仙尊",
+          "修为",
+          "历练",
+          "宗主",
+          "师兄",
+          "师妹",
+          "灵根",
+          "灵石"
+        ],
+        "notSeenCount": 27,
+        "seenInOtherGenres": [],
+        "evaluable": true,
+        "source": "measured_corpus",
+        "note": "词表本身仍是 assumed；这里只记小样本里哪些词出现在本题材、从未出现在别的题材。候选新词留在项目目录，不进随包数据"
+      }
+    },
+    {
+      "fromGenre": "霸总／都市言情",
+      "words": [
+        "总裁",
+        "总助",
+        "霸道",
+        "签合同",
+        "豪门",
+        "联姻",
+        "继承人",
+        "董事长",
+        "未婚妻",
+        "契约婚姻",
+        "商业联姻",
+        "集团",
+        "财阀",
+        "私人飞机",
+        "游艇",
+        "名媛",
+        "公子",
+        "少爷",
+        "千金",
+        "总裁办公室"
+      ],
+      "source": "assumed",
+      "measured": {
+        "n": {
+          "exchanges": 0,
+          "episodes": 0,
+          "series": 0,
+          "otherExchanges": 138
+        },
+        "confirmed": [],
+        "notSeenCount": 20,
+        "seenInOtherGenres": [],
+        "evaluable": false,
+        "source": "not_measured",
+        "note": "词表本身仍是 assumed；这里只记小样本里哪些词出现在本题材、从未出现在别的题材。候选新词留在项目目录，不进随包数据"
+      }
+    }
+  ],
+  "recomputedBy": "drama_tools.py corpus defaults（D6-4）"
+}

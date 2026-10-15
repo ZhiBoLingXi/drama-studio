@@ -1,0 +1,376 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/ledger-entry/v0",
+  "title": "底账条目（一段底账：entries[]）",
+  "description": "contract-check ledger-entry 校验一段底账文件（一个或多个条目），conflictsWith 双向等规则在文件内核。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/ledger-entry/v0"
+    },
+    "rev": {
+      "type": "string"
+    },
+    "track": {
+      "type": "string",
+      "enum": [
+        "pre",
+        "planned",
+        "actual",
+        "mixed"
+      ]
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "origin",
+        "status",
+        "introducedAt",
+        "realityRef",
+        "inquiryRef",
+        "dependents",
+        "patchCount",
+        "history"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "timeline",
+            "money",
+            "object",
+            "knowledge",
+            "procedure",
+            "agenda"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "user_given",
+            "user_given_modified",
+            "designed",
+            "writer_revised",
+            "derived_from_text"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "asserted",
+            "verified",
+            "unverified",
+            "contested",
+            "license_pending",
+            "accepted_license",
+            "retired"
+          ]
+        },
+        "introducedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "realityRef": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "inquiryRef": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "dependents": {
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "string"
+            ]
+          }
+        },
+        "patchCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "subtype": {
+          "type": "string",
+          "enum": [
+            "state"
+          ],
+          "description": "d6-1-decisions #1：状态性断言是 timeline 的子型"
+        },
+        "stateOf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validFrom": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validTo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "conflictsWith": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "conflictsOutOfScope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "对头在本轮范围外、尚未重核的矛盾；算作承认了反向关系"
+        },
+        "conflictKind": {
+          "type": "string",
+          "enum": [
+            "world",
+            "source_variant",
+            "layer_variant",
+            "rule_implied"
+          ]
+        },
+        "conflictNotes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "with",
+              "conflictKind"
+            ],
+            "properties": {
+              "with": {
+                "type": "string",
+                "minLength": 1
+              },
+              "conflictKind": {
+                "type": "string",
+                "enum": [
+                  "world",
+                  "source_variant",
+                  "layer_variant",
+                  "rule_implied",
+                  "agenda"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "humanWords": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notAsked": {
+          "type": "boolean"
+        },
+        "tension": {
+          "type": "string"
+        },
+        "defectKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "decisionRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retiresInto": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "retiredBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextNecessaryMove": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "程序账：{mandated, customary}；旧写法是字符串",
+          "properties": {
+            "mandated": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "customary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "since": {
+          "type": [
+            "string",
+            "object",
+            "null"
+          ],
+          "description": "知识账：集、场或 beatId；按人或按事分的嵌套对象也收"
+        },
+        "knownTo": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "visibleTo": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "notKnows": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/dialogue-exchange/v0",
+  "title": "语料交换：一个话题从开启到收束的若干来回",
+  "description": "features 只作描述与排序，不进任何比较；scope.level: studio 仅当 origin.kind == mali_story_template。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "exchangeId",
+    "templateId",
+    "snapshotId",
+    "episodeIndex",
+    "startMs",
+    "endMs",
+    "cutBy",
+    "lines",
+    "about",
+    "situation",
+    "walkthrough"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/dialogue-exchange/v0"
+    },
+    "exchangeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "templateId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshotId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "episodeIndex": {
+      "type": "integer"
+    },
+    "startMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "endMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cutBy": {
+      "type": "string",
+      "enum": [
+        "script",
+        "model"
+      ]
+    },
+    "series": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "genre": {
+          "type": "string"
+        }
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/line"
+      },
+      "minItems": 1
+    },
+    "about": {
+      "type": "string",
+      "minLength": 1
+    },
+    "situation": {
+      "type": "object"
+    },
+    "walkthrough": {
+      "type": "string",
+      "minLength": 1
+    },
+    "features": {
+      "type": "object"
+    },
+    "quality": {
+      "type": "object"
+    },
+    "speakerAttributionSuspect": {
+      "type": "boolean"
+    },
+    "refKind": {
+      "type": "string",
+      "enum": [
+        "snapshot",
+        "local_fingerprint"
+      ]
+    },
+    "localSha256": {
+      "type": "string",
+      "pattern": "^(sha256:)?[a-f0-9]{64}$"
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "level"
+      ],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "project",
+            "studio"
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "origin": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "line": {
+      "type": "object",
+      "required": [
+        "speaker",
+        "text"
+      ],
+      "properties": {
+        "speaker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "t0": {
+          "type": "integer"
+        },
+        "t1": {
+          "type": "integer"
+        },
+        "isMonologue": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

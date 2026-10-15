@@ -1,0 +1,133 @@
+{
+  "schemaVersion": "drama-studio/ledger-entry/v0",
+  "rev": "ep000",
+  "track": "pre",
+  "entries": [
+    {
+      "id": "L-proc-001",
+      "kind": "procedure",
+      "title": "无人领取的件满期退回",
+      "origin": "designed",
+      "status": "verified",
+      "introducedAt": "pre",
+      "realityRef": [
+        "K1-tuijian"
+      ],
+      "inquiryRef": [
+        "RC-box-1A"
+      ],
+      "dependents": [
+        {
+          "functionId": "F-box-1",
+          "episodes": [
+            3
+          ]
+        }
+      ],
+      "patchCount": 0,
+      "history": [
+        {
+          "rev": "ep000",
+          "change": "登记",
+          "by": "C3b",
+          "when": "2026-10-15"
+        }
+      ],
+      "name": "退件",
+      "realWorldRule": "保管期满退回寄件地址",
+      "nextNecessaryMove": {
+        "mandated": "退回前通知寄件人",
+        "customary": null
+      }
+    },
+    {
+      "id": "L-tl-001",
+      "kind": "timeline",
+      "title": "王姨签收退回的箱子",
+      "origin": "user_given",
+      "status": "contested",
+      "introducedAt": "pre",
+      "realityRef": [],
+      "inquiryRef": [
+        "RC-box-1A"
+      ],
+      "dependents": [],
+      "patchCount": 0,
+      "history": [],
+      "when": "三年前秋",
+      "who": "王姨",
+      "did": "签收",
+      "why": "箱子按退件寄回，家里只有她在",
+      "conflictsWith": [
+        "L-tl-002"
+      ],
+      "conflictNotes": [
+        {
+          "with": "L-tl-002",
+          "conflictKind": "source_variant",
+          "note": "圣经写留在家里，集纲写转给邻居"
+        }
+      ]
+    },
+    {
+      "id": "L-tl-002",
+      "kind": "timeline",
+      "title": "王姨把箱子转给邻居",
+      "origin": "designed",
+      "status": "contested",
+      "introducedAt": "pre",
+      "realityRef": [],
+      "inquiryRef": [],
+      "dependents": [],
+      "patchCount": 0,
+      "history": [],
+      "when": "三年前秋",
+      "who": "王姨",
+      "did": "转给邻居",
+      "why": "她要去女儿家住一阵，箱子放不下",
+      "conflictsWith": [
+        "L-tl-001"
+      ],
+      "conflictKind": "source_variant"
+    },
+    {
+      "id": "L-tl-003",
+      "kind": "timeline",
+      "subtype": "state",
+      "title": "老陈在外地打工",
+      "origin": "user_given",
+      "status": "asserted",
+      "introducedAt": "pre",
+      "realityRef": [],
+      "inquiryRef": [],
+      "dependents": [],
+      "patchCount": 0,
+      "history": [],
+      "stateOf": "老陈",
+      "state": "在外地打工",
+      "validFrom": "四年前",
+      "validTo": "ep1"
+    },
+    {
+      "id": "L-obj-001",
+      "kind": "object",
+      "title": "地窖里的箱子",
+      "origin": "designed",
+      "status": "license_pending",
+      "introducedAt": "pre",
+      "realityRef": [],
+      "inquiryRef": [
+        "RC-box-1A"
+      ],
+      "dependents": [],
+      "patchCount": 0,
+      "history": [],
+      "object": "箱子",
+      "holder": "王姨",
+      "location": "地窖",
+      "defectKeys": [
+        "box-no-notice"
+      ]
+    }
+  ]
+}

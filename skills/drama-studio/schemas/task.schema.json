@@ -176,6 +176,99 @@
         "minLength": 1
       },
       "description": "Honest unknowns that no other field can express"
+    },
+    "layer": {
+      "type": "string",
+      "enum": [
+        "C3a",
+        "C3b",
+        "C3c",
+        "C4",
+        "C5a",
+        "C5b",
+        "C6"
+      ],
+      "description": "Optional: D6 layer; revisionBudget is read per layer (C3a counts implementation swaps, C5a counts dialogue-plan revisions); C5a/C5b/C6 tasks must cite dialogueTarget"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "origin"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "skill",
+              "target",
+              "writer",
+              "orchestrator",
+              "user"
+            ]
+          },
+          "cite": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "orchestrator constraints must cite a target clause"
+          }
+        }
+      },
+      "description": "Optional: task constraints with their origin; any hit on schemas/data/constraint-blocklist.json is rejected whatever the origin"
+    },
+    "dialogueTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId",
+        "revision"
+      ],
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "Optional: the dialogue-target targetId@revision this task follows"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "episode_text",
+            "episode_plan",
+            "function_map",
+            "ledger",
+            "season_plan"
+          ]
+        },
+        "episode": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      },
+      "description": "Optional (D6-2): what a C6 task reviews; an outline-side read (episode_plan, function_map, ledger, season_plan) needs no dialogueTarget"
     }
   },
   "$defs": {

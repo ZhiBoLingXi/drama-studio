@@ -2,6 +2,8 @@
 
 日期：2026-10-13 · 状态：设计提案，未实施；不改任何技能文件、脚本或契约 · 上游：[工艺闭环设计](drama-studio-craft-loop-design-2026-10-10.md)（P2 统计、P4 工作室知识库）、[台词库产品设计](drama-studio-voice-library-product-design-2026-10-12.md)、[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md) §8、[实施路线图](drama-studio-implementation-roadmap-2026-09-29.md) D4 · 相关决定：[D4-5 工作室共享知识暂不建](../d4/shared-knowledge.md)（2026-10-08）、[D2 知识门槛“不扩大”](../d2/knowledge-gate-report.md)（2026-10-06）
 
+> **2026-10-15 状态行（D6-5）**：被[台词系统架构 v3](drama-studio-dialogue-structure-architecture-2026-10-13.md) 取代，重心倒置（分级被 Tier 与 `grade: human` 取代，样本对象被 `dialogue-exchange` 取代，数数关口与覆盖卡废除）。仍有效的只有 §9 留出法（作可选的描述性评测，不作关口）与 §6.2 装包历史（D6-3 已实现为 `.drama/packs/history.json`）。见[统一实施计划](./drama-studio-outline-dialogue-implementation-plan-2026-10-14.md) §2.7。
+
 与 10-12 台词库产品设计的关系：那份文档定的是产品形态（五种来源、权利等级、三层对象、M0–M5）。本提案只做其中“台词样本”这一块，把它写到能开工的粒度，并补三样那份文档没有的东西：样本的**证据分级**（和权利等级是两条轴）、**存稿前的数数关口**、**留出法评测**。两份文档冲突时以本提案为准的地方在 §3.1、§7、§9、§11 各自注明，是否采纳由主创定。
 
 本文引用的数字全部来自项目 `projects/qige-xiongdi`（gitignored）里的记录文件，核对过；不抄私有剧本的句子，举例处都是为说明而编。

@@ -122,5 +122,23 @@ class SceneFormatTests(unittest.TestCase):
         self.assertIsNone(data["passed"])
 
 
+class SpeechVolumeTests(unittest.TestCase):
+    """episode_check 的口播量统计：显式要才给，不估时；默认输出不变。"""
+
+    def test_speech_volume_is_opt_in_and_counts_spoken_han_only(self):
+        sys.path.insert(0, str(ROOT / "skills/drama-studio/scripts"))
+        from checks.episode_check import run_episode_check
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "ep.md"
+            path.write_text("# 第1集\n场1-1 镇上 仓库 日 内\n人物：老陈、王姨\n△老陈推门进来。\n"
+                            "老陈（低声）：箱子在这。\n王姨：好。\n", encoding="utf-8")
+            plain = run_episode_check(str(path))
+            self.assertNotIn("speech", plain["episodes"][0])
+            speech = run_episode_check(str(path), speech=True)["episodes"][0]["speech"]
+            self.assertEqual((speech["speech_chars"], speech["dialogue_lines_counted"]), (5, 2))
+            self.assertNotIn("seconds", json.dumps(speech))
+
+
 if __name__ == "__main__":
     unittest.main()

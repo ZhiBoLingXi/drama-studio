@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import importlib
+import inspect
+import io
 import json
+import os
 from pathlib import Path
 import platform
+import shlex
 import sys
 import uuid
 
 sys.dont_write_bytecode = True
-from checks.contract_check import run_contract_check, schema_names
+from checks.contract_check import question_sets, run_contract_check, schema_names
 from checks.context_pack import run_context_pack
 from checks.dup_check import run_dup_check
 from checks.episode_check import PRESETS, run_episode_check
@@ -29,6 +35,10 @@ def initialize(path: Path, title: str) -> dict:
     path.mkdir(parents=True, exist_ok=False)
     for folder in (".drama", "research", "reference", "planning", "episodes", "reviews", "deliveries"):
         (path / folder).mkdir()
+    # D6-2 layout (decisions §1, §5 #23). .drama/ keeps only project.json: status reads an empty .drama/ as a new
+    # project, so .drama/runs/ appears with the first run-handoff
+    for folder in ("planning/ledger", "planning/episodes", "runs", "knowledge"):
+        (path / folder).mkdir()
     state = {"schemaVersion": 1, "localId": str(uuid.uuid4()), "title": title,
              "remoteProjectId": None, "remoteTaskIds": [], "templateIds": [],
              "status": "local_workspace_only", "remoteVerification": "not_checked",
@@ -38,7 +48,106 @@ def initialize(path: Path, title: str) -> dict:
     return {"ok": True, "path": str(path), "state": state}
 
 
+# D6-1 commands that live in their own modules: drama_tools subcommand -> (module, leading argv it adds)
+DELEGATED = {
+    "ledger": ("checks.ledger", "Ledger: init/merge/apply/replay/check/diff/knows/view/stats; S rules only"),
+    "plan-check": ("checks.plan_check", "Episode-plan S check (presence, speaker-knows, delta support); --characters reports, never blocks"),
+    "plan-events": ("checks.plan_events", "Export an episode plan's events only (no saysFact or design fields) for the cold_reader package"),
+    "season-plan-check": ("checks.season_plan_check", "Season-plan S check against the function map, capacity and decision queue"),
+    "capacity": ("checks.capacity", "Capacity season/episode/text: one formula, both bases reported; exceeding writes a proposal and still exits 0"),
+    "decision": ("checks.decision", "Decision queue add/list/decide/check; every pending entry carries a default, decide needs humanWords"),
+    "function-map": ("checks.function_map", "Function map check/merge/topics (retrieval topics from required_unstated procedure deps)"),
+    "defects": ("checks.function_map", "defects build: derive the defect register from answer records (the records stay the only source)"),
+    "check-answers": ("checks.answers_check", "Answer-record format against its question set; coverage and --cross reports never block"),
+    "retell-check": ("checks.retell_check", "Cold retell against the plan's infoLedger facts and closing event: retold/partial/missing"),
+    "answers-consistency": ("checks.consistency", "Two answer records on the same target: where their three-state answers differ (reports only)"),
+    "dialogue-plan-check": ("checks.dialogue_plan_check", "Dialogue-plan S check (segments, closers, carries, listenerKnows from the ledger)"),
+    "plan-text-consistency": ("checks.plan_text_consistency", "Text against its dialogue plan: speakers, topic boundaries, closers, carried keywords"),
+    "dialogue-diagnose": ("checks.diagnose", "Dialogue signals with position and situation; no within/outside verdicts"),
+    "feedback-ingest": ("checks.feedback_ingest", "Writer feedback -> writer-note records routed by level (derivatives are drafts)"),
+    "corpus": ("checks.corpus", "Corpus S commands: segment/label/agree/filter/lexicon/rate/defaults, and fetch bookkeeping; offline"),
+}
+CORPUS_COMMANDS = ("segment", "label", "agree", "filter", "lexicon", "rate", "defaults", "fetch")
+TOOL = Path(__file__).resolve()
+
+
+def reproduce(words: list[str], argv: list[str]) -> str:
+    """A runnable drama_tools command line; arguments naming existing files become absolute paths."""
+    tokens = [os.path.abspath(arg) if not arg.startswith("-") and os.path.exists(arg) else arg for arg in argv]
+    return shlex.join(["python3", "-B", str(TOOL), *words, *tokens])
+
+
+def delegate(argv: list[str]) -> int:
+    """Run a D6-1 module command and print its output with reproduceCommand in drama_tools form."""
+    command, rest = argv[0], argv[1:]
+    words, module = [command], DELEGATED.get(command, ("checks.dup_check",))[0]
+    if command == "corpus":
+        if not rest or rest[0] not in CORPUS_COMMANDS:
+            print(json.dumps({"ok": False, "error": f"corpus needs one of: {', '.join(CORPUS_COMMANDS)}"}, ensure_ascii=False), file=sys.stderr)
+            return 1
+        module, words, rest = f"checks.corpus.{rest[0]}", [command, rest[0]], rest[1:]
+    elif command == "defects":
+        rest = ["defects", *rest]
+        words = []
+    entry = importlib.import_module(module).main
+    prog = " ".join(["drama_tools.py", *words])
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        try:
+            code = entry(rest, prog=prog) if "prog" in inspect.signature(entry).parameters else entry(rest)
+        except SystemExit as stop:  # argparse --help or a usage error
+            code = stop.code if isinstance(stop.code, int) else 1
+    output = buffer.getvalue()
+    try:
+        result = json.loads(output)
+    except ValueError:
+        result = None
+    if isinstance(result, dict) and "reproduceCommand" in result:
+        result["reproduceCommand"] = reproduce(words, rest)
+        output = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
+    sys.stdout.write(output)
+    return code
+
+
+def contract_context(args) -> dict | None:
+    """Cross-file context for contract-check rules a single file cannot settle; None when no flag was given."""
+    if not any((args.records, args.defects, args.cards, args.questions, args.base_questions, args.decisions)):
+        return None
+    load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+    context: dict = {}
+    if args.records:
+        context["records"] = {doc["checkId"]: doc for doc in map(load, args.records) if isinstance(doc, dict) and "checkId" in doc and "answers" in doc}
+    if args.defects:
+        kinds: dict[str, set] = {}
+        for doc in map(load, args.defects):
+            items = [(a, "defectKey") for a in doc.get("answers") or []] + [(d, "defectId") for d in doc.get("defects") or []] \
+                if isinstance(doc, dict) else []
+            for item, key in items:
+                if isinstance(item, dict) and item.get(key):
+                    kind = item.get("defectKind") or []
+                    kinds.setdefault(item[key], set()).update([kind] if isinstance(kind, str) else kind)
+        context["defectKinds"] = {key: sorted(value) for key, value in kinds.items()}
+    if args.cards:
+        paths = [p for arg in args.cards for p in (sorted(Path(arg).glob("*.json")) if Path(arg).is_dir() else [Path(arg)])]
+        context["cards"] = {doc["cardId"]: doc.get("coverage") for doc in map(load, paths) if isinstance(doc, dict) and "cardId" in doc}
+    if args.questions:
+        context["questionSets"] = {**question_sets(), **{f"{doc['id']}@{doc['version']}": doc for doc in map(load, args.questions)}}
+    if args.base_questions:
+        context["baseQuestionSet"] = load(args.base_questions)
+    if args.decisions:
+        context["decisionIds"] = {e.get("id") for doc in map(load, args.decisions) if isinstance(doc, dict)
+                                  for e in doc.get("entries") or [] if isinstance(e, dict)}
+    return context
+
+
 def main() -> int:
+    argv = sys.argv[1:]
+    if argv and (argv[0] in DELEGATED or (argv[0] == "dup-check" and "--list-hits" in argv)):
+        try:
+            return delegate(argv)
+        except (OSError, ValueError) as error:
+            print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False), file=sys.stderr)
+            return 1
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="Check the offline tools load; proves nothing about MCP")
@@ -54,25 +163,40 @@ def main() -> int:
         episode.add_argument("--" + key, type=int)
     for key in ("min-delta-ratio", "min-paren-ratio"):
         episode.add_argument("--" + key, type=float)
+    episode.add_argument("--speech", action="store_true", help="Add per-episode speech volume (spoken Han chars); no time estimate, that is capacity text")
     duplicate = commands.add_parser("dup-check", help="Literal n-gram overlap; not an originality certificate")
     duplicate.add_argument("--new", nargs="+", required=True)
     duplicate.add_argument("--source", nargs="+", required=True)
     duplicate.add_argument("--k", nargs="+", type=int, default=[5, 8, 13])
     duplicate.add_argument("--threshold", type=float, default=40)
+    duplicate.add_argument("--list-hits", action="store_true", help="List each k-char hit with its line instead of rates: --new one file, --k one size (8 for packed samples, 13 for the whole corpus)")
+    duplicate.add_argument("--source-dialogue-plan", help="--list-hits pool: the corpus samples a dialogue plan packed")
+    duplicate.add_argument("--source-corpus-jsonl", help="--list-hits pool: every line of a corpus exchanges.jsonl")
+    duplicate.add_argument("--exclude-verbatim", help="--list-hits: plan-text map whose verbatimFrom lines are listed apart")
     reference = commands.add_parser("reference-check", help="Inspect saved template detail coverage, not source truth")
     reference.add_argument("path")
     reference.add_argument("--expected-episodes", type=int)
     contract = commands.add_parser("contract-check", help="Validate a workstation handoff object; shape and script rules only (examples in schemas/examples/)")
     contract.add_argument("contract", choices=schema_names())
     contract.add_argument("path")
+    contract.add_argument("--records", nargs="+", help="Answer records a function map's selected candidates cite (inquiryRef)")
+    contract.add_argument("--defects", nargs="+", help="Answer records or defect registers giving each defectKey its defectKind")
+    contract.add_argument("--cards", nargs="+", help="Knowledge cards (files or folders): an empty card cannot back a holds answer")
+    contract.add_argument("--questions", nargs="+", help="Project question sets (id@version) besides the bundled ones")
+    contract.add_argument("--base-questions", help="The bundled question set a project set extends (may add, not remove)")
+    contract.add_argument("--decisions", nargs="+", help="Decision queues: a run-handoff's decisionRefs must name their entries")
     pack = commands.add_parser("context-pack", help="Assemble a reproducible context-snapshot from local cache and knowledge cards; never truncates or goes online")
     pack.add_argument("project")
     pack.add_argument("--task", required=True)
     pack.add_argument("--selection", required=True)
-    pack.add_argument("--role", required=True, choices=["author", "dialogue_author", "reader_effect", "dialogue_read", "fact_check", "similarity_review", "evaluation"])
+    pack.add_argument("--role", required=True, choices=["author", "dialogue_author", "reader_effect", "dialogue_read", "fact_check", "similarity_review", "evaluation",
+                                                        "function_mapper", "ledger_keeper", "season_planner", "dialogue_designer", "situation_checker", "cold_reader"])
     pack.add_argument("--budget", required=True, type=int, help="Character budget; exceeding it exits 2 without writing")
     pack.add_argument("--dry-run", action="store_true", help="Run every check and print the package; write nothing")
     pack.add_argument("--allow-unverified", action="store_true", help="Accept manifest entries marked verified: false and note them in unknowns")
+    pack.add_argument("--exemplars", help="C5a/C5b: masked sample records to pack the plan's cited positives from -- a JSONL file, or the dialogue plan itself (its exemplars.positives); inside the project")
+    pack.add_argument("--contrast-pairs", help="C5a/C5b: contrast-pairs.jsonl (inside the project) to pack the plan's cited pairs from")
+    pack.add_argument("--quotes-per-topic", type=int, default=2, help="C5a/C5b: masked original lines (maskedLines) a topic's samples may carry in all, default 2; 0 for none")
     knowledge = commands.add_parser("knowledge", help="Read-only project-private knowledge cards: validate, search, show")
     knowledge_commands = knowledge.add_subparsers(dest="knowledge_command", required=True)
     knowledge_commands.add_parser("validate", help="contract-check every card and its filename").add_argument("project")
@@ -129,6 +253,7 @@ def main() -> int:
     season.add_argument("--outline-batch", type=int, default=15, help="Most outlines one C4 run may write (default 15)")
     season.add_argument("--batch-size", type=int, default=10, help="Most episodes one first read may cover (default 10)")
     season.add_argument("--skip-dialogue", action="store_true", help="Leave out the voice-card, dialogue-pass and dialogue-read checks (recorded in the output)")
+    season.add_argument("--legacy-dialogue", action="store_true", help="Also run voice-card, dialogue-pass and dialogue-read on old records (retired in D6-3); output then equals 0.3.6")
     season.add_argument("--revise", action="store_true", help="A feedback revision of an existing full draft: batches may share one author run and the entry-state rules do not apply")
     season.add_argument("--since", help="Only count C4-C6 runs finished at or after this ISO time (one version of a project revised several times)")
     season.add_argument("--allow-offline", action="store_true", help="Only when the user agreed to an offline run: not_sent saves warn instead of fail while no remote project is bound")
@@ -139,6 +264,8 @@ def main() -> int:
     impact.add_argument("--artifact", help="artifactId of the new revision, resolved through the cache manifest; excludes --slot/--revision")
     impact.add_argument("--card", help="Only snapshots and runs packing this knowledge card, judged on it alone; excludes --slot/--revision/--artifact")
     impact.add_argument("--page", help="pageId of a mali-story page; with --revision marks snapshots and runs pinning an older revision stale; excludes --slot/--artifact/--card")
+    for name, (_, text) in DELEGATED.items():
+        commands.add_parser(name, help=text, add_help=False)
     args = parser.parse_args()
     try:
         if args.command == "doctor":
@@ -152,7 +279,13 @@ def main() -> int:
             overrides = {k: v for k, v in vars(args).items() if k not in ("command", "path") and v is not None}
             result = run_episode_check(args.path, **overrides)
         elif args.command == "contract-check":
-            result = run_contract_check(args.contract, args.path)
+            context = contract_context(args)
+            result = run_contract_check(args.contract, args.path, context)
+            if context is not None:
+                flags = [token for flag in ("records", "defects", "cards", "questions", "decisions") if getattr(args, flag)
+                         for token in ["--" + flag, *getattr(args, flag)]]
+                flags += ["--base-questions", args.base_questions] if args.base_questions else []
+                result["reproduceCommand"] = reproduce(["contract-check", args.contract], [args.path, *flags])
         elif args.command == "knowledge" and args.knowledge_command == "validate":
             result = run_knowledge_validate(args.project)
         elif args.command == "knowledge" and args.knowledge_command == "search":
@@ -164,7 +297,9 @@ def main() -> int:
             result = run_reference_check(args.path, args.expected_episodes)
         elif args.command == "context-pack":
             result = run_context_pack(args.project, args.task, args.selection, args.role, args.budget,
-                                      dry_run=args.dry_run, allow_unverified=args.allow_unverified)
+                                      dry_run=args.dry_run, allow_unverified=args.allow_unverified,
+                                      exemplars=args.exemplars, contrast_pairs=args.contrast_pairs,
+                                      quotes_per_topic=args.quotes_per_topic)
         elif args.command == "import-project" and args.import_command == "preview":
             result = run_preview(args.project, args.listing)
         elif args.command == "import-project":
@@ -177,7 +312,8 @@ def main() -> int:
                 print(render_status(result))
                 return 0
         elif args.command == "season-check":
-            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch, args.skip_dialogue, args.revise, args.since)
+            result = run_season_check(args.project, args.episodes, args.batch_size, args.allow_offline, args.outline, args.outline_batch, args.skip_dialogue, args.revise, args.since,
+                                      args.legacy_dialogue)
         elif args.command == "impact":
             result = run_impact(args.project, args.slot, args.revision, args.artifact, args.card, args.page)
         else:

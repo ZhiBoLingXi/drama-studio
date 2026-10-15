@@ -42,6 +42,15 @@
 
 单集任务对象不一定包含完整拉片正文。费用预览、源视频保留、专业候选保存等扩展可能尚未部署。不能把当前账号余额当作本次总价，也不能把单次视频估算当整剧成本。
 
+## 语料读取的回执与计费观察
+
+台词层的语料是逐集读取的模板证据（`get_deconstruction_evidence`，路由上即「读模板证据」）。读取方法与缓存见 [语料](corpus.md)；这里只写每次读取要留什么、费用怎么查。
+
+- **每次读取记一条回执**：`operation` 写实际调用的工具，`requestId` 自定且不复用，记下 `templateId`、`episodeIndex`、传入的 `expected_snapshot_id`、返回的 `snapshotId`、`missingFields`、`evidenceValidation` 与返回体的 sha256；失败也记（错误原文、是传输层还是工具报错）。回执放 `.drama/receipts/`，与 `corpus/manifest.json` 的 `readCalls` 计数对得上。
+- **`snapshotId` 不一致**：服务端说这一集变了。不覆盖旧缓存，按 [语料 §4](corpus.md#4-快照与失效) 标 `stale` 并重取。
+- **计费是事实核查，不是决定**：读取语义上是读路径，但会不会扣费没有确认之前一律按「未确认」处理。先取小样本（3 部、每部 10 集左右），取前、取后各读一次 `get_shared_creation_budget`，并看每次回执有没有费用字段。读数或回执有任何扣费迹象就立即停，记下前后变化，不取全库；没有变化只记「这几次读取未观察到扣费」，不推到全库。读不到预算（没有连接、工具不存在）时写 `billing: not_observed`。
+- **不把余额当成本次总价**：只记调用次数、预算读数与回执 ID；不记其他账户信息。
+
 ## 剧本保存
 
 工位产出按下文 [页面读写、版本标签与恢复](#页面读写版本标签与恢复) 写成 mali-story 页面。Brief 使用专用 get/save/approve，save 带读取到的 expected_revision；通过当前会话可用工具确认具体名称。不能用通用块写入绕过这些工具。

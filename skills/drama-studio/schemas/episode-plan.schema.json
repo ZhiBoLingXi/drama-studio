@@ -1,0 +1,592 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/episode-plan/v0",
+  "title": "分集计划（C4）：14 字段，9 项必填",
+  "description": "必填：episode+title、entry、functions、events、moves、infoLedger、ledgerDelta、exit、capacity（集纲方案 §4 的九栏）。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "episode",
+    "title",
+    "entry",
+    "functions",
+    "events",
+    "moves",
+    "infoLedger",
+    "ledgerDelta",
+    "exit",
+    "capacity"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/episode-plan/v0"
+    },
+    "episode": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "集号：整数，或拆集后的「6A」这类字符串"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "ledgerRev",
+        "summary"
+      ],
+      "properties": {
+        "ledgerRev": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "functionId",
+          "progress"
+        ],
+        "properties": {
+          "functionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "progress": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "events": {
+      "type": "object",
+      "required": [
+        "scenes"
+      ],
+      "properties": {
+        "scenes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scene"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "presence": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "absences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "who",
+              "why"
+            ],
+            "properties": {
+              "who": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scenes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "why": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ledgerRef": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "moves": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/move"
+      }
+    },
+    "infoLedger": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/info"
+      }
+    },
+    "ledgerDelta": {
+      "type": "object",
+      "required": [
+        "episode",
+        "track",
+        "reads",
+        "writes"
+      ],
+      "properties": {
+        "episode": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "集号：整数，或拆集后的「6A」这类字符串"
+        },
+        "track": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "actual"
+          ]
+        },
+        "reads": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/write"
+          }
+        }
+      }
+    },
+    "realityRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "threads": {
+      "type": "object"
+    },
+    "exit": {
+      "type": "object",
+      "required": [
+        "ledgerRev",
+        "summary",
+        "closingEvent"
+      ],
+      "properties": {
+        "ledgerRev": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "closingEvent": {
+          "type": "object",
+          "required": [
+            "beatRef"
+          ],
+          "properties": {
+            "beatRef": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "infoCount": {
+          "type": "integer"
+        },
+        "sceneCount": {
+          "type": "integer"
+        },
+        "pictureBeats": {
+          "type": "integer"
+        },
+        "estimateSec": {
+          "type": "number"
+        },
+        "targetSec": {
+          "type": "number"
+        },
+        "basis": {
+          "type": [
+            "string",
+            "object"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "pattern": "^(fits|proposal:.+)$"
+        }
+      }
+    },
+    "pending": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "decisionId",
+          "defaultUsed"
+        ],
+        "properties": {
+          "decisionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "defaultUsed": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "hook": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "emotion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payoff": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "scene": {
+      "type": "object",
+      "required": [
+        "sceneId",
+        "time",
+        "place",
+        "present",
+        "beats"
+      ],
+      "properties": {
+        "sceneId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "time": {
+          "type": "string",
+          "minLength": 1
+        },
+        "place": {
+          "type": "string",
+          "minLength": 1
+        },
+        "present": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "beats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/beat"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "beat": {
+      "type": "object",
+      "required": [
+        "beatId",
+        "who",
+        "text"
+      ],
+      "properties": {
+        "beatId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "who": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quote": {
+          "type": "string"
+        },
+        "offscreen": {
+          "type": "boolean"
+        },
+        "picture": {
+          "type": "boolean"
+        },
+        "saysFact": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "info": {
+      "type": "object",
+      "required": [
+        "infoId",
+        "whyAudienceNeeds",
+        "facts"
+      ],
+      "properties": {
+        "infoId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "whyAudienceNeeds": {
+          "type": "string",
+          "minLength": 1
+        },
+        "laterDependents": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        },
+        "knownByInStory": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fact"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "required": [
+        "factId",
+        "text",
+        "carrierBeat",
+        "keywords"
+      ],
+      "properties": {
+        "factId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "carrierBeat": {
+          "type": "string",
+          "minLength": 1
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "ledgerRef": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ledgerRefMissing": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "move": {
+      "type": "object",
+      "required": [
+        "who",
+        "did"
+      ],
+      "properties": {
+        "who": {
+          "type": "string",
+          "minLength": 1
+        },
+        "did": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wants": {
+          "type": "string"
+        },
+        "easierOption": {
+          "type": "string"
+        },
+        "whyNot": {
+          "type": "string"
+        },
+        "cost": {
+          "type": "string"
+        }
+      }
+    },
+    "write": {
+      "type": "object",
+      "required": [
+        "entryId",
+        "change",
+        "reason"
+      ],
+      "properties": {
+        "entryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "change": {
+          "type": "object",
+          "description": "字段级改动；entryId 为 new 时是完整条目。自由文本改法不收"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supportedBy": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

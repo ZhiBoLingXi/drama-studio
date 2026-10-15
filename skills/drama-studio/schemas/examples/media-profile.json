@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "drama-studio/media-profile/v0",
+  "format": "live",
+  "formatSource": "project_setting",
+  "formatDefault": {
+    "live": {
+      "speechRateCharsPerMin": 172.0,
+      "pauseShare": 0.38,
+      "targetSecondsDefault": 120,
+      "grossCharsPerMinute": 106.6,
+      "pictureBeatSec": {
+        "value": 2.0,
+        "source": "assumed"
+      },
+      "source": "measured_corpus"
+    }
+  },
+  "calibration": "corpus_default",
+  "measurementBasis": {
+    "speechRate": "voiced chars / voiced seconds × 60",
+    "pauseShare": "1 − speech seconds / episode seconds"
+  }
+}

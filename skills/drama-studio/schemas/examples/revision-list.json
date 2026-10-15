@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "drama-studio/revision-list/v0",
+  "target": {
+    "episode": 3,
+    "file": "runs/b1/ep-003.c5b.md"
+  },
+  "basis": [
+    ".drama/checks/retell-ep-003.json",
+    ".drama/checks/situation-ep-003-a.json"
+  ],
+  "items": [
+    {
+      "id": "RV-1",
+      "layer": "C5b",
+      "where": "ep-003:L12",
+      "cites": {
+        "ledgerId": "L-obj-001"
+      },
+      "problem": "刘叔说箱子在仓库，底账 L-obj-001 写的是在王姨家阁楼",
+      "action": "按底账改这一句的所指，不加新信息"
+    },
+    {
+      "id": "RV-2",
+      "layer": "C5a",
+      "where": "dialogue-plan T2 listenerKnows",
+      "cites": {
+        "targetClause": "C2"
+      },
+      "problem": "老陈对王姨先说事后叫人，台词目标 C2 要先叫人",
+      "action": "改对话表 T2 的处境理由，再照表改文"
+    }
+  ]
+}

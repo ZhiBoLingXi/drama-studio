@@ -39,7 +39,8 @@
               "project_facts",
               "current_plan",
               "knowledge",
-              "unknowns"
+              "unknowns",
+              "samples"
             ],
             "description": "task 分区由工具按 --task 自动填入，不能出现在选材清单"
           },
@@ -75,6 +76,25 @@
         "minLength": 1
       },
       "description": "Honest unknowns that no other field can express"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "author",
+        "reader_effect",
+        "dialogue_author",
+        "dialogue_read",
+        "fact_check",
+        "similarity_review",
+        "evaluation",
+        "function_mapper",
+        "ledger_keeper",
+        "season_planner",
+        "dialogue_designer",
+        "situation_checker",
+        "cold_reader"
+      ],
+      "description": "Optional: the role this selection is for; cold_reader allows one project_facts item only"
     }
   },
   "$defs": {

@@ -14,10 +14,10 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | 初始化工作室、修改设置、检查配置 | [初始化](references/initialization.md) | 用户选择、可核对配置、采集与调度各自的实际状态 |
 | 研究市场、选择对标 | [市场研究](references/market.md)；已有红果榜单时读 [可选数据源](references/hongguo-rank.md) | 有来源和日期的比较、推荐及缺口 |
 | 找模板、下载视频、拉片 | [资料与拉片](references/mali-story.md)；需要下载时再读 [夸克适配](references/quark.md) | 可追溯的模板、任务、集序与证据 |
-| 原创选题、人物与集纲 | [策划](references/planning.md) | 原创方向、设定、蓝图与完整分集纲 |
+| 原创选题、人物与集纲 | [策划](references/planning.md)；写框架、底账与集纲时再读 [集纲层](references/outline-layer.md) | 原创方向、人物、功能地图、底账、季编排与逐集分集计划 |
 | 摆脱换皮、探索不同故事 | [创作开发](references/development-lab.md) | 生活材料、创作立场、不同因果候选及场面试写 |
-| 写作、检查、改稿（含按集纲写正文、续写下一批） | [工位流程](references/writing.md#工位流程)：先读 writing.md 第一节；一次写多批再读 [整季分批](references/workstations/season-run.md) | 经 C5 装包写成、C6 两读、一次定向修订的分集正文，以及快照、审读记录、回执与交接 |
-| 台词 AI 味重、不像人说的话、人物说话分不开 | [台词](references/dialogue.md) | 前文校核、取自人写正文的声音卡、台词与表演遍、台词读 |
+| 写作、检查、改稿（含按集纲写正文、续写下一批） | [工位流程](references/writing.md#工位流程)：先读 writing.md 第一节；一次写多批再读 [整季分批](references/workstations/season-run.md) | 经 C5a 对话表与 C5b 照表写成、C6 五读、先改表再改文的分集正文，以及快照、对话表、审读与核对记录、回执与交接 |
+| 台词 AI 味重、不像人说的话、人物说话分不开 | [台词层](references/dialogue-structure.md) | 前文校核、按处境写的对话表、照表写的正文、冷读复述与处境对照、先改表再改文 |
 | 行为不贴人设、台词同质、情绪平、剧情靠解释推进 | [人物与情绪改稿](references/character-emotion.md)，结合写作与自主迭代 | 有前文依据的人物写法、关键场面改写、本轮创作目标的正文复核 |
 | 自行测试迭代、提高质量 | [自主创作迭代](references/creative-loop.md) | 原稿与候选比较、证据复核、最佳待审版本 |
 | 继续项目、切换宿主、交付 | [接续与交付](references/recovery.md) | 当前版本、下一动作、可核对交付文件 |
@@ -38,9 +38,9 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 1. 项目目录：已有项目先 `status`，没有就 `init-project`；用户给的集纲、前文转成文本放进 `runs/input/`。
 2. 发现 mali-story 工具；能用就读写作上下文并缓存前文页面。没有工具或没有远端项目时先问用户，用户明确同意只交本地草稿或只是暂时断线，才走 [离线降级](references/writing.md#离线与单代理降级)。
 3. 按因果依赖分批，每集一个页面、一个写者；前一批保存后再给下一批装包（[整季分批](references/workstations/season-run.md)）。
-4. 每集一个作者运行：`context-pack --role author` 装包（主创给过前文或样集时先做 [前文校核](references/dialogue.md#8-有人写的正文时前文校核)；本集集纲、前一集最新稿原文、入口状态记录 `runs/state/after-ep-NNN.md`、出场人物的声音卡）→ C5 写场面稿 → 台词与表演遍（`dialogue_author` 包，不动场头）→ C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ C6 次读、台词读（`dialogue_read` 包）→ C5 问题定向修订一次，C4 及以上的问题写成变更提案交用户。
+4. 每集一个作者运行（[台词层](references/dialogue-structure.md)；主创给过前文或样集时先做 [前文校核](references/dialogue-structure.md#10-前文校核)）：C5a 写对话表（`context-pack --role dialogue_designer`，每个话题写处境与走法理由，`dialogue-plan-check`）→ C5b 照表写正文（`context-pack --role author`，装对话表、前一集最新稿原文、由底账实际轨导出的入口状态记录 `runs/state/after-ep-NNN.md`）→ C6 首读（新上下文里只读 `reader_effect` 包，记录写完先封存 sha256）→ 次读、冷读复述（`cold_reader` 包只装本集正文）、处境对照（`situation_checker`，按对话问题单逐问引句作答）、设计依据一致性（`plan-text-consistency`）→ 先改对话表再改正文，定向修订一次，改后再冷读与处境对照；分集计划及以上的问题写成变更提案并带默认，`decision add --from-handoff` 登记进决定队列，流程不停。
 5. 存为页面修订并核对逐字一致 → `receipt record`／`receipt cache`（离线记 `not_sent`）→ `run-handoff` 写进 `.drama/runs/`，更新下一集的入口状态记录。主创确认后才打标签，标签不是采用。
-6. 完整集纲按 [C4 整季集纲](references/workstations/c4-episode-outline.md#整季集纲怎么写) 按顺序分段写、独立审读、存成页面，不并行扩写。
+6. 完整集纲按 [集纲层](references/outline-layer.md) 走 C3a 功能地图（候选实现过追问单，承重缺口换实现、登记为戏剧假定或进决定队列）→ C3b 底账（检索代理写 K1 卡、`ledger check`）→ C3c 季编排（`capacity season`，装不下在这里重排或拆集）→ C4 分集计划（按 [C4 整季集纲](references/workstations/c4-episode-outline.md#整季集纲怎么写) 按顺序分段写，`plan-check`、冷读复述，存成页面），不并行扩写。等人定的事进决定队列并带默认，流程不停。
 7. 每批结束和交付前跑 `season-check`（正文 `--episodes`，集纲 `--outline`），结论原样写进交付说明；不通过不能写“已按流程完成”。
 
 完整创作遵循 [两次审批与接续](references/approval-flow.md)：选题未确认时交候选供用户选择；选题确认后一次完成四项送审材料，不在框架、人物、集纲之间反复停下。整套材料未经用户审批，不写第 11 集及后续正文。用户只回复“60 集左右”是在确定篇幅，不是确认选题；“出新剧本”“继续”“自行优化”不自动批准待审版本。明确已有选择和审批可沿用，不重复索要。用户明确调整交付范围或授权代选／免审时，记录其适用范围；模型推荐或评审通过不能代替用户决定。
@@ -66,22 +66,38 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | `drama_tools.py doctor` | 检查本地工具能否运行；不检查 mali-story 连接 |
 | `drama_tools.py init-project <项目> --title <剧名>` | 建本地项目目录与 `.drama/project.json`，不建远端项目 |
 | `drama_tools.py status <项目>` | 从本地回执、运行和快照给出下一步（第一行），接续时先跑 |
-| `drama_tools.py context-pack <项目> --task … --selection … --role … --budget …` | 按选材清单从本地缓存、知识卡和 `.drama/`、`runs/` 文件组装快照，超预算退出码 2 |
-| `drama_tools.py contract-check <对象> <文件>` | 校验任务、选材、快照、审读记录、交接、回执、知识卡的格式与脚本规则 |
+| `drama_tools.py context-pack <项目> --task … --selection … --role … --budget …` | 按选材清单从本地缓存、知识卡和 `.drama/`、`runs/` 文件组装快照，超预算退出码 2；冷读只许一项本集材料，C5a 要分集计划容量 `fits` 或带默认的提案，C5b 要对话表过 `contract-check`；`--exemplars`／`--contrast-pairs` 按话题装样本，装不下的整条列入 omitted |
+| `drama_tools.py contract-check <对象> <文件>` | 校验任务、选材、快照、审读记录、交接、回执、知识卡及集纲层、台词层对象的格式与脚本规则；`--records`、`--defects`、`--cards`、`--questions` 补跨文件规则 |
 | `drama_tools.py receipt record <项目> <响应> --operation … --request-id … --input …` | 把保存下来的 mali-story 响应记成回执 |
 | `drama_tools.py receipt pending <项目>` | 列出结果未知的写入及对账办法 |
 | `drama_tools.py receipt cache <项目> <读回分块…>` | 把 `read_page` 读回的全文核对指纹后存进 `.drama/cache/` |
 | `drama_tools.py receipt show <项目> <requestId>` | 显示一份回执及其校验结果 |
-| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、声音卡、台词遍、台词读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。不通过退出码 2；只看记录，不评内容 |
+| `drama_tools.py season-check <项目> --episodes <起-止>`／`--outline <起-止>` | 逐集核对整季流程证据：正文查上游交接、逐集作者包、入口状态更新、封存首读、次读、保存回执、用量；集纲查顺序分段、集纲包内容、独立审读、保存回执。项目有 `planning/season-plan.json` 时集纲另核集纲层七条（列在 `outlineLayerRules`），有对话表记录时正文另核台词层规则（列在 `dialogueLayerRules`）。旧记录的声音卡、台词遍、台词读三条只在加 `--legacy-dialogue` 时核，这时输出与 0.3.6 相同。不通过退出码 2；只看记录，不评内容 |
 | `drama_tools.py impact <项目> --page <pageId> --revision <n>` | 前文出了新修订后，标出引用旧修订的快照与运行（也支持 `--slot`、`--artifact`、`--card`） |
-| `drama_tools.py episode-check <正文>` | 剧集统计；只有给了 `--config` 或显式阈值才核对规格 |
-| `drama_tools.py dup-check --new <新稿> --source <参考>` | 汉字字面重合统计，不是原创证明 |
+| `drama_tools.py episode-check <正文>` | 剧集统计；只有给了 `--config` 或显式阈值才核对规格；`--speech` 加口播汉字数（不估时） |
+| `drama_tools.py dup-check --new <新稿> --source <参考>` | 汉字字面重合统计，不是原创证明；`--list-hits --k 8` 逐条列出命中位置 |
 | `drama_tools.py reference-check <模板详情.json>` | 检查拉片模板详情的集序与覆盖 |
 | `drama_tools.py knowledge validate <项目>` | 校验项目知识卡 |
 | `drama_tools.py knowledge search <项目> …` | 按类型、工位、用途、关键词检索知识卡 |
 | `drama_tools.py knowledge show <项目> <cardId>` | 显示一张知识卡并核对本地来源文件 |
 | `drama_tools.py import-project preview <项目> --listing …` | 迁移前旧稿成批存为候选的计划预览（只读） |
 | `drama_tools.py import-project apply <项目> --listing … --out …` | 按预览生成逐条保存输入，不调用 mali-story |
+| `drama_tools.py ledger {init\|merge\|apply\|replay\|check\|diff\|knows\|view\|stats} …` | 底账：建、分段合并、应用 delta、按集重放、一致性规则、两版差异、某人到某集知道什么、总账视图、统计 |
+| `drama_tools.py plan-check <分集计划> --ledger …` | 分集计划的脚本规则（在场、说话人知情、delta 有场拍支撑）；`--characters` 只报不拦 |
+| `drama_tools.py plan-events <分集计划> --out …` | 只导出分集计划的 events（去掉 saysFact 等设计字段），冷读包只收这份导出 |
+| `drama_tools.py season-plan-check <季编排> --function-map …` | 季编排对功能地图、容量与决定队列的脚本规则 |
+| `drama_tools.py capacity {season\|episode\|text} …` | 季编排粗估、分集计划复核、正文精估，一套公式两口径并报；超出写提案占位，退出码 0 |
+| `drama_tools.py decision {add\|list\|decide\|check} …` | 决定队列：登记（带默认）、列出、记主创决定（须原话）、核对 |
+| `drama_tools.py function-map {check\|merge\|topics} …` | 功能地图的脚本规则、分段合并、检索题目归并（只归并不检索） |
+| `drama_tools.py defects build --records …` | 从回答记录生成缺口登记表（回答记录是唯一来源） |
+| `drama_tools.py check-answers <回答记录…>` | 按问题单核回答记录格式；覆盖与 `--cross` 跨记录一致性只报不拦 |
+| `drama_tools.py retell-check <复述> --plan <计划>` | 冷读复述对照计划的信息事实与收尾事件：retold／partial／missing |
+| `drama_tools.py answers-consistency <记录甲> <记录乙>` | 两份回答记录同一落点的三态差异（只报） |
+| `drama_tools.py dialogue-plan-check <对话表> --episode-plan … --knows …` | 对话表的脚本规则（段、收尾、承载、listenerKnows 来自底账） |
+| `drama_tools.py plan-text-consistency <正文对照表> --dialogue-plan … --episode-plan …` | 正文对照对话表（含 `verbatimFrom` 行）：说话人序列、话题段边界、收尾、承载关键词 |
+| `drama_tools.py dialogue-diagnose <正文> --plan-text-map …` | 台词信号与位置、处境；不给区间判定 |
+| `drama_tools.py feedback-ingest <反馈文件> --out <空目录>` | 编剧反馈记成 writer-note 并按层级派生：反例、人工正例、对照对、约定与新问草稿、底账修订提案、K1 卡草稿、已定决定；派生物带 note id，`--purge` 按 id 清除；`--target` 另写升版的台词目标 |
+| `drama_tools.py corpus {segment\|label\|agree\|filter\|lexicon\|rate\|defaults\|fetch} …` | 语料库的脚本部分：切交换、标注格式、双跑比对（不一致记 low，不进检索）、过滤、题材禁词扫描、量语速与停顿、从语料重算随包统计；`fetch` 只做取用记账（计划、断点、快照核对、预算与回执比对），不联网 |
 
 实际执行时把脚本也解析为安装目录下的绝对路径。工具只用 Python 3.10+ 标准库。剧集检查默认只统计，`passed: null`，不能称为质量通过。已有明确项目规格才使用 `--config` 或显式阈值；未指定的规则不启用，不为消除报告而擅改规格。历史 AIGC 规则仅在 `--preset legacy-aigc` 下启用。
 

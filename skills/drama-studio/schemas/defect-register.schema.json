@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drama-studio/defect-register/v0",
+  "title": "缺口登记表：由 defects build 从回答记录生成，不手写",
+  "description": "d6-1-decisions #9：缺口去处只在回答记录的 disposition 里写，这里是派生视图。 开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "type": "object",
+  "required": [
+    "generatedBy",
+    "defects"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "drama-studio/defect-register/v0"
+    },
+    "generatedBy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "basedOn": {
+      "type": [
+        "string",
+        "array"
+      ]
+    },
+    "counts": {
+      "type": "object"
+    },
+    "defects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "defectId",
+          "title",
+          "loadBearing",
+          "records"
+        ],
+        "properties": {
+          "defectId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "defectKind": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "loadBearing": {
+            "type": "boolean"
+          },
+          "loadBearingBasis": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "stated_in_record",
+                "has_downstream",
+                "function_sentence_step"
+              ]
+            }
+          },
+          "loadBearingWhy": {
+            "type": "string"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "checkId",
+                "q",
+                "landsOn"
+              ],
+              "properties": {
+                "checkId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "q": {
+                  "type": "integer"
+                },
+                "landsOn": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "disposition": {
+            "type": [
+              "object",
+              "string"
+            ],
+            "description": "从回答记录 disposition 汇总（唯一来源在回答记录）；没有去处时为 open；各记录去处不一时 to: conflicting 并列出 dispositions[]",
+            "properties": {
+              "to": {
+                "type": "string",
+                "enum": [
+                  "confirmed_gone",
+                  "license",
+                  "decision",
+                  "leaves_open",
+                  "conflicting"
+                ]
+              },
+              "ref": {
+                "type": [
+                  "string",
+                  "array",
+                  "null"
+                ]
+              },
+              "dispositions": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Honest unknowns that no other field can express"
+    },
+    "formatNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "remote_artifact",
+            "remote_page",
+            "remote_snapshot",
+            "remote_brief",
+            "local_file",
+            "knowledge_card",
+            "context_snapshot",
+            "remote_receipt"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}
