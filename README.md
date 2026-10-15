@@ -2,6 +2,8 @@
 
 把这个仓库交给 AI，让它安装短剧创作工作流。复用 Codex、Claude Code、ChatGPT 或 WorkBuddy 的模型与工具，通过 mali-story MCP 使用已有拉片和项目能力。
 
+各版本的变化见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 让 AI 安装
 
 在有文件／命令权限的 AI 工具中，发送仓库地址并说：
@@ -12,7 +14,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.7.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.7.1` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -365,7 +367,8 @@ python3 -B $T feedback-ingest --purge WN-xxxxxxxxxx --out feedback/ep006
 - `corpus agree`：双跑标注比对（S 部分）。先按 `schemas/data/corpus-label-vocabulary.json` 收敛词表（function 近义项合并，relation 同时成立时取更具体的），再比 function、relation、infoMode（有交集算一致）；任一项不一致记 `labelConfidence: low`。`--out` 写一份带 `labelConfidence` 的副本，low 的 `quality.label` 记 `low`；`corpus filter` 把 low 的列为 `label_low`，不进通过名单。
 - `corpus defaults`：从语料重算随包统计——各形态的语速、停顿占比、单集时长、交换中位时长（都带 n），以及每张题材禁词表在本题材与别的题材里各出现多少、哪些词得到语料印证。候选新词可能带系列专有词，只写进 `--out`（项目目录）；随包数据文件只放统计量与原有词表。
 - `feedback-ingest --out <空目录>`：全路由派生。句级、来回级、话题级、场结构、信息承载 → 反例；带改法的句级 → 人工正例；来回／话题级 → 对照对草稿；信息承载、对象约定、独白与同类 ≥2 次 → 约定草稿，同类 ≥2 次另起草新问；程序、事实 → 底账修订提案与 K1 卡草稿；决定 → 决定队列条目（`decided`，`humanWords` 是原话）。每个派生物带 `fromNotes` 与 `status: drafted`，`--purge <noteId>` 按 id 清掉。输入另认 `### ` 分节的批注记录、`--section <标题>` 指定的 md 一节（表格每行一条）、追问单回答记录（文件或目录；落在程序依赖上、或 `defectKind` 为 `contradicts_reality` 的 notHolds）。`--target <台词目标>` 时，起草的约定写进升版的台词目标（新 `revision`，`changelog` 记一条，原文件不动）。
-- `contract-check dialogue-target`：有 `changelog` 时最后一条要是本修订，后面的修订要写 `from`；引用旧修订的任务照旧能过。`context-pack` 不装没有来源（`provenance` 或 `fromNotes`）的对照对。
+- `contract-check dialogue-target`：有 `changelog` 时要有本修订的一条（新的在前、在后都认）；引用旧修订的任务照旧能过。`context-pack` 不装没有来源（`provenance` 或 `fromNotes`）的对照对。
+- 工作室级语料（计划 §8 #1，2026-10-15 确认）：语料缓存可以放 `<工作室根>/corpus/`（工作室根是 `STUDIO.md` 所在目录）。`context-pack --studio-corpus <工作室根>/corpus` 时，`--exemplars` 可以是这个目录里的文件（按解析后的路径判断，`..` 与指向目录外的符号链接都拒）；装入的记录要是 `scope.level: studio` 且 `origin.kind: mali_story_template`，否则输入错误；对照对与对话表仍只能取自项目。`corpus label`／`agree`／`defaults` 对这个目录里的文件照同一条件核，`corpus fetch plan` 把台账写在这里时记 `scope.level: studio`。`contract-check corpus-manifest` 与 `dialogue-exchange` 放行 studio，条件相同；对照对、批注与知识卡仍只放行项目级。不给 `--studio-corpus` 时行为不变。
 - 随包数据：`default-media-profile.json` 各形态带 `n`，交换中位时长按形态重算（真人剧 10.7 秒，n=107；漫剧 12.0 秒，n=31）；`genre-lexicon.json` 每张表带 `measured`（n 与语料印证的词）。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。

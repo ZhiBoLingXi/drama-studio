@@ -100,7 +100,7 @@ d64 段的计数：
 ## 六、留给 D6-5 与待办
 
 - 全库取用、补三类缺口语料、计费确认：见 [d6-4-corpus.md](d6-4-corpus.md) 第四节。
-- 语料缓存的工作室级目录（计划 §8 #1）仍未确认，`contract-check` 照旧只放行 `scope.level: project`。
+- 语料缓存的工作室级目录（计划 §8 #1）在本报告写成时未确认，`contract-check` 只放行 `scope.level: project`。主创已于 2026-10-15 确认（「语料缓存能放工作室级」），随后的提交放行了工作室级语料（`context-pack --studio-corpus`，见 CHANGELOG「未发布」）。
 - `feedback-ingest` 的派生物都是 `drafted`。哪些约定进台词目标、哪些底账提案采纳，是主创的决定；脚本不改状态。
 
 ## 七、局限

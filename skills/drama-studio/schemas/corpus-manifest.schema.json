@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "drama-studio/corpus-manifest/v0",
   "title": "语料清单：每集的快照、取用时间与统计",
-  "description": "开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。",
+  "description": "开放对象：未列出的字段允许（D6-0 的真实产物带运行注记，如 formatNotes）；禁止字段与跨字段规则由 contract-check 执行。 scope.level: studio 仅当 origin.kind == mali_story_template（计划 §8 #1，2026-10-15 确认）。",
   "type": "object",
   "required": [
     "episodes"
@@ -76,6 +76,37 @@
         "type": "string"
       },
       "description": "写的时候发现字段不够用、多余或有歧义时记一条"
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "level"
+      ],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "project",
+            "studio"
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "origin": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "$defs": {

@@ -11,6 +11,9 @@ files joined by exchangeId (`--second`). With `--out`, a copy of the first file 
 `labelAgreement` and, for low rows, `quality.label: low`; the input is never changed. Writing the labels is the M part
 (a model's job) and stays out of this command.
 
+In a studio corpus folder (`<studio root>/corpus/`, beside STUDIO.md; plan §8 #1) every row must be scope.level
+studio with origin.kind mali_story_template, else input error; --out may only go there from studio input.
+
 Exit codes: 0 compared (disagreement is the answer, not a failure); 1 input error or --out would overwrite a file.
 """
 from __future__ import annotations
@@ -19,6 +22,9 @@ import argparse
 import json
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from studio import studio_corpus_root, studio_row_problem  # noqa: E402
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "schemas", "data", "corpus-label-vocabulary.json")
 
@@ -70,10 +76,27 @@ def compare(a, b, groups, parents):
     return agreement, converged, ("high" if function_same and relation_same and info_overlap else "low")
 
 
+def _studio_check(path, rows):
+    """A labels file in the studio corpus holds mali-story template data only (plan §8 #1)."""
+    if studio_corpus_root(path) is None:
+        return "project"
+    bad = [r.get("exchangeId") if isinstance(r, dict) else None for r in rows if studio_row_problem(r)]
+    if bad:
+        raise ValueError(f"{path} 在工作室语料目录里，但有 {len(bad)} 行不是 scope.level: studio 且 origin.kind: mali_story_template："
+                         f"{bad[:5]}；项目句子不进工作室语料")
+    return "studio"
+
+
 def run_agree(path, second=None, vocab_path=DATA, out=None):
     groups, parents = vocabulary(vocab_path)
     rows = _rows(path)
-    others = {r.get("exchangeId"): r for r in _rows(second)} if second else {}
+    scope = _studio_check(path, rows)
+    second_rows = _rows(second) if second else []
+    if second:
+        _studio_check(second, second_rows)
+    if out and studio_corpus_root(out) is not None and scope != "studio":
+        raise ValueError(f"--out {out} 在工作室语料目录里，输入却不是工作室语料；项目标注不写进工作室语料")
+    others = {r.get("exchangeId"): r for r in second_rows} if second else {}
     records, unpaired = [], []
     for row in rows:
         runs = row.get("labelRuns") if isinstance(row.get("labelRuns"), dict) else None
@@ -92,7 +115,7 @@ def run_agree(path, second=None, vocab_path=DATA, out=None):
                         "labelConfidence": confidence})
     n = len(records)
     rate = lambda key: round(sum(r["agreement"][key] for r in records) / n, 3) if n else None  # noqa: E731
-    result = {"ok": True, "input": path, "second": second, "compared": n, "notDoubleRun": len(unpaired),
+    result = {"ok": True, "input": path, "second": second, "scope": scope, "compared": n, "notDoubleRun": len(unpaired),
               "rates": {k: rate(k) for k in ("functionRaw", "function", "relationRaw", "relation", "infoModeOverlap")},
               "low": [r["exchangeId"] for r in records if r["labelConfidence"] == "low"],
               "records": records,
