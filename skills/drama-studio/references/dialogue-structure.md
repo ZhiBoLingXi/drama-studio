@@ -277,7 +277,7 @@ level 由脚本按批注落在哪一层推，推不出写 `unknown`，不找人�
 | 步 | 命令 | 退出码怎么读 |
 | --- | --- | --- |
 | 场前已知 | `ledger knows <底账修订> --episode-plan <分集计划>`（存成 knows 文件） | 0；`listenerKnows` 的初值 |
-| C5a 装包 | `context-pack <项目> --task … --selection … --role dialogue_designer --budget … [--exemplars <exchanges.jsonl>] [--contrast-pairs <contrast-pairs.jsonl>] [--quotes-per-topic 2]` | 2 分集计划容量不是 `fits` 或带默认的提案、超预算等 |
+| C5a 装包 | `context-pack <项目> --task … --selection … --role dialogue_designer --budget … [--exemplars <exchanges.jsonl>] [--contrast-pairs <contrast-pairs.jsonl>] [--studio-corpus <工作室根>/corpus/] [--quotes-per-topic 2]` | 2 分集计划容量不是 `fits` 或带默认的提案、超预算等 |
 | C5a 核对话表 | `dialogue-plan-check <对话表> --episode-plan <分集计划> --knows <knows 文件>` | 2 信息没分配、段没有收尾、说话人不知情、有配额字段等；`listener-knows` 只报 |
 | 对象格式 | `contract-check dialogue-plan <对话表>`；`contract-check task <任务>` | 2 违反 schema；任务里有数值型台词约束或「不动集数」类约束 |
 | C5b 装包 | `context-pack … --role author --budget … [--exemplars planning/dialogue/dialogue-plan-<NNN>.json] [--quotes-per-topic 2]`（任务 `layer: C5b`） | 2 包里没有对话表或对话表不过 `contract-check`；1 样本带原始台词行或缺 `maskedLines`；超出遮蔽句上限的样本列进 `omitted`（`quote_cap`） |

@@ -726,7 +726,11 @@ def _rules_dialogue_exchange(doc: dict, ctx=None, notes=None) -> list[str]:
 
 def _rules_corpus_manifest(doc: dict, ctx=None, notes=None) -> list[str]:
     keys = [(e["templateId"], e["episodeIndex"]) for e in doc["episodes"]]
-    return [f"episodes: {key[0]} episode {key[1]} listed twice" for key in _duplicates(keys)]
+    errors = [f"episodes: {key[0]} episode {key[1]} listed twice" for key in _duplicates(keys)]
+    # plan §8 #1 (confirmed 2026-10-15): a studio-level manifest, like a studio exchange, lists mali-story template data only
+    if doc.get("scope", {}).get("level") == "studio" and doc.get("origin", {}).get("kind") != "mali_story_template":
+        errors.append("scope.level: studio only for a manifest whose origin.kind is mali_story_template (no project sentences)")
+    return errors
 
 
 def _rules_dialogue_plan(doc: dict, ctx=None, notes=None) -> list[str]:

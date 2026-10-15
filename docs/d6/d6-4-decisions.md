@@ -12,6 +12,8 @@
 
 缓存放项目目录（现有 `runs/pilot-ep006/corpus/`）；schema 两级都允许，`contract-check` 在主创确认前只放行 `scope.level: project`。新项目的语料默认放 `corpus/`（项目根下），`init-project` 不预建。
 
+**修订（2026-10-15）**：主创确认计划 §8 #1，原话「语料缓存能放工作室级」。此后缓存默认放 `<工作室根>/corpus/`，`dialogue-exchange`、`corpus-manifest` 允许 `scope.level: studio`；项目内的 `corpus/` 仍可用；对照对、批注、本项目反例与人工正例仍只允许项目级。已有的 D6-0 项目缓存不挪。
+
 ## 3. 本阶段在本项目上跑的东西
 
 - `feedback-ingest` 全路由：对本项目编剧第 6 集 7 条批注、`writer-edit-pairs.md` §二、现实审查里程序类意见各跑一次。派生物写进本项目（私有、gitignored），仓库里只留计数（写在 `docs/d6/d6-4-report.md` 第四节）。

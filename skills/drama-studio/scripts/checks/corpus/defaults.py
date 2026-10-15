@@ -9,7 +9,8 @@ From a corpus folder (`raw/<templateId>/ep-*.json`, `exchanges.jsonl`, `manifest
     names left out). Candidates may hold series-specific words, so they stay in --out (the project), never in the bundle;
   - a comparison with the bundled `default-media-profile.json` and `genre-lexicon.json`.
 
-The bundle only ever takes statistics and word lists, never corpus lines. Reads only; writes --out when given (never
+The corpus may be a studio corpus folder (`<studio root>/corpus/`, plan §8 #1); its exchanges must then all be
+scope.level studio from a mali-story template. The bundle only ever takes statistics and word lists, never corpus lines. Reads only; writes --out when given (never
 overwrites). Exit codes: 0 done; 1 input error.
 """
 from __future__ import annotations
@@ -25,6 +26,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import rate  # noqa: E402
+from studio import studio_corpus_root, studio_row_problem  # noqa: E402
 
 DATA = os.path.join(HERE, "..", "..", "..", "schemas", "data")
 HAN = re.compile(r"[一-鿿]+")
@@ -111,8 +113,13 @@ def compare_media(measured, bundled):
 def run_defaults(corpus, series_format, out=None, media_path=None, lexicon_path=None):
     media_path = media_path or os.path.join(DATA, "default-media-profile.json")
     lexicon_path = lexicon_path or os.path.join(DATA, "genre-lexicon.json")
-    profile = rate.compute_media_profile(os.path.join(corpus, "raw"), series_format)
     rows = _exchanges(corpus)
+    scope = "studio" if studio_corpus_root(corpus) is not None else "project"
+    bad = [r.get("exchangeId") for r in rows if studio_row_problem(r)] if scope == "studio" else []
+    if bad:  # plan §8 #1: the studio corpus holds mali-story template data only
+        raise ValueError(f"{corpus} 是工作室语料目录，但 exchanges.jsonl 有 {len(bad)} 行不是 scope.level: studio 且 "
+                         f"origin.kind: mali_story_template：{bad[:5]}")
+    profile = rate.compute_media_profile(os.path.join(corpus, "raw"), series_format)
     measured = {"formatDefault": {fmt: {k: v[k] for k in ("series", "sampleEpisodes", "targetSecondsDefault", "speechRateCharsPerMin",
                                                           "grossCharsPerMinute", "pauseShare") if k in v}
                                   for fmt, v in profile["formatDefault"].items()},
@@ -120,7 +127,7 @@ def run_defaults(corpus, series_format, out=None, media_path=None, lexicon_path=
     for fmt, values in measured["formatDefault"].items():
         values["n"] = {"series": len(values.pop("series")), "episodes": values["sampleEpisodes"]}
     lexicon = lexicon_stats(rows, _load(lexicon_path))
-    result = {"ok": True, "corpus": corpus, "media": measured, "mediaDiffs": compare_media(measured, _load(media_path)),
+    result = {"ok": True, "corpus": corpus, "scope": scope, "media": measured, "mediaDiffs": compare_media(measured, _load(media_path)),
               "lexicon": lexicon,
               "note": "随包数据只取统计量与词表；candidates 可能含系列专有词，只写进 --out（项目目录）"}
     if out:

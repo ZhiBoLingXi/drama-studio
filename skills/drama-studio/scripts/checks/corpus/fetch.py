@@ -20,6 +20,10 @@ for, and watched for charges.
                           reading is missing, unconfigured or null) -- plus snapshot mismatches and call counts. The
                           observation block (calls, readings, receipt ids) is what docs/d6 may carry. Read-only.
 
+A ledger written inside a studio corpus folder (`<studio root>/corpus/`, beside STUDIO.md; plan §8 #1) is
+scope.level studio; elsewhere project. Either way it records mali-story template reads (origin.kind
+mali_story_template) and nothing a project wrote.
+
 Exit codes: 0 done; 1 input error (or a ledger that would be overwritten); 2 verify saw a deduction or a snapshot
 mismatch (stop and record; the read must not go on to the whole library).
 """
@@ -31,6 +35,9 @@ import hashlib
 import json
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from studio import studio_corpus_root  # noqa: E402
 
 SCHEMA = "drama-studio/corpus-fetch-ledger/v0"
 MAX_ATTEMPTS = 3
@@ -98,12 +105,13 @@ def cmd_plan(args):
         for episode in sorted(int(e) for e in episodes)[:args.episodes_per_series]:
             items.append({"templateId": template["templateId"], "episodeIndex": episode,
                           "expectedSnapshotId": snapshots.get(str(episode)) or template.get("snapshotId")})
-    doc = {"schemaVersion": SCHEMA, "createdAt": _now(),
+    scope = "studio" if studio_corpus_root(os.path.dirname(os.path.abspath(args.out))) is not None else "project"
+    doc = {"schemaVersion": SCHEMA, "createdAt": _now(), "scope": {"level": scope}, "origin": {"kind": "mali_story_template"},
            "plan": {"series": min(args.series, len(templates)), "episodesPerSeries": args.episodes_per_series, "items": items,
                     "rule": "先取 3 部各 10 集，看预算与回执；有扣费迹象即停并记录，计费未确认前不取全库（计划 §4.5）"},
            "calls": [], "budget": []}
     _write(args.out, doc)
-    return {"ok": True, "ledger": args.out, "items": len(items)}, 0
+    return {"ok": True, "ledger": args.out, "scope": scope, "items": len(items)}, 0
 
 
 def cmd_record(args):
@@ -195,7 +203,8 @@ def cmd_verify(args):
     state, why = billing(doc["budget"])
     mismatches = [c for c in doc["calls"] if c["snapshotCheck"] == "snapshot_mismatch"]
     receipts = sorted({r for reading in doc["budget"] for r in reading.get("receiptIds") or []})
-    result = {"ok": True, "passed": state != "deduction_seen" and not mismatches, "billing": state, "billingWhy": why,
+    result = {"ok": True, "scope": (doc.get("scope") or {}).get("level", "project"),
+              "passed": state != "deduction_seen" and not mismatches, "billing": state, "billingWhy": why,
               "snapshotMismatches": [{k: c[k] for k in ("callId", "templateId", "episodeIndex", "expectedSnapshotId", "snapshotId")}
                                      for c in mismatches],
               "observation": {"calls": len(doc["calls"]), "callsOk": sum(c["outcome"] == "ok" for c in doc["calls"]),

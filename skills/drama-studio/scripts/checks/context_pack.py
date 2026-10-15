@@ -18,7 +18,9 @@ D6-3: samples go into their own samples partition (no longer current_plan) as ma
 walkthrough, skeleton, maskedLines), never raw transcript rows. --exemplars is a JSONL of such records, or the dialogue
 plan itself, whose exemplars.positives objects are packed as their own character ranges. --quotes-per-topic caps the
 masked lines a topic's samples carry in all (default 2, 0 for none); a sample that would pass the cap is left out whole
-(reason quote_cap). A written package appends its samples to .drama/packs/history.json, and a sample the previous
+(reason quote_cap). With --studio-corpus <studio root>/corpus/, --exemplars may be a JSONL in that folder (resolved
+path; `..` or a symlink out of it is refused); its packed records must be scope.level studio from a mali-story template,
+and are packed under the id studio-corpus/<path>. Contrast pairs and dialogue plans stay project files. A written package appends its samples to .drama/packs/history.json, and a sample the previous
 episode's package also held is reported under samples.repeatedFromPreviousEpisode (reported, not refused).
 
 D6-2: in a project that has started the outline layer (season_check.outline_project: planning/season-plan.json or
@@ -35,6 +37,7 @@ from pathlib import Path
 import re
 
 from .contract_check import COMPARISON_ROLES, DATA_DIR, check_contract
+from .corpus.studio import studio_corpus_dir, studio_row_problem
 from .receipt import MANIFESTS, effective_entries
 from .season_check import layer_records, outline_project, record_kind
 
@@ -210,7 +213,7 @@ def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) 
 
 def run_context_pack(project, task, selection, role: str, budget: int, dry_run: bool = False,
                      allow_unverified: bool = False, exemplars: str | None = None, contrast_pairs: str | None = None,
-                     quotes_per_topic: int = QUOTES_PER_TOPIC) -> dict:
+                     quotes_per_topic: int = QUOTES_PER_TOPIC, studio_corpus: str | None = None) -> dict:
     root = Path(project).expanduser().absolute()
     if not root.is_dir():
         raise ValueError(f"Project directory not found: {root}")
@@ -218,6 +221,7 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         raise ValueError("--budget must be a positive number of chars")
     if quotes_per_topic < 0:
         raise ValueError("--quotes-per-topic must be 0 or more")
+    studio = studio_corpus_dir(studio_corpus) if studio_corpus else None  # plan §8 #1: the corpus cache may be studio-level
     task_bytes = Path(task).read_bytes()
     task_doc = _load_json(Path(task), "task")
     problems = check_contract("task", task_doc)
@@ -324,7 +328,7 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         if role not in SAMPLE_ROLES or (role == "author" and task_doc.get("layer") != "C5b"):
             raise ValueError("--exemplars/--contrast-pairs pack samples for C5a (dialogue_designer) or C5b (author with task.layer C5b) only")
         samples = _pack_samples(root, packed_docs, exemplars, contrast_pairs, budget - sum(i["chars"] for i in items),
-                                items, item_labels, omitted, omitted_labels, quotes_per_topic)
+                                items, item_labels, omitted, omitted_labels, quotes_per_topic, studio)
         history = _history(root)
         samples["repeatedFromPreviousEpisode"] = _repeats(history, samples)
     partition_chars = {name: sum(i["chars"] for i in items if i["partition"] == name) for name in PARTITIONS}
@@ -455,15 +459,25 @@ def _role_rules(root: Path, role: str, task_doc: dict, items: list, labels: list
     return errors
 
 
-def _sample_file(root: Path, path: str, what: str) -> tuple[str, bytes, dict, dict]:
-    """A JSONL sample file inside the project: (project-relative id, bytes, key -> (start, end) of its line, key -> row)."""
+def _sample_file(root: Path, path: str, what: str, studio: Path | None = None) -> tuple[str, bytes, dict, dict, bool]:
+    """A JSONL sample file inside the project, or (--exemplars only) inside the studio corpus folder: (id, bytes,
+    key -> (start, end) of its line, key -> row, whether it is studio-level). Paths are resolved first, so `..` and a
+    symlink that points out of the folder are judged by where they land."""
     resolved = Path(path).expanduser().absolute().resolve()
-    if not resolved.is_relative_to(root.resolve()) or resolved.relative_to(root.resolve()).parts[0] not in SAMPLE_ROOTS:
-        raise ValueError(f"{what} must be a file inside {', '.join(f'{f}/' for f in SAMPLE_ROOTS)} of the project: {path}")
+    in_project = resolved.is_relative_to(root.resolve()) and resolved.relative_to(root.resolve()).parts[0] in SAMPLE_ROOTS
+    in_studio = studio is not None and what == "--exemplars" and resolved.is_relative_to(studio) and not in_project
+    if not (in_project or in_studio):
+        where = f"{', '.join(f'{f}/' for f in SAMPLE_ROOTS)} of the project"
+        if studio is not None:
+            where += " (--exemplars may also be in --studio-corpus; contrast pairs stay project-level)"
+        raise ValueError(f"{what} must be a file inside {where}: {path}")
+    ident = f"studio-corpus/{resolved.relative_to(studio).as_posix()}" if in_studio else resolved.relative_to(root.resolve()).as_posix()
     data = resolved.read_bytes()
     plan = _plan_exemplars(data.decode("utf-8"))
     if plan is not None:
-        return (resolved.relative_to(root.resolve()).as_posix(), data, *plan)
+        if in_studio:
+            raise ValueError(f"{what}: a dialogue plan is a project record and is not read from the studio corpus: {path}")
+        return (ident, data, *plan, False)
     spans, rows, offset = {}, {}, 0
     for line in data.decode("utf-8").splitlines(keepends=True):
         body = line.rstrip("\r\n")
@@ -477,7 +491,7 @@ def _sample_file(root: Path, path: str, what: str) -> tuple[str, bytes, dict, di
                 spans.setdefault(key, (offset, offset + len(body)))
                 rows.setdefault(key, row)
         offset += len(line)
-    return resolved.relative_to(root.resolve()).as_posix(), data, spans, rows
+    return ident, data, spans, rows, in_studio
 
 
 def _plan_exemplars(text: str):
@@ -531,7 +545,7 @@ def _masked_problem(row: dict) -> str | None:
 
 
 def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, omitted, omitted_labels,
-                  quotes_per_topic=QUOTES_PER_TOPIC) -> dict:
+                  quotes_per_topic=QUOTES_PER_TOPIC, studio=None) -> dict:
     """Two corpus positives and one contrast pair per topic of the packed dialogue plan(s), as masked sample records
     (situation, walkthrough, skeleton, maskedLines; a raw transcript row is refused), into the samples partition in priority
     order while the budget lasts. A topic's samples carry at most quotes_per_topic masked lines in all (default 2, 0 for
@@ -540,8 +554,8 @@ def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, om
     plans = [doc for _, doc in docs if record_kind(doc) == "dialogue-plan"]
     if not plans:
         raise ValueError("samples follow the topics of a packed dialogue plan; the selection holds none")
-    files = {"positive": _sample_file(root, exemplars, "--exemplars") if exemplars else None,
-             "contrast": _sample_file(root, contrast_pairs, "--contrast-pairs") if contrast_pairs else None}
+    files = {"positive": _sample_file(root, exemplars, "--exemplars", studio) if exemplars else None,
+             "contrast": _sample_file(root, contrast_pairs, "--contrast-pairs", studio) if contrast_pairs else None}
     tiers, seen, unresolved = ([], [], []), set(), []
     for plan in plans:
         for scene in plan.get("scenes") or []:
@@ -558,7 +572,7 @@ def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, om
                     if key is None:
                         unresolved.append(f"{topic.get('topicId')}:{ref}")
                         continue
-                    problem = _masked_problem(file[3][key])
+                    problem = _masked_problem(file[3][key]) or (studio_row_problem(file[3][key]) if file[4] else None)
                     if problem:
                         raise ValueError(f"sample {key} (topic {topic.get('topicId')}) {problem}")
                     taken[kind] += 1
@@ -568,7 +582,7 @@ def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, om
                     tier = 1 if kind == "contrast" else (0 if taken[kind] == 1 else 2)
                     tiers[tier].append((topic.get("topicId"), kind, key, file))
     packed, left, capped, keys, quotes = 0, 0, 0, [], {}
-    for topic, kind, key, (ident, data, spans, rows) in [entry for tier in tiers for entry in tier]:
+    for topic, kind, key, (ident, data, spans, rows, _) in [entry for tier in tiers for entry in tier]:
         start, end = spans[key]
         text = data.decode("utf-8")[start:end]
         ref = {"kind": "local_file", "id": ident, "revision": _sha(data), "sha256": _sha(data), "range": {"start": start, "end": end}}
@@ -593,7 +607,7 @@ def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, om
             omitted.append({"ref": ref, "required": False, "reason": "budget"})
             omitted_labels.append(label)
     episodes = [plan.get("episode") for plan in plans if plan.get("episode") is not None]
-    return {"packed": packed, "omittedForBudget": left, "omittedForQuoteCap": capped, "unresolved": unresolved,
+    return {"packed": packed, "fromStudioCorpus": bool(files["positive"] and files["positive"][4]), "omittedForBudget": left, "omittedForQuoteCap": capped, "unresolved": unresolved,
             "quotesPerTopic": quotes_per_topic, "maskedLinesPerTopic": quotes,
             "episode": episodes[0] if episodes else None, "keys": keys,
             "policy": f"每话题至多 2 个语料正例＋1 个对照对，样本须是遮蔽后的样本记录；一个话题所有样本的 maskedLines 合计不超过 "

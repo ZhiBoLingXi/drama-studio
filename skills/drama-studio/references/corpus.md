@@ -8,8 +8,10 @@
 
 ## 1. 放在哪、范围多大
 
-- 语料缓存放项目目录下的 `corpus/`（项目根下，`init-project` 不预建，第一次取用时建）。工作室级缓存要等主创确认一条契约变更，确认之前 `contract-check` 只放行 `scope.level: project`。
-- 目录结构：
+- 语料缓存默认放工作室级：`<工作室根>/corpus/`（工作室根是放 `STUDIO.md` 的那个目录，见 [初始化](initialization.md)），几部剧共用一份，不必每个项目各取一遍。语料只是 mali-story 模板数据的只读缓存，不是知识卡，也不是共享知识；工作室级的交换与清单写 `scope.level: studio`。项目内的 `corpus/`（项目根下）仍可用，写 `scope.level: project`。两处都不预建，第一次取用时建。
+- 装包时用工作室级语料：`context-pack … --studio-corpus <工作室根>/corpus/`（只给 C5a、C5b），这时 `--exemplars` 可以是这个目录里的文件，其中的记录须是 `scope.level: studio`、来自 mali-story 模板。
+- 不论放哪一级，对照对、批注（`writer-note`）、本项目来源的反例与人工正例只能是项目级（`knowledge/contrast/`）；知识卡规则不变，仍只允许项目私有。
+- 目录结构（下面的 `corpus/` 指缓存所在的那一级目录）：
   - `corpus/raw/<templateId>/ep-<episodeIndex>.json`：取回的证据原样存（含 `snapshotId`）。
   - `corpus/fetch-ledger.json`：取用账本（`corpus fetch` 写），记计划、每次调用、预算读数与回执 ID。
   - `corpus/manifest.json`（`corpus-manifest`）：每集的 `templateId`、`episodeIndex`、`snapshotId`、`fetchedAt`、`source`，以及 `readCalls: {total, failures, billing}`。
@@ -121,4 +123,5 @@
 | 重算默认值 | `corpus defaults <corpus 目录> [--out <文件>]` | 0；候选词只进 `--out` |
 | 语速与停顿 | `corpus rate <corpus/raw> [--series-format <templateId>=live｜anime]` | 0；只给物理量与 `n` |
 | 禁词扫描 | `corpus lexicon <正文> --project-genre <题材>` | 只报 `GENRE_LEAK` |
-| 对象格式 | `contract-check {dialogue-exchange｜corpus-manifest｜contrast-pair} <文件>` | 2 违反 schema，或带项目句子的记录不是 `scope.level: project` |
+| 用工作室语料装包 | `context-pack … --role dialogue_designer｜author --studio-corpus <工作室根>/corpus/ --exemplars <其中的文件>` | 2 记录不是 `scope.level: studio` 或不是来自 mali-story 模板等 |
+| 对象格式 | `contract-check {dialogue-exchange｜corpus-manifest｜contrast-pair} <文件>` | 2 违反 schema；对照对与批注不是 `scope.level: project`；工作室级记录里混进项目句子 |

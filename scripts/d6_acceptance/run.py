@@ -6,7 +6,7 @@ checks, print one table.
 
 V is the private D6-0 run directory (default projects/qige-xiongdi/runs/pilot-v2, gitignored). When it does not exist,
 every V-based row is skipped and says so. Reads V and the real projects under projects/; writes only into temporary
-directories it removes (the 0.3.6 baseline extracted with `git archive main`, a merged ledger, a test install). Not bundled.
+directories it removes (the 0.3.6 baseline extracted with `git archive` of the 0.3.6 commit, a merged ledger, a test install). Not bundled.
 
 Every row: {stream, name, command, file, result, consistent, baseline, note}
   result      pass | fail | explained_difference | skipped
@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 CHECKS = TOOL.parent / "checks"
 SEGMENTS = ("schemas", "ledger", "checks", "corpus", "d62", "d63", "d64")
+BASELINE_0_3_6 = "6a0ab3e"  # feat(skill): ... 0.3.6 (#73); VERSION there is 0.3.6
 PROJECTS = ("yuanxinsuo", "qige-xiongdi")  # real projects with 0.3.6-era records and no D6 records
 LOCK_ARGS = ("--episodes 1-60", "--outline 1-60", "--episodes 1-10 --outline 1-60 --allow-offline", "--episodes 1-60 --revise",
              "--episodes 1-10 --skip-dialogue", "--episodes 1-60 --since 2026-10-01T00:00:00+08:00")
@@ -97,11 +98,12 @@ def lock_rows():
         return [row("E", "season-check legacy lock", None, None, "skipped", "n/a", "0.3.6", "projects/ 下没有真实项目")]
     rows = []
     with tempfile.TemporaryDirectory() as base:
-        archive = subprocess.run(f"git archive main skills/drama-studio | tar -x -C {shlex.quote(base)}", shell=True, cwd=ROOT,
+        # main moved past 0.3.6 when the D6 work merged (PR #81), so the baseline is pinned to the 0.3.6 release commit
+        archive = subprocess.run(f"git archive {BASELINE_0_3_6} skills/drama-studio | tar -x -C {shlex.quote(base)}", shell=True, cwd=ROOT,
                                  capture_output=True, text=True)
         old_tool = Path(base) / "skills/drama-studio/scripts/drama_tools.py"
         if archive.returncode != 0 or not old_tool.is_file():
-            return [row("E", "season-check legacy lock", None, None, "skipped", "n/a", "0.3.6", f"取不到 main 的 0.3.6：{archive.stderr[-200:]}")]
+            return [row("E", "season-check legacy lock", None, None, "skipped", "n/a", "0.3.6", f"取不到 0.3.6（{BASELINE_0_3_6}）：{archive.stderr[-200:]}")]
         for project in projects:
             for args in LOCK_ARGS:
                 command = ["season-check", str(project), *args.split()]

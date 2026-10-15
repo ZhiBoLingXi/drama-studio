@@ -16,6 +16,9 @@ Checks:
     §词表. The vocabulary is explicitly open ("用了新值要在 note 里说一句"), so an out-of-list
     value is only a defect when `quality.note` gives no explanation -- this only ever *reports*,
     never blocks (architecture doc §3.1: a diagnostic signal is a pointer, not a verdict).
+  - studio (plan §8 #1): a label file inside a studio corpus folder (<studio root>/corpus/), or a row with
+    scope.level studio, must be scope.level studio with origin.kind mali_story_template; otherwise a format defect
+    (studio_not_template_data).
   - speakerAttributionSuspect: a line is flagged when its time range overlaps more than one
     Storyline paragraph and some paragraph names a different known speaker without naming the
     line's attributed speaker (stage-a-report.md §8 #1 -- this is exactly how the real CKXR
@@ -37,6 +40,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import transcript as T  # noqa: E402
+from studio import studio_corpus_root, studio_row_problem  # noqa: E402
 
 FUNCTION_VOCAB = {
     "交代", "求助", "施压", "对质", "安抚", "撒谎", "拒绝", "认错", "下命令", "讨价",
@@ -184,11 +188,17 @@ def speaker_attribution_suspect(lines, secs, line_start, line_end):
 
 def run_label(label_path, raw_dir=None):
     rows = _read_jsonl(label_path)
+    in_studio = studio_corpus_root(label_path) is not None
     seen_ids = {}
     out_rows = []
     all_format_issues = []
     for ln, row in rows:
         issues = _format_issues(ln, row)
+        # plan §8 #1: a label in the studio corpus, or one that says studio, is mali-story template data only
+        if in_studio or (isinstance(row.get("scope"), dict) and row["scope"].get("level") == "studio"):
+            problem = studio_row_problem(row)
+            if problem:
+                issues.append({"code": "studio_not_template_data", "line": ln, "detail": problem})
         exchange_id = row.get("exchangeId")
         if isinstance(exchange_id, str):
             if exchange_id in seen_ids:
@@ -213,7 +223,7 @@ def run_label(label_path, raw_dir=None):
             "speakerAttributionSuspect": suspect, "speakerAttributionEvidence": suspect_reasons,
         })
     return {
-        "ok": True, "labelFile": label_path, "rawDir": raw_dir,
+        "ok": True, "labelFile": label_path, "rawDir": raw_dir, "scope": "studio" if in_studio else "project",
         "rowCount": len(out_rows), "formatIssueCount": len(all_format_issues),
         "vocabWarningCount": sum(len(r["vocabWarnings"]) for r in out_rows),
         "speakerAttributionSuspectCount": sum(1 for r in out_rows if r["speakerAttributionSuspect"]),
