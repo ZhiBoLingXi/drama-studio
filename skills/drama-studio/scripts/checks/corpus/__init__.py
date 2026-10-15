@@ -1,2 +1,3 @@
-"""Corpus S commands (D6-1 流D): segment, label (S part), filter, lexicon, rate. fetch and the
-M part of label/walkthrough are D6-4."""
+"""Corpus S commands: segment, label (S part), agree (double-run agreement), filter, lexicon, rate, defaults
+(recompute the bundled statistics), and fetch (bookkeeping only; the agent calls mali-story). The M part of
+label/walkthrough is a model's job."""

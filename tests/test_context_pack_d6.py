@@ -46,7 +46,9 @@ class D6PackTests(unittest.TestCase):
         self.write("runs/ep-003.md", TEXT)
         self.write("runs/corpus/exchanges.jsonl", "\n".join(json.dumps(exchange(f"EX-000{i}", "甲说了一句话" * i), ensure_ascii=False)
                                                             for i in range(1, 5)) + "\n")
-        self.write("runs/contrast-pairs.jsonl", json.dumps({"pairId": "CP-01", "whyNotHere": "这里对方不会接话"}, ensure_ascii=False) + "\n")
+        # D6-4 changed this fixture on purpose: a contrast pair without a source (provenance or fromNotes) is not packed
+        self.write("runs/contrast-pairs.jsonl", json.dumps({"pairId": "CP-01", "whyNotHere": "这里对方不会接话",
+                                                            "provenance": {"negativeFrom": "check_and_retell"}}, ensure_ascii=False) + "\n")
 
     def tearDown(self):
         self.temp.cleanup()

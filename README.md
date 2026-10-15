@@ -12,7 +12,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.6.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.7.0` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -343,6 +343,30 @@ python3 -B $T contract-check plan-text-map runs/b6/plan-text-map-006.json
 - `contract-check revision-list`（新对象）：修订单每项指问题、引依据，不写替换台词（SPEAKER 格式行）、不下数值指令（`constraint-blocklist` 的数值类），退出码 2；`where`、`cites` 等定位字段不扫，「本轮不改：…」这类说明标签不算台词行。`season-check` 的 `fixlist-no-lines` 用同一个扫描核 `.drama/checks/` 里的修订单。
 - 走通演示之后（[D6-3 决定 §6](docs/d6/d6-3-decisions.md)）：台词目标 `corpusManifest` 可为 `null`（须写 `noCorpusReason`），这时 `dup-two-tier` 的 13 字全库档记 not_evaluable，8 字档只在对话表引用了语料正例时才要；`mediaProfile` 可为 `null`（用随包默认档案）；`ledger knows` 把图谋账算作其主人知道；`consistency-record` 只在同一稿有两份处境对照时才要；修订单扫描在 `season-check` 里按本集人物名单认台词行；题材禁词表按 `lexicon:genre-lexicon@v1` 进包；`review-record` 的 `layer` 有 `C5a`、`C5b`，首读封存可写进记录的 `sealedSha256`，台词层项目的首读、次读只认审读对象是正文的记录；对话表交换上的 `interruptedAt` 由 `plan-text-consistency` 核；处境对照一答可同时有 `landsOn` 与 `quoteRef`，`n/a` 不必引句；冷读复述每条可带 `sourceLine`、`sourceKind`；对照表 `lineToPlan[].kind` 限定六种；`episode-check` 认「次日晚」这类场头时间词；`run-handoff` 可带 `decisionRefs[]`（`contract-check run-handoff --decisions` 核引用存在）；无语料时 `dialogueLayerRules` 的 `dup-two-tier` 另写 `notEvaluatedTiers`；`interrupted-by` 按被打断交换上的 `interruptedAt` 与话题 `interruptedBy.by` 核，被打断的人不必说完；`capacity text` 输出 `targetSec` 与 `targetSecSource`（`--target-sec` ＞ `--episode-plan` 的 `capacity.targetSec` ＞ 媒介档案，不给 `--media` 时是随包默认档案）。
 - `contract-check plan-text-map`（新对象）：C5b 的对照表（`exchangeToLines`、`lineToPlan` 的 `closerOf`／`carries`／`verbatimFrom`，`plan-text-consistency` 的输入）；核 `exchangeToLines` 指到的行在 `lineToPlan` 里标了同一个交换、逐字采用的行在 `verbatimFrom` 汇总里有出处。
+
+### 语料库与反馈回流（0.7.0）
+
+依据：[D6-4 决定](docs/d6/d6-4-decisions.md)。本阶段没有 mali-story 连接，不做远端取用，以现有小样本（3 部、40 集、138 条交换）结束；全库取用、补语料、计费确认是待办（[语料记录](docs/d6/d6-4-corpus.md)）。
+
+```sh
+T=skills/drama-studio/scripts/drama_tools.py
+python3 -B $T corpus fetch plan templates.json --out corpus/fetch-ledger.json      # 先取 3 部各 10 集
+python3 -B $T corpus fetch budget corpus/fetch-ledger.json --label before --reading budget.json --receipts receipts.json
+python3 -B $T corpus fetch record corpus/fetch-ledger.json --template <id> --episode 1 --response resp.json
+python3 -B $T corpus fetch resume corpus/fetch-ledger.json                          # 断点清单
+python3 -B $T corpus fetch verify corpus/fetch-ledger.json                          # 有扣费迹象或快照不符退出 2
+python3 -B $T corpus agree corpus/exchanges.jsonl --out corpus/exchanges.agreed.jsonl
+python3 -B $T corpus defaults corpus --series-format <id>=anime --out corpus/defaults.json
+python3 -B $T feedback-ingest notes.md --out feedback/ep006 --target planning/dialogue-target.json
+python3 -B $T feedback-ingest --purge WN-xxxxxxxxxx --out feedback/ep006
+```
+
+- `corpus fetch`：取用记账，不联网。`plan` 按模板清单排出前 3 部各 10 集（带期望的 `snapshotId`）；`record` 记一次调用的结果（响应读不出或带 error 记 failed，`snapshotId` 与期望不符记 `snapshot_mismatch`），尝试次数自动计；`budget` 记预算读数与当时的回执 id；`resume` 列未取、待重试（不到 3 次）与放弃的；`verify` 比第一次与最后一次读数：额度下降或出现新回执为 `deduction_seen`、都可读且相同为 `no_change_seen`、读数缺或 `unconfigured` 为 `unconfirmed`（看不出扣费，也不能证明没扣），有扣费迹象或快照不符退出码 2。输出的 `observation` 只有调用次数、预算读数与回执 id。
+- `corpus agree`：双跑标注比对（S 部分）。先按 `schemas/data/corpus-label-vocabulary.json` 收敛词表（function 近义项合并，relation 同时成立时取更具体的），再比 function、relation、infoMode（有交集算一致）；任一项不一致记 `labelConfidence: low`。`--out` 写一份带 `labelConfidence` 的副本，low 的 `quality.label` 记 `low`；`corpus filter` 把 low 的列为 `label_low`，不进通过名单。
+- `corpus defaults`：从语料重算随包统计——各形态的语速、停顿占比、单集时长、交换中位时长（都带 n），以及每张题材禁词表在本题材与别的题材里各出现多少、哪些词得到语料印证。候选新词可能带系列专有词，只写进 `--out`（项目目录）；随包数据文件只放统计量与原有词表。
+- `feedback-ingest --out <空目录>`：全路由派生。句级、来回级、话题级、场结构、信息承载 → 反例；带改法的句级 → 人工正例；来回／话题级 → 对照对草稿；信息承载、对象约定、独白与同类 ≥2 次 → 约定草稿，同类 ≥2 次另起草新问；程序、事实 → 底账修订提案与 K1 卡草稿；决定 → 决定队列条目（`decided`，`humanWords` 是原话）。每个派生物带 `fromNotes` 与 `status: drafted`，`--purge <noteId>` 按 id 清掉。输入另认 `### ` 分节的批注记录、`--section <标题>` 指定的 md 一节（表格每行一条）、追问单回答记录（文件或目录；落在程序依赖上、或 `defectKind` 为 `contradicts_reality` 的 notHolds）。`--target <台词目标>` 时，起草的约定写进升版的台词目标（新 `revision`，`changelog` 记一条，原文件不动）。
+- `contract-check dialogue-target`：有 `changelog` 时最后一条要是本修订，后面的修订要写 `from`；引用旧修订的任务照旧能过。`context-pack` 不装没有来源（`provenance` 或 `fromNotes`）的对照对。
+- 随包数据：`default-media-profile.json` 各形态带 `n`，交换中位时长按形态重算（真人剧 10.7 秒，n=107；漫剧 12.0 秒，n=31）；`genre-lexicon.json` 每张表带 `measured`（n 与语料印证的词）。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。
 

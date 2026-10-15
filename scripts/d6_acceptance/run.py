@@ -1,6 +1,6 @@
 """D6-1/D6-2/D6-3 local acceptance, the single entry point: collect the stream segments (D6-2 adds d62: the outline-layer
-artifacts moved into a project; D6-3 adds d63: the episode 6A dialogue-layer records), add the integration checks, print
-one table.
+artifacts moved into a project; D6-3 adds d63: the episode 6A dialogue-layer records; D6-4 adds d64: corpus and feedback), add the integration
+checks, print one table.
 
     python3 -B scripts/d6_acceptance/run.py [V]
 
@@ -27,7 +27,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 CHECKS = TOOL.parent / "checks"
-SEGMENTS = ("schemas", "ledger", "checks", "corpus", "d62", "d63")
+SEGMENTS = ("schemas", "ledger", "checks", "corpus", "d62", "d63", "d64")
 PROJECTS = ("yuanxinsuo", "qige-xiongdi")  # real projects with 0.3.6-era records and no D6 records
 LOCK_ARGS = ("--episodes 1-60", "--outline 1-60", "--episodes 1-10 --outline 1-60 --allow-offline", "--episodes 1-60 --revise",
              "--episodes 1-10 --skip-dialogue", "--episodes 1-60 --since 2026-10-01T00:00:00+08:00")
@@ -267,6 +267,10 @@ def requirements(rows):
         requirement("D6-3：season-check --episodes 对搬成项目记录形态的 D6-0 第 6A 集记录（台词层规则）", rows,
                     lambda r: r["stream"] == "d63" and ("台词层规则" in r["name"] or "变异" in r["name"] or "旧规则" in r["name"]
                                                        or "不出现旧三条" in r["name"] or "重跑转换" in r["name"])),
+        requirement("D6-4：corpus agree／defaults／fetch 在小样本与编造台账上可复算", rows,
+                    lambda r: r["stream"] == "d64" and r["name"].startswith("corpus")),
+        requirement("D6-4：feedback-ingest 对三处反馈各跑一次，派生物都带 fromNotes，原文件不动", rows,
+                    lambda r: r["stream"] == "d64" and (r["name"].startswith("feedback-ingest") or "原文件" in r["name"])),
         requirement("D6-3：修订单扫描；C5b 装包要对话表过 contract-check", rows,
                     lambda r: r["stream"] == "d63" and ("revision-list" in r["name"] or "C5b" in r["name"] or "plan-text-map" in r["name"])),
     ]

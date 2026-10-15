@@ -65,9 +65,9 @@ DELEGATED = {
     "plan-text-consistency": ("checks.plan_text_consistency", "Text against its dialogue plan: speakers, topic boundaries, closers, carried keywords"),
     "dialogue-diagnose": ("checks.diagnose", "Dialogue signals with position and situation; no within/outside verdicts"),
     "feedback-ingest": ("checks.feedback_ingest", "Writer feedback -> writer-note records routed by level (derivatives are drafts)"),
-    "corpus": ("checks.corpus", "Corpus S commands: segment/label/filter/lexicon/rate; offline, no fetch"),
+    "corpus": ("checks.corpus", "Corpus S commands: segment/label/agree/filter/lexicon/rate/defaults, and fetch bookkeeping; offline"),
 }
-CORPUS_COMMANDS = ("segment", "label", "filter", "lexicon", "rate")
+CORPUS_COMMANDS = ("segment", "label", "agree", "filter", "lexicon", "rate", "defaults", "fetch")
 TOOL = Path(__file__).resolve()
 
 

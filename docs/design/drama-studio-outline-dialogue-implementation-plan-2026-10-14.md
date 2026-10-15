@@ -497,62 +497,62 @@ C6：首读 · 次读 · 追问单复核 · 底账一致性 · 冷读复述 · �
 
 ### 4.8 旧组件退役表（两份方案合并）
 
-「阶段」是废除或重构发生的阶段；「旧项目文件不动」对所有行成立。
+「阶段」是废除或重构发生的阶段；「旧项目文件不动」对所有行成立。「处置状态」按 D6-1–D6-3 的实际改动核对（D6-5，2026-10-15）：已废除、已重构、保留、待办，D6-4 相关的标「D6-4 进行中」；「实际文件」指向承载它的现行文件，路径相对 `skills/drama-studio/`（`docs/` 开头的除外），只写文件名的在 `references/` 或 `references/workstations/` 下。
 
-| # | 组件 | 处置 | 阶段 | 来源 |
-| --- | --- | --- | --- | --- |
-| 1 | 六字段集纲（作为计划格式） | 废除；`episode-plan` 取代 | D6-2 | O#1 |
-| 2 | 六字段（作为派生摘要） | 重构为可选 `summary`，S 核无新实体 | D6-2 | O#2，主创已定 |
-| 3 | 「关键选择」字段与审读硬项 | 废除；并入 `moves[]` | D6-2 | O#3 |
-| 4 | 剧情框架 260 字上限 | 废除 | D6-2 | O#4 |
-| 5 | `planning.md`「蓝图、设定圣经与集纲」 | 重构 | D6-2 | O#5 |
-| 6 | C2 工位文档 | 保留＋收窄（只写人；前史事件须有账条目） | D6-2 | O#6 |
-| 7 | C3 工位文档 | 重构为 c3a/b/c | D6-2 | O#7 |
-| 8 | C4 工位文档 | 重构（14 字段；六步保留） | D6-2 | O#8 |
-| 9 | 设定圣经 `bible` | 重构为输入（拆成 `user_given` 功能与条目） | D6-2 | O#9 |
-| 10 | `framework-vN.md` | 重构：结局与因果链 → 功能地图；分卷蓝图 → 季编排卷级视图；第五节程序口径 → 程序账；第七节道具表 → 物件账；第九节节拍表废除 | D6-2 | O#10、#15 |
-| 11 | `notes-*.md` 段末「给后段」 | 废除；底账逐集修订取代 | D6-2 | O#11 |
-| 12 | `runs/state/after-ep-NNN.md` | 重构为底账实际轨的导出（文件名沿用） | D6-2 | O#12、§2.5 #14 |
-| 13 | 集纲审读（`review-record` 对 `episode_outline`） | 重构：追问单复核、底账一致性、冷读；finding 带 `cites` | D6-2 | O#13 |
-| 14 | `season-check` 集纲八条 | 保留＋扩七条；按项目自动选集 | D6-1 实现、D6-2 启用 | O#14 |
-| 15 | 圣经第五节信息阀门表 | 重构为知识账 | D6-2 | O#16 |
-| 16 | `open-issues` /「待主创定」 | 重构为决定队列（带默认） | D6-2 | O#17 |
-| 17 | 分段送审＋「只改一次、不动集数、不动标题、不动★」 | 废除；升 S（`constraint-blocklist`） | D6-1 实现、D6-2 启用 | O#18 |
-| 18 | 对标仿写技能的「精简五要素」 | 不动，不再引用 | D6-2 | O#19 |
-| 19 | 台词方案 C4 一行 | 由集纲方案细化 | D6-2 | O#20 |
-| 20 | `development-lab.md` §1 生活材料 | 保留＋接入检索代理 K1 卡 | D6-2 | O#21 |
-| 21 | `c3-structure.md`「删掉一段…」 | 保留，移到 c3c | D6-2 | O#22 |
-| 22 | `writing.md`「装不下不压台词，提 C4 变更」 | 保留 | — | O#23 |
-| 23 | 声音卡 K5 | 重构为索引；不再是判据与装包必需 | D6-3 | D#1 |
-| 24 | 对照卡 K9 | 废除；writer-note＋反例＋对照对取代 | D6-3 | D#2 |
-| 25 | 台词遍（`dialogue_author`） | 废除；C5a＋C5b 取代 | D6-3 | D#3 |
-| 26 | 台词读（`dialogue_read`） | 废除；冷读复述＋处境对照＋一致性取代 | D6-3 | D#4 |
-| 27 | 「盖住名字猜人」 | 废除 | D6-3 | D#5 |
-| 28 | `season-check` 的 `voice-card`／`dialogue-pass`／`dialogue-read` | 废除；`--legacy-dialogue` 可查 | D6-3 | D#6 |
-| 29 | 每批一次定向修订 | 重构：对象换成对话表；修订后复读必做 | D6-3 | D#7 |
-| 30 | 修订后不再读 | 废除 | D6-3 | D#8 |
-| 31 | `preserved` 清单 | 重构：只认人工来源 | D6-3 | D#9 |
-| 32 | 修订单写替换文字 | 废除并升 S | D6-1 实现、D6-3 启用 | D#10 |
-| 33 | 数值型台词目标 | 废除并升 S | D6-1 实现、D6-3 启用 | D#11 |
-| 34 | 按人物组织的卡片 | 重构：人物只作项目内索引 | D6-3 | D#12 |
-| 35 | C5 场面稿 | 重构为 C5a／C5b | D6-3 | D#14 |
-| 36 | C6 首读 | 保留 | — | D#15 |
-| 37 | C6 次读 | 保留＋加义务（`cites`） | D6-2 | D#16 |
-| 38 | 篇幅口径（`min_chars: 800`、450 字/分） | 废除；留 `legacy-aigc` 预设 | D6-3 | D#17 |
-| 39 | `episode-check` | 重构：加口播量统计（估时在 `capacity`） | D6-1 | D#18 |
-| 40 | `context-pack` 角色 | 重构：新角色 | D6-1 | D#19、O#18 |
-| 41 | `dialogue.md` §1「书面腔」表 | 重构 | D6-3 | D#20 |
-| 42 | `writing.md`「避免解释性台词」、项目 `writing-rules.md` | 重构 | D6-3；项目文件见 §5 | D#21 |
-| 43 | `dialogue.md` §8、§9 | 保留 | — | D#22 |
-| 44 | C2 声音探针 | 保留 | — | D#23 |
-| 45 | 「另一模型家族做台词读」 | 废除 | D6-3 | D#24 |
-| 46 | 项目 `writer-style-brief.md` | 重构：经 `feedback-ingest` 回流后退役 | D6-4；项目文件见 §5 | D#25 |
-| 47 | 工艺闭环 §4.4、§4.5 | 废除（被取代） | D6-3、D6-5 状态行 | D#26 |
-| 48 | 工艺闭环 §3 分层 | 保留概念 | — | D#27 |
-| 49 | 样本库设计 §3 分级 | 倒置 | D6-4 | D#28 |
-| 50 | 样本库设计 §7 数数关口、§8 覆盖卡、§5 第 1／7 步 | 废除 | D6-4 | D#29、30、32 |
-| 51 | 样本库设计 §9 留出法 | 保留为可选描述 | — | D#31 |
-| 52 | v2 媒介档案配额字段、`acceptedBand`、分布距离、`within/outside` | 废除（schema 拒绝） | D6-1 | D#33 |
+| # | 组件 | 处置 | 阶段 | 来源 | 处置状态（2026-10-15） | 实际文件 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 六字段集纲（作为计划格式） | 废除；`episode-plan` 取代 | D6-2 | O#1 | 已废除 | `schemas/episode-plan.schema.json`；`references/outline-layer.md` §9 |
+| 2 | 六字段（作为派生摘要） | 重构为可选 `summary`，S 核无新实体 | D6-2 | O#2，主创已定 | 已重构 | `episode-plan.summary`；`plan-check` 的 summary 粗核（只报）；`outline-layer.md` §9 |
+| 3 | 「关键选择」字段与审读硬项 | 废除；并入 `moves[]` | D6-2 | O#3 | 已废除 | `references/workstations/c4-episode-outline.md`、`c6-review.md`（集纲侧三读不再设此硬项）；`moves[]` |
+| 4 | 剧情框架 260 字上限 | 废除 | D6-2 | O#4 | 已废除 | `c4-episode-outline.md`「停止与边界」（不设字数上限） |
+| 5 | `planning.md`「蓝图、设定圣经与集纲」 | 重构 | D6-2 | O#5 | 已重构 | `references/planning.md` |
+| 6 | C2 工位文档 | 保留＋收窄（只写人；前史事件须有账条目） | D6-2 | O#6 | 已重构 | `references/workstations/c2-characters-world.md`；`plan-check --characters` |
+| 7 | C3 工位文档 | 重构为 c3a/b/c | D6-2 | O#7 | 已重构 | `references/workstations/c3a-function-map.md`、`c3b-ledger.md`、`c3c-season-plan.md`（`c3-structure.md` 已删） |
+| 8 | C4 工位文档 | 重构（14 字段；六步保留） | D6-2 | O#8 | 已重构 | `references/workstations/c4-episode-outline.md` |
+| 9 | 设定圣经 `bible` | 重构为输入（拆成 `user_given` 功能与条目） | D6-2 | O#9 | 已重构 | `outline-layer.md` §11；`planning.md` |
+| 10 | `framework-vN.md` | 重构：结局与因果链 → 功能地图；分卷蓝图 → 季编排卷级视图；第五节程序口径 → 程序账；第七节道具表 → 物件账；第九节节拍表废除 | D6-2 | O#10、#15 | 已重构 | `planning.md`（结局与因果链进功能地图、分卷进季编排卷级视图）；`outline-layer.md` §2、§4、§8；节拍表不再出现 |
+| 11 | `notes-*.md` 段末「给后段」 | 废除；底账逐集修订取代 | D6-2 | O#11 | 已废除 | `outline-layer.md` §4（底账两轨逐集修订）；技能文档里已无段末「给后段」 |
+| 12 | `runs/state/after-ep-NNN.md` | 重构为底账实际轨的导出（文件名沿用） | D6-2 | O#12、§2.5 #14 | 已重构 | `ledger replay --md`；`references/workstations/season-run.md` §1 |
+| 13 | 集纲审读（`review-record` 对 `episode_outline`） | 重构：追问单复核、底账一致性、冷读；finding 带 `cites` | D6-2 | O#13 | 已重构 | `references/workstations/c6-review.md`「集纲侧三读」；`review-record.finding.cites` |
+| 14 | `season-check` 集纲八条 | 保留＋扩七条；按项目自动选集 | D6-1 实现、D6-2 启用 | O#14 | 已重构 | `scripts/checks/season_check.py`（`ruleSet: outline-layer`，有季编排时启用） |
+| 15 | 圣经第五节信息阀门表 | 重构为知识账 | D6-2 | O#16 | 已重构 | `outline-layer.md` §4 知识账 |
+| 16 | `open-issues` /「待主创定」 | 重构为决定队列（带默认） | D6-2 | O#17 | 已重构 | `schemas/decision-queue.schema.json`；`outline-layer.md` §10；`decision` 命令 |
+| 17 | 分段送审＋「只改一次、不动集数、不动标题、不动★」 | 废除；升 S（`constraint-blocklist`） | D6-1 实现、D6-2 启用 | O#18 | 已废除 | `schemas/data/constraint-blocklist.json`；`contract-check task`；`references/approval-flow.md` |
+| 18 | 对标仿写技能的「精简五要素」 | 不动，不再引用 | D6-2 | O#19 | 保留 | 技能包内无引用（对标仿写技能本身不动） |
+| 19 | 台词方案 C4 一行 | 由集纲方案细化 | D6-2 | O#20 | 已重构 | `c4-episode-outline.md`；`outline-layer.md` §9 |
+| 20 | `development-lab.md` §1 生活材料 | 保留＋接入检索代理 K1 卡 | D6-2 | O#21 | 保留 | `references/development-lab.md` §1（保留，并写明集纲层的程序、行业做法与技术前提由检索代理写成 K1 卡，链到 `outline-layer.md` §6） |
+| 21 | `c3-structure.md`「删掉一段…」 | 保留，移到 c3c | D6-2 | O#22 | 保留 | `references/workstations/c3c-season-plan.md` |
+| 22 | `writing.md`「装不下不压台词，提 C4 变更」 | 保留 | — | O#23 | 保留 | `references/writing.md`「篇幅与时长」；`c5b-text.md` |
+| 23 | 声音卡 K5 | 重构为索引；不再是判据与装包必需 | D6-3 | D#1 | 已重构 | `references/dialogue-structure.md` §9；`c2-characters-world.md`（`knowledge search --type K5` 仍可用） |
+| 24 | 对照卡 K9 | 废除；writer-note＋反例＋对照对取代 | D6-3 | D#2 | 已废除 | `dialogue-structure.md` §9（不再新建，已有卡保留可读）；`writer-note`、`contrast-pair` |
+| 25 | 台词遍（`dialogue_author`） | 废除；C5a＋C5b 取代 | D6-3 | D#3 | 已废除 | `dialogue-structure.md`；`references/workstations/c5a-dialogue-plan.md`、`c5b-text.md` |
+| 26 | 台词读（`dialogue_read`） | 废除；冷读复述＋处境对照＋一致性取代 | D6-3 | D#4 | 已废除 | `references/workstations/c6-review.md`「正文侧」（冷读复述、处境对照、设计依据一致性） |
+| 27 | 「盖住名字猜人」 | 废除 | D6-3 | D#5 | 已废除 | 技能包内已无此做法 |
+| 28 | `season-check` 的 `voice-card`／`dialogue-pass`／`dialogue-read` | 废除；`--legacy-dialogue` 可查 | D6-3 | D#6 | 已废除 | `season-check --legacy-dialogue`（只查旧记录） |
+| 29 | 每批一次定向修订 | 重构：对象换成对话表；修订后复读必做 | D6-3 | D#7 | 已重构 | `references/workstations/season-run.md` §3 第 9 步；`dialogue-structure.md` §8 |
+| 30 | 修订后不再读 | 废除 | D6-3 | D#8 | 已废除 | `season-check` 的 `retell-after-revise` |
+| 31 | `preserved` 清单 | 重构：只认人工来源 | D6-3 | D#9 | 已重构 | `season-check` 的 `preserved-human-source`；`contract-check review-record`（集纲侧）；`c6-review.md` |
+| 32 | 修订单写替换文字 | 废除并升 S | D6-1 实现、D6-3 启用 | D#10 | 已废除 | `schemas/revision-list.schema.json`；`season-check` 的 `fixlist-no-lines` |
+| 33 | 数值型台词目标 | 废除并升 S | D6-1 实现、D6-3 启用 | D#11 | 已废除 | `constraint-blocklist.json`；`contract-check task`；`season-check` 的 `no-numeric-dialogue-constraint` |
+| 34 | 按人物组织的卡片 | 重构：人物只作项目内索引 | D6-3 | D#12 | 已重构 | `dialogue-structure.md` §9；`c2-characters-world.md`（K5 只作人物索引） |
+| 35 | C5 场面稿 | 重构为 C5a／C5b | D6-3 | D#14 | 已重构 | `c5a-dialogue-plan.md`、`c5b-text.md`（`c5-screenplay.md` 已删） |
+| 36 | C6 首读 | 保留 | — | D#15 | 保留 | `c6-review.md`「正文侧」第 1 读 |
+| 37 | C6 次读 | 保留＋加义务（`cites`） | D6-2 | D#16 | 已重构 | `c6-review.md`「正文侧」第 2 读（`evaluation` 角色、`cites`） |
+| 38 | 篇幅口径（`min_chars: 800`、450 字/分） | 废除；留 `legacy-aigc` 预设 | D6-3 | D#17 | 已废除 | `references/episode-check.md`（默认只统计；旧规格只在 `--preset legacy-aigc` 下）；`capacity text` |
+| 39 | `episode-check` | 重构：加口播量统计（估时在 `capacity`） | D6-1 | D#18 | 已重构 | `scripts/checks/episode_check.py` 口播量统计；估时在 `capacity text` |
+| 40 | `context-pack` 角色 | 重构：新角色 | D6-1 | D#19、O#18 | 已重构 | `scripts/checks/context_pack.py`（`function_mapper`、`ledger_keeper`、`season_planner`、`dialogue_designer`、`situation_checker`、`cold_reader`） |
+| 41 | `dialogue.md` §1「书面腔」表 | 重构 | D6-3 | D#20 | 已重构 | `dialogue-structure.md` §5（`dialogue.md` 已改名，旧表不再保留） |
+| 42 | `writing.md`「避免解释性台词」、项目 `writing-rules.md` | 重构 | D6-3；项目文件见 §5 | D#21 | 已重构 | 技能部分：`writing.md`；项目 `writing-rules.md` 属本项目的事，见 §5（待办） |
+| 43 | `dialogue.md` §8、§9 | 保留 | — | D#22 | 保留 | `dialogue-structure.md` §10、§11 |
+| 44 | C2 声音探针 | 保留 | — | D#23 | 保留 | `c2-characters-world.md` |
+| 45 | 「另一模型家族做台词读」 | 废除 | D6-3 | D#24 | 已废除 | 技能包内已无此做法 |
+| 46 | 项目 `writer-style-brief.md` | 重构：经 `feedback-ingest` 回流后退役 | D6-4；项目文件见 §5 | D#25 | 已重构 | 技能侧：`feedback-ingest --out`（按 `level` 全路由出派生物，`--purge` 按 note 撤回）、`references/dialogue-structure.md` §9；项目的 `writer-style-brief.md` 是项目文件，回流后退役属本项目的事（§5） |
+| 47 | 工艺闭环 §4.4、§4.5 | 废除（被取代） | D6-3、D6-5 状态行 | D#26 | 已废除 | 技能侧由 `c5a-dialogue-plan.md`、`c5b-text.md` 取代；`docs/design/drama-studio-craft-loop-design-2026-10-10.md` 文首已加 D6-5 状态行 |
+| 48 | 工艺闭环 §3 分层 | 保留概念 | — | D#27 | 保留 | `docs/design/drama-studio-craft-loop-design-2026-10-10.md` §3（概念） |
+| 49 | 样本库设计 §3 分级 | 倒置 | D6-4 | D#28 | 已重构 | `references/corpus.md`（Tier 1／Tier 2 按可记录的筛选条件分，`grade: human` 为人工正例）；`corpus agree` 双跑比对，不一致记 `labelConfidence: low`，`corpus filter` 让 low 的维度不进检索；样本库设计文首 D6-5 状态行 |
+| 50 | 样本库设计 §7 数数关口、§8 覆盖卡、§5 第 1／7 步 | 废除 | D6-4 | D#29、30、32 | 已废除 | 数数关口与覆盖卡从未进技能；`docs/design/drama-studio-dialogue-sample-library-design-2026-10-13.md` 文首 D6-5 状态行即其处置 |
+| 51 | 样本库设计 §9 留出法 | 保留为可选描述 | — | D#31 | 保留 | 样本库设计 §9（可选描述，未接入流程） |
+| 52 | v2 媒介档案配额字段、`acceptedBand`、分布距离、`within/outside` | 废除（schema 拒绝） | D6-1 | D#33 | 已废除 | `scripts/checks/contract_check.py` 的配额字段拒绝（`QUOTA_KEYS`） |
 
 ## 5. 本项目的处理
 

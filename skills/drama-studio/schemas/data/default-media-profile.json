@@ -2,7 +2,7 @@
   "schemaVersion": "drama-studio/media-profile/v0",
   "id": "default-media-profile",
   "version": "v1",
-  "description": "随包默认媒介档案：项目还没有自己的媒介档案或语料时，capacity 用它，输出标 basis.status: default_unmeasured。数值是 D6-0 从 mali-story 三部短剧（真人 2 部 32 集、漫剧 1 部 8 集）量出的统计，不是本项目的测量；有了项目语料或项目媒介档案就换掉。",
+  "description": "随包默认媒介档案：项目还没有自己的媒介档案或语料时，capacity 用它，输出标 basis.status: default_unmeasured。数值是 D6-0 从 mali-story 三部短剧（真人 2 部 32 集、漫剧 1 部 8 集，交换 138 条）量出的统计，每项带 n，不是本项目的测量；有了项目语料或项目媒介档案就换掉。",
   "format": "live",
   "formatSource": "default",
   "formatDefault": {
@@ -15,7 +15,11 @@
         "value": 2.0,
         "source": "assumed"
       },
-      "source": "measured_corpus"
+      "source": "measured_corpus",
+      "n": {
+        "series": 2,
+        "episodes": 32
+      }
     },
     "anime": {
       "speechRateCharsPerMin": 245.3,
@@ -26,24 +30,29 @@
         "value": 2.0,
         "source": "assumed"
       },
-      "source": "measured_corpus"
+      "source": "measured_corpus",
+      "n": {
+        "series": 1,
+        "episodes": 8
+      }
     }
   },
   "exchangeMedianSec": {
     "live": {
-      "value": 10.8,
-      "n": 138,
+      "value": 10.7,
+      "n": 107,
       "source": "measured_corpus"
     },
     "anime": {
-      "value": null,
-      "n": 0,
-      "source": "not_measured"
+      "value": 12.0,
+      "n": 31,
+      "source": "measured_corpus"
     }
   },
   "calibration": "uncalibrated",
   "unknowns": [
-    "漫剧没有量过语料交换中位时长；--format anime 且不给语料时要 --exchange-median-sec",
-    "画面拍 2 秒是约定值，没有测量"
-  ]
+    "画面拍 2 秒是约定值，没有测量",
+    "样本小：真人 2 部 32 集、漫剧 1 部 8 集；全库取用未做（计费未确认）"
+  ],
+  "recomputedBy": "drama_tools.py corpus defaults <corpus> --series-format <template>=anime（D6-4，同一份 3 部 40 集 138 条交换的小样本）"
 }

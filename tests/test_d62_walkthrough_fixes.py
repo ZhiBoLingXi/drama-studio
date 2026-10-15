@@ -73,7 +73,11 @@ class CapacityDefaults(Temp):  # 2
         self.assertEqual((code, out["basis"]["status"], out["basis"]["defaults"]), (0, "given", []))
 
     def test_anime_without_a_measured_median_is_an_input_error(self):
+        # D6-4 changed this on purpose: the bundled profile now carries a measured anime median (corpus defaults, n=31),
+        # so anime no longer errors; a format the profile does not hold still does
         code, out, _ = tool("capacity", "episode", EXAMPLES / "episode-plan.json", "--format", "anime")
+        self.assertEqual((code, out["basis"]["exchangeMedianSec"], out["basis"]["exchangeSampleN"]), (0, 12.0, 31))
+        code, out, _ = tool("capacity", "episode", EXAMPLES / "episode-plan.json", "--format", "radio")
         self.assertEqual(code, 1, out)
 
     def test_the_default_profile_passes_contract_check(self):

@@ -767,6 +767,11 @@ def _rules_dialogue_plan(doc: dict, ctx=None, notes=None) -> list[str]:
 def _rules_dialogue_target(doc: dict, ctx=None, notes=None) -> list[str]:
     errors = _no_quota(doc, "a dialogue target")
     errors += [f"conventions: id {d} repeats" for d in _duplicates(c["id"] for c in doc["conventions"])]
+    # D6-4: a revised target says what changed: once there is a changelog, it has an entry for this revision (in either
+    # order; D6-0 wrote newest first), so a task that cites an older revision can still see what changed since
+    changelog = doc.get("changelog") or []
+    if changelog and not any(entry.get("revision") == doc["revision"] for entry in changelog if isinstance(entry, dict)):
+        errors.append(f"changelog: no entry for this revision {doc['revision']!r}; a new revision records what changed")
     return errors + _no_corpus_reason(doc)
 
 

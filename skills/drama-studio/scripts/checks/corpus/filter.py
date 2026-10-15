@@ -20,6 +20,8 @@ Rules (S, §4.4 unless noted):
     *not* exclude the sample, it only clears that line's `stateLabel` (reported, not blocking).
   - stale (§4.5): `snapshotId` differs from the current manifest's for the same
     templateId/episodeIndex -- only checked when `--manifest` is given; otherwise `not_evaluable`.
+  - label_low (D6-4): `quality.label: low` or `labelConfidence: low` -- the double run (`corpus agree`) did not agree
+    on the label, so the sample stays out of any search result.
   - missing_transcript (§4.5): `missingFields` names `rawMd`/`transcript` and there is no usable
     `lines[]` to cut from -- excluded. Any other `missingFields` entry is only noted.
 
@@ -118,6 +120,10 @@ def filter_exchange(row, manifest_index=None):
     notes["staleStatus"] = stale_status
     notes["evidenceValidation"] = row.get("evidenceValidation")
 
+    # D6-4: a label the double run did not agree on (corpus agree) stays out of the pass list, so out of any search result
+    quality = row.get("quality") if isinstance(row.get("quality"), dict) else {}
+    if quality.get("label") == "low" or row.get("labelConfidence") == "low":
+        reasons.append("label_low")
     reasons = sorted(set(reasons))
     return {
         "exchangeId": row.get("exchangeId"), "excluded": bool(reasons),

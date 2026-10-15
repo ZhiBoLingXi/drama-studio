@@ -45,7 +45,32 @@
         "师弟",
         "下山"
       ],
-      "source": "assumed"
+      "source": "assumed",
+      "measured": {
+        "n": {
+          "exchanges": 31,
+          "episodes": 8,
+          "series": 1,
+          "otherExchanges": 107
+        },
+        "confirmed": [
+          "下山",
+          "为师",
+          "仙尊",
+          "修为",
+          "历练",
+          "宗主",
+          "师兄",
+          "师妹",
+          "灵根",
+          "灵石"
+        ],
+        "notSeenCount": 27,
+        "seenInOtherGenres": [],
+        "evaluable": true,
+        "source": "measured_corpus",
+        "note": "词表本身仍是 assumed；这里只记小样本里哪些词出现在本题材、从未出现在别的题材。候选新词留在项目目录，不进随包数据"
+      }
     },
     {
       "fromGenre": "霸总／都市言情",
@@ -71,7 +96,22 @@
         "千金",
         "总裁办公室"
       ],
-      "source": "assumed"
+      "source": "assumed",
+      "measured": {
+        "n": {
+          "exchanges": 0,
+          "episodes": 0,
+          "series": 0,
+          "otherExchanges": 138
+        },
+        "confirmed": [],
+        "notSeenCount": 20,
+        "seenInOtherGenres": [],
+        "evaluable": false,
+        "source": "not_measured",
+        "note": "词表本身仍是 assumed；这里只记小样本里哪些词出现在本题材、从未出现在别的题材。候选新词留在项目目录，不进随包数据"
+      }
     }
-  ]
+  ],
+  "recomputedBy": "drama_tools.py corpus defaults（D6-4）"
 }

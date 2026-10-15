@@ -42,7 +42,8 @@ PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns", 
 QUOTES_PER_TOPIC = 2  # masked corpus lines (positives) per topic (D6-3 decisions §1, plan §8 #2); 0 packs none
 HISTORY = ".drama/packs/history.json"  # which samples went into which episode's package
 LOCAL_ROOTS = (".drama", "runs", "planning")  # the only folders a local_file selection item may read from
-SAMPLE_ROOTS = (".drama", "runs", "knowledge", "planning")  # corpus exchanges, project contrast pairs, a dialogue plan
+SAMPLE_ROOTS = (".drama", "runs", "knowledge", "planning", "corpus")  # corpus exchanges, project contrast pairs, a dialogue plan;
+# corpus/ at the project root is where a new project keeps its corpus (D6-4 decisions §2)
 SAMPLE_ROLES = ("dialogue_designer", "author")
 
 
@@ -519,10 +520,13 @@ def _plan_exemplars(text: str):
 def _masked_problem(row: dict) -> str | None:
     """A sample goes into a package as a masked sample record (situation, note, skeleton, maskedLines), never as a raw
     transcript: a row with `lines` or without a maskedLines list is refused (D6-3, plan §8 #2)."""
+    masked_only = "; the samples partition takes masked sample records (situation, walkthrough, skeleton, maskedLines) only"
     if "lines" in row:
-        return "是原始转写（带 lines）"
+        return "是原始转写（带 lines）" + masked_only
+    if "pairId" in row and not (row.get("provenance") or row.get("fromNotes")):
+        return "没有来源（provenance 或 fromNotes）；无来源的条目不进包"  # D6-4
     if not isinstance(row.get("maskedLines"), list) and "pairId" not in row:
-        return "没有 maskedLines（遮蔽后的原句）"
+        return "没有 maskedLines（遮蔽后的原句）" + masked_only
     return None
 
 
@@ -556,8 +560,7 @@ def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, om
                         continue
                     problem = _masked_problem(file[3][key])
                     if problem:
-                        raise ValueError(f"sample {key} (topic {topic.get('topicId')}) {problem}; the samples partition takes masked "
-                                         "sample records (situation, walkthrough, skeleton, maskedLines) only, not transcript ranges")
+                        raise ValueError(f"sample {key} (topic {topic.get('topicId')}) {problem}")
                     taken[kind] += 1
                     if (kind, key) in seen:
                         continue

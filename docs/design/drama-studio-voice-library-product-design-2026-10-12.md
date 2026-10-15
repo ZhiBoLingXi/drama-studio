@@ -2,6 +2,8 @@
 
 日期：2026-10-12 · 状态：产品设计提案，未实施 · 上游：[工艺闭环设计](drama-studio-craft-loop-design-2026-10-10.md)、[知识设计](drama-studio-knowledge-harness-design-2026-09-29.md)、[系统架构 v1.2](drama-studio-system-architecture-2026-09-29.md)
 
+> **2026-10-15 状态行（D6-5）**：其中「样本」这一块已由 D6 实现：「语料片段」对象就是 `dialogue-exchange`（多了处境与结构说明），「对标转写」升为主来源；切分、标注格式、过滤、禁词、语速等脚本部分在 D6-1 随包，取用记账在 D6-4。其余产品层（五种来源的多来源入库、权利等级、目录页）仍是设计，没有实现。见[统一实施计划](./drama-studio-outline-dialogue-implementation-plan-2026-10-14.md) §2.7。
+
 ## 1. 要解决什么
 
 AI 写的台词不像人说的话。已经验证过的解法是给它人写的本剧正文（见工艺闭环设计第 8 节）。但这个解法有三个缺口：

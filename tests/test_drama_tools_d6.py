@@ -42,7 +42,8 @@ class D6CommandTests(unittest.TestCase):
             self.assertIn("usage:", out, command)
 
     def test_unknown_corpus_command_is_an_input_error(self):
-        code, out, err = run("corpus", "fetch")
+        # D6-4 changed this on purpose: `corpus fetch` exists now (bookkeeping only), so an unknown word stands in for it
+        code, out, err = run("corpus", "nope")
         self.assertEqual(code, 1)
         self.assertIn("segment", json.loads(err)["error"])
 

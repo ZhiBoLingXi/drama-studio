@@ -96,8 +96,8 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | `drama_tools.py dialogue-plan-check <对话表> --episode-plan … --knows …` | 对话表的脚本规则（段、收尾、承载、listenerKnows 来自底账） |
 | `drama_tools.py plan-text-consistency <正文对照表> --dialogue-plan … --episode-plan …` | 正文对照对话表（含 `verbatimFrom` 行）：说话人序列、话题段边界、收尾、承载关键词 |
 | `drama_tools.py dialogue-diagnose <正文> --plan-text-map …` | 台词信号与位置、处境；不给区间判定 |
-| `drama_tools.py feedback-ingest <反馈文件>` | 编剧反馈记成 writer-note 并按层级路由（派生物为草稿） |
-| `drama_tools.py corpus {segment\|label\|filter\|lexicon\|rate} …` | 语料库的脚本部分：切交换、标注格式、过滤、题材禁词扫描、量语速与停顿；不联网取数 |
+| `drama_tools.py feedback-ingest <反馈文件> --out <空目录>` | 编剧反馈记成 writer-note 并按层级派生：反例、人工正例、对照对、约定与新问草稿、底账修订提案、K1 卡草稿、已定决定；派生物带 note id，`--purge` 按 id 清除；`--target` 另写升版的台词目标 |
+| `drama_tools.py corpus {segment\|label\|agree\|filter\|lexicon\|rate\|defaults\|fetch} …` | 语料库的脚本部分：切交换、标注格式、双跑比对（不一致记 low，不进检索）、过滤、题材禁词扫描、量语速与停顿、从语料重算随包统计；`fetch` 只做取用记账（计划、断点、快照核对、预算与回执比对），不联网 |
 
 实际执行时把脚本也解析为安装目录下的绝对路径。工具只用 Python 3.10+ 标准库。剧集检查默认只统计，`passed: null`，不能称为质量通过。已有明确项目规格才使用 `--config` 或显式阈值；未指定的规则不启用，不为消除报告而擅改规格。历史 AIGC 规则仅在 `--preset legacy-aigc` 下启用。
 

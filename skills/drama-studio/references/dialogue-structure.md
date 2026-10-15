@@ -116,7 +116,7 @@ C5b 照它写出来，仓管就是一问一答、一次报一件；正文里如�
 
 ## 4. 样本怎么用（处境检索、遮蔽、每话题上限、`verbatimFrom`）
 
-样本告诉作者「处在这种处境里的人怎么一来一回把话说清」，不是要落进去的句数和字数。
+样本告诉作者「处在这种处境里的人怎么一来一回把话说清」，不是要落进去的句数和字数。语料怎么取用、切分、过滤、标注与缓存见 [语料](corpus.md)。
 
 **检索键是处境**：功能（从 `exchanges[].move` 推主功能）＋关系＋是否对孩子＋情绪，可选信息模式。顺序：同题材同形态 Tier 1 → 同题材 Tier 2 → 跨题材 Tier 1（对话表记 `styleIsolation: true`）→ 都没有就标 `no_exemplar`，不拿近似处境充数。
 
@@ -124,7 +124,7 @@ C5b 照它写出来，仓管就是一问一答、一次报一件；正文里如�
 
 **数量**：每个话题 2 个正例、1 个对照对（有同处境反例时）；遮蔽原句每个话题合计最多 2 句（S：`dialogue-plan-check` 核 `maskedLines`；装包时 `--quotes-per-topic` 设上限，默认 2，可设 0，超出的样本整条不装，列进 `omitted`，原因 `quote_cap`）；总量受包预算约束，知识分区不超过包的四分之一，超了按 Tier、`recurrent`、`labelConfidence` 截断。同一条样本不连续两集出现（`context-pack` 记 `.drama/packs/history.json`）。
 
-**C5a 装全套，C5b 只装对话表引用过的正例**（`--exemplars`、`--contrast-pairs` 只给 `dialogue_designer` 与 `layer: C5b` 的 `author`）。C5b 装包时 `--exemplars` 直接给本集对话表 `planning/dialogue/dialogue-plan-<NNN>.json`，不必另出样本文件；前提是 C5a 在各话题 `exemplars.positives[]` 里每条写了 `situationKey`（或 `situation`）、`walkthrough`、`skeleton`、`maskedLines`，不带原始台词行。样本带原始行或缺 `maskedLines` 时退出码 1。跨题材样本只给处境、说明和骨架，不给原句。从语料生成遮蔽样本的命令还没有（D6-4 的事），在那之前样本由 C5a 按上面的形态写进对话表。
+**C5a 装全套，C5b 只装对话表引用过的正例**（`--exemplars`、`--contrast-pairs` 只给 `dialogue_designer` 与 `layer: C5b` 的 `author`）。C5b 装包时 `--exemplars` 直接给本集对话表 `planning/dialogue/dialogue-plan-<NNN>.json`，不必另出样本文件；前提是 C5a 在各话题 `exemplars.positives[]` 里每条写了 `situationKey`（或 `situation`）、`walkthrough`、`skeleton`、`maskedLines`，不带原始台词行。样本带原始行或缺 `maskedLines` 时退出码 1。跨题材样本只给处境、说明和骨架，不给原句。从语料生成遮蔽样本没有命令：样本由 C5a 从语料里挑（只挑双跑标注一致、过了 `corpus filter` 的交换，见 [语料](corpus.md)），按上面的形态写进对话表。
 
 **样本来源** `source ∈ corpus／human／project`：语料（只遮蔽、永不逐字）；`human` 是本剧编剧写的句子，可以逐字用，正文对照表里那一行标 `verbatimFrom: <noteId>`；`project` 是本剧人工定稿里同处境的段落，语料对这种处境为空时可用。逐字用的人工句在校验时单列，不算「问题不在了」的证据。
 
@@ -224,16 +224,21 @@ C5b 照它写出来，仓管就是一问一答、一次报一件；正文里如�
 流程里没有任何一步等人。编剧、主创、导演任何时候给的批注、改稿、一句有记录的话，由 `feedback-ingest` 回流，下一次装包就用：
 
 ```text
-feedback-ingest <飞书评论 JSON｜改稿 md（配 --original）｜原话记录> [--text <被批正文>] [--plan-text-map <对照表>] [--author <作者>]
+feedback-ingest <输入> [--text <被批正文>] [--plan-text-map <对照表>] [--author <作者>] [--section <节标题>]
+                [--out <空目录>] [--target planning/dialogue-target.json]
+feedback-ingest --purge <noteId> --out <目录>
 ```
 
-它把每条意见记成 `writer-note`（`noteId`、作者、日期、来源、集与场、`quotedText` 被批原句逐字、`humanSuggestion` 给的改法逐字、`humanNote` 批注原文、`level`、`attachesTo`、`conflictsWith[]`），按 `level` 列出派生物草稿，不写文件：
+**输入**可以是：飞书评论导出 JSON；改稿 md（配 `--original <原稿>`，逐行比对对白）；原话记录 md／txt；用 `### ` 分节的批注记录（每节一条，`>` 行是被批原文，「人名：台词」行算改法）；md 里的一张修改对照表（`--section <标题开头>` 只读那一节，表格每行一条，「原 → 改」两列加「类别」列）；追问单的回答记录（落在程序或现实规则上的 `notHolds` 各成一条程序或事实类意见）。
 
-- 句级：编剧的改法存为人工正例（`grade: human`），以后逐字用时标 `verbatimFrom: <noteId>`。
-- 来回、话题、信息承载级：被批的那段成为反例，补 `whyNotHere`（在这种处境里为什么不成立），与同处境正例配成对照对（项目私有，放 `knowledge/contrast/`）。
-- 同类意见两次以上：起草一条约定（`status: drafted`），进台词目标的 changelog；有人确认再升 `confirmed`，不确认也进包。
-- 现有问题单覆盖不到的：起草一条新问（`drafted`，带 `noteId`）。
-- 程序、事实、决定类：转到集纲层（底账修订提案、K1 卡草稿、决定队列 `decided`），见 [集纲层](outline-layer.md#10-决定队列kind-词表default-必填decided-须-humanwords)。
+它把每条意见记成 `writer-note`（`noteId`、作者、日期、来源、集与场、`quotedText` 被批原句逐字、`humanSuggestion` 给的改法逐字、`humanNote` 批注原文、`level`、`attachesTo`、`conflictsWith[]`）。不给 `--out` 时只列派生物清单、不写文件；给 `--out <空目录>` 时按 `level` 全路由，派生物写进这个目录：
+
+- 句级、来回级、话题级、场结构、信息承载 → 反例（`negatives.jsonl`）；带改法的句级 → 人工正例（`human-positives.jsonl`，`grade: human`，以后逐字用时标 `verbatimFrom: <noteId>`）；来回、话题级 → 对照对草稿（`contrast-pairs.jsonl`，补 `whyNotHere` 后放 `knowledge/contrast/`）。
+- 信息承载、对象约定、独白，以及同类意见两次以上 → 约定草稿（`conventions.jsonl`）；同类两次以上且问题单覆盖不到 → 新问草稿（`questions.jsonl`）。
+- 程序、事实 → 底账修订提案（`ledger-proposals.jsonl`）与 K1 卡草稿（`k1-drafts.jsonl`），交集纲层处理（[检索代理与 K1 卡](outline-layer.md#6-检索代理与-k1-卡可联网留出处脚本不联网)）。
+- 决定 → 决定队列条目（`decisions.json`，`status: decided`，`humanWords` 是原话；见 [决定队列](outline-layer.md#10-决定队列kind-词表default-必填decided-须-humanwords)）。
+
+每个派生物带 `fromNotes`（来源 note id）、`status: drafted`、`scope.level: project`；原文件一律不改。给了 `--target` 且起草了约定时，另在 `--out` 写一份升版的台词目标（新 `revision`，新约定 `status: drafted` 带 `sourceNotes`，`changelog` 记一条），原目标文件不动；采用时把它换成项目的 `planning/dialogue-target.json`。约定有人确认再升 `confirmed`，不确认也进包。某条意见撤回或录错时，`--purge <noteId> --out <目录>` 清掉它派生的全部条目。`--out` 不是空目录时退出码 1。
 
 level 由脚本按批注落在哪一层推，推不出写 `unknown`，不找人问。没有来源 note 的约定条目不进包（S）。两条意见冲突时写 `conflictsWith`，按 §2 的裁决顺序处理。
 
@@ -289,7 +294,7 @@ level 由脚本按批注落在哪一层推，推不出写 `unknown`，不找人�
 | 诊断 | `dialogue-diagnose <正文> --dialogue-plan … --episode-plan … --plan-text-map … [--compare-with <另几版>]` | 恒为 0；只给信号与位置 |
 | 上游变更与决定引用 | `decision add planning/decisions.json --from-handoff <交接>`；`contract-check run-handoff <交接> --decisions planning/decisions.json` | 2 缺默认；交接的 `decisionRefs[]` 指向不存在的决定 |
 | 实际轨 | `ledger replay planning/ledger/ledger-ep000.json --delta planning/ledger --at <集> --track actual --md` | 输出就是下一集的 `runs/state/after-ep-<NNN>.md` |
-| 人工反馈 | `feedback-ingest <文件> [--text …] [--plan-text-map …]` | 0；只列派生物草稿，不写文件 |
+| 人工反馈 | `feedback-ingest <文件> [--text …] [--plan-text-map …] [--section …] [--out <空目录>] [--target planning/dialogue-target.json]`；`feedback-ingest --purge <noteId> --out <目录>` | 0；不给 `--out` 只列清单，给了按 level 写派生物；1 输入错或 `--out` 不是空目录 |
 | 关口 | `season-check <项目> --episodes <起-止>` | 启用台词层的项目核 `dialogue-plan`、`target-ref`、`plan-text-align`、`cold-retell`、`situation-check`、`consistency-record`、`retell-after-revise`、`constraint-origin`、`no-numeric-dialogue-constraint`、`fixlist-no-lines`、`dup-two-tier`、`genre-lexicon`，外加 `preserved-human-source`，输出 `episodeRuleSet: dialogue-layer` 与 `dialogueLayerRules`（各条 `passed／failed／not_evaluated`）；`--legacy-dialogue` 另跑旧三条（`voice-card`、`dialogue-pass`、`dialogue-read`）复查旧记录，输出与旧版一致；2 不通过，不能写「已按流程完成」 |
 
 这些命令核的是记录在不在、字段与引用对不对、结构规则成不成立，不判台词好不好。可懂、处境上成立、与设计依据一致，三者都成立的对话仍可能平淡；首读判效果，人工反馈随时吸收。
