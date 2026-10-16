@@ -18,6 +18,7 @@ description: 从市场研究、对标选择与 mali-story 拉片资料出发，�
 | 摆脱换皮、探索不同故事 | [创作开发](references/development-lab.md) | 生活材料、创作立场、不同因果候选及场面试写 |
 | 写作、检查、改稿（含按集纲写正文、续写下一批） | [工位流程](references/writing.md#工位流程)：先读 writing.md 第一节；一次写多批再读 [整季分批](references/workstations/season-run.md) | 经 C5a 对话表与 C5b 照表写成、C6 五读、先改表再改文的分集正文，以及快照、对话表、审读与核对记录、回执与交接 |
 | 台词 AI 味重、不像人说的话、人物说话分不开 | [台词层](references/dialogue-structure.md) | 前文校核、按处境写的对话表、照表写的正文、冷读复述与处境对照、先改表再改文 |
+| 台词没味道、不够爽、人物说话没辨识度、场尾不勾人、画面不像分镜 | [语体与台词质感](references/voice-register.md)，结合写作与台词层 | 按题材语体档写成的措辞与 △ 分镜，人物语言指纹、筹码、证物台词、场尾钩与高潮递进 |
 | 行为不贴人设、台词同质、情绪平、剧情靠解释推进 | [人物与情绪改稿](references/character-emotion.md)，结合写作与自主迭代 | 有前文依据的人物写法、关键场面改写、本轮创作目标的正文复核 |
 | 自行测试迭代、提高质量 | [自主创作迭代](references/creative-loop.md) | 原稿与候选比较、证据复核、最佳待审版本 |
 | 继续项目、切换宿主、交付 | [接续与交付](references/recovery.md) | 当前版本、下一动作、可核对交付文件 |
