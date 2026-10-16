@@ -31,7 +31,7 @@
 
 审正文（每集）时做五读：首读、次读保留，另加冷读复述、处境对照与设计依据一致性。正文侧任务写 `target.kind: episode_text`，`layer: C6` 的任务引用 `dialogueTarget`。五读各由没写这集的上下文完成，各留记录。方法见 [正文侧两读](../dialogue-structure.md#6-正文侧两读冷读复述处境对照对话问题单) 与 [设计依据一致性](../dialogue-structure.md#7-设计依据一致性与诊断信号数字只诊断不裁判)。
 
-1. **首读**（`reader_effect`）：观众效果，装包见下面“审读包装什么”。首读记录写完立即封存：去掉 `sealedSha256` 字段后按规范 JSON 算 sha256，写进同一份记录的 `sealedSha256`（旧做法的 `.sha256` 旁注文件照认），之后不再改动。台词层项目里，首读与次读只认审读对象是本集正文的记录；集纲侧审读不算首读，也不需要封存。
+1. **首读**（`reader_effect`）：观众效果，装包见下面“审读包装什么”。语体档、人物语言指纹与场尾钩的读法见 [语体与台词质感](../voice-register.md#10-审读时怎么用)；制作量大不记 finding。首读记录写完立即封存：去掉 `sealedSha256` 字段后按规范 JSON 算 sha256，写进同一份记录的 `sealedSha256`（旧做法的 `.sha256` 旁注文件照认），之后不再改动。台词层项目里，首读与次读只认审读对象是本集正文的记录；集纲侧审读不算首读，也不需要封存。
 2. **次读**：另起上下文，用 `context-pack --role evaluation` 装包；事实与目标条款是否达成；每条 finding 写 `cites.targetClause`（台词目标或任务目标的条款）或 `cites.factEvidence`（事实证据），两者都没有的标 `kind: preference`，不进修订单。审读不改台词目标，认为目标缺了一条就写 `changeProposals`。
 3. **冷读复述**：新上下文，`context-pack --role cold_reader`，包里只放本集正文一项，不放前集、分集计划、对话表、作者说明与样本。读者复述发生了什么、谁做了什么为什么，每条关键信息写“从第几行哪句知道的”，说不出就写“不明”。存成 `retell-record`（`target.kind: episode_text`，记 `promptVersion`），`retell-check <复述> --plan <对话表> --episode-plan <分集计划>` 对照信息清单；`missing` 回 C5a。提示词版本不同的两次冷读不直接比。
 4. **处境对照**：新上下文，`context-pack --role situation_checker`，装正文、对话表与它引用的正例和对照对；逐个话题答对话问题单（`dialogue-check-questions`），每答引用行号与原句，写成立／不成立与原因，原因回到处境，不打分、不合成总评；`check-answers <回答>` 核格式。同一集做了两份以上时，用 `answers-consistency <甲> <乙>` 记一致性。
