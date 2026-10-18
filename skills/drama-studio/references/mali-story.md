@@ -8,7 +8,7 @@
 
 优先查询个人／官方模板，核对标题、版本、集数、覆盖和权限。常见已发现路径为 `/api/v1/user-templates` 和 `/api/v1/user-templates/official`，但仍以当前目录为准。记录匹配的 templateId、版本和缺项；完整模板可直接进入原创策划，不重复下载和收费分析。
 
-从榜单进入时读取项目的[对标交接卡](../templates/benchmark-research.md)，分别核对外部作品ID与内部templateId、季数、演员和集段。标题一致不足以确认同作品；源剧总集数与模板已分析集数分开保存。未知匹配不得自动挂接或据此创建收费任务。
+从榜单进入时读取项目的[对标记录](../templates/benchmark-research.md)（记录模板），分别核对外部作品ID与内部templateId、季数、演员和集段。标题一致不足以确认同作品；源剧总集数与模板已分析集数分开保存。未知匹配不得自动挂接或据此创建收费任务。
 
 `ready` 只表示服务任务状态，不保证内容正确。进入策划前交叉检查顶层集数、分集索引与正文范围；合并有证据的角色别名，筛查情绪词等误识别角色；区分省略的摘要和完整正文。发现相互矛盾时保留问题与原出处，按实际可读的逐集证据修正研究笔记；缺证据的部分不能作为确定设定传播。只有模板、没有热度数据时，不称其为已验证爆款。
 
@@ -26,7 +26,7 @@
 4. 上传回执记录 fileId、文件摘要和有效期。只有契约确认是该用户的可用视频 ID，才挂到对应分集槽位。
 5. 挂接可能启动付费分析。查询已部署的费用预览，沿用已有授权；预览缺失或金额未知时说明缺口，不凭估计发起收费操作。
 6. 查询原任务、各集结果和提交回执。响应未知时先核对，不创建新任务绕过未知状态；重试仅用已明确支持的幂等／版本契约。
-7. 区分上传完成、单集分析完成、全剧汇总完成和模板 ready。条件满足后按当前契约 finalize；这只是参考模板定稿，不是采用新剧正文。
+7. 区分上传完成、单集分析完成、全剧汇总完成和模板 ready。条件满足后按当前契约 finalize；这只是参考模板定稿，与新剧正文的页面修订无关。
 
 常见路由（仅导航，使用前需发现并核对参数）：
 
@@ -46,20 +46,19 @@
 
 台词层的语料是逐集读取的模板证据（`get_deconstruction_evidence`，路由上即「读模板证据」）。读取方法与缓存见 [语料](corpus.md)；这里只写每次读取要留什么、费用怎么查。
 
-- **每次读取记一条回执**：`operation` 写实际调用的工具，`requestId` 自定且不复用，记下 `templateId`、`episodeIndex`、传入的 `expected_snapshot_id`、返回的 `snapshotId`、`missingFields`、`evidenceValidation` 与返回体的 sha256；失败也记（错误原文、是传输层还是工具报错）。回执放 `.drama/receipts/`，与 `corpus/manifest.json` 的 `readCalls` 计数对得上。
+- **每次读取都记进语料目录里的取用台账**：返回体原样存成文件，再 `corpus fetch record <语料目录>/fetch-ledger.json --template <T> --episode <N> --response <返回文件>`。失败也记。这就是语料读取的回执，不用 `receipt record`（它的 `--operation` 不收证据读取，项目的 `.drama/receipts/` 也不是语料的家）。
 - **`snapshotId` 不一致**：服务端说这一集变了。不覆盖旧缓存，按 [语料 §4](corpus.md#4-快照与失效) 标 `stale` 并重取。
-- **计费是事实核查，不是决定**：读取语义上是读路径，但会不会扣费没有确认之前一律按「未确认」处理。先取小样本（3 部、每部 10 集左右），取前、取后各读一次 `get_shared_creation_budget`，并看每次回执有没有费用字段。读数或回执有任何扣费迹象就立即停，记下前后变化，不取全库；没有变化只记「这几次读取未观察到扣费」，不推到全库。读不到预算（没有连接、工具不存在）时写 `billing: not_observed`。
-- **不把余额当成本次总价**：只记调用次数、预算读数与回执 ID；不记其他账户信息。
+- **计费**：是事实核查，不是决定；取前取后各读一次预算，**有扣费迹象就立即停、不取全库**。步骤与结论词见 [语料 §3](corpus.md#3-计费观察事实核查有扣费迹象即停)。
 
 ## 剧本保存
 
-工位产出按下文 [页面读写、版本标签与恢复](#页面读写版本标签与恢复) 写成 mali-story 页面。Brief 使用专用 get/save/approve，save 带读取到的 expected_revision；通过当前会话可用工具确认具体名称。不能用通用块写入绕过这些工具。
+工位产出按下文 [页面读写、版本标签与恢复](#页面读写版本标签与恢复) 写成 mali-story 页面，用当前会话里发现的页面工具，不能用通用块写入绕过它们。
 
 连接的部署没有页面工具（v0.20.0 之前的部署，或授权里没有写权限）时，继续保留本地草稿，明确“未同步到 mali-story”，不宣布服务端接续成功。检查工具不存在时也不虚构已调用。
 
 ## 页面读写、版本标签与恢复
 
-架构 v1.2 起，所有内容都是 mali-story 的页面，像飞书文档一样每个页面有版本（mali-story v0.20.0 起，见 [mali-story#2336](https://github.com/ZhiBoLingXi/mali-story/issues/2336)）。工具名与参数取自 v0.20.0 源码；源码不是部署证据，先在当前会话发现工具，没有就按上一节保留本地稿。
+架构 v1.2 起，所有内容都是 mali-story 的页面，像飞书文档一样每个页面有修订历史（mali-story v0.20.0 起，见 [mali-story#2336](https://github.com/ZhiBoLingXi/mali-story/issues/2336)）。工具名与参数取自 v0.20.0 源码；源码不是部署证据，先在当前会话发现工具，没有就按上一节保留本地稿。
 
 - **版本即生效**：`create_page` 建页面，正文立即成为 r1；`update_page` 写入的新修订立即成为当前内容。没有“候选”与“正文”两套对象，也没有单独的采用动作。
 - **验收即标签**：`label_page_revision` 给某个修订起名，如“主创通过”“导演粗搭版”。每个修订只有一个标签，后写覆盖；不建新修订、不改正文。标签只是名字（mali-story 工具说明原文：a label is not an approval），**不等于制作采用**；回执、缓存、`impact` 都不把标签当作采用证据，也不要在交接里这样写。
@@ -69,23 +68,23 @@
 
 **producer**：`codex`、`human`、`external_ai` 三选一（`mali_story` 为服务端保留值）。只有宿主是 Codex 时写 `codex`；Claude Code、WorkBuddy、ChatGPT 等其他 AI 宿主一律写 `external_ai`；用户本人写的文字写 `human`。它只是来源标记，不授予任何权限。宿主与模型名记在本地 `run-handoff`。
 
-**工位产出 → 页面**：`create_page` 必填 `title` 与 `semantic`。源码接受的 `semantic` 只有 `synopsis`、`outline`、`characters`、`episode_outline`、`episode`、`setting`；带 `episode_ref` 时同一集同一 semantic 只能有一个页面，重复创建返回 `PAGE_ALREADY_EXISTS`（details 带 `existingPageId`），改为对那个页面 `update_page`。
+**工位产出 → 页面**：`create_page` 必填 `title` 与 `semantic`。源码接受的 `semantic` 只有 `synopsis`、`outline`、`characters`、`episode_outline`、`episode`、`setting`；带 `episode_ref` 时同一集同一 semantic 只能有一个页面，重复创建返回 `PAGE_ALREADY_EXISTS`（details 带 `existingPageId`）。这时不要直接 `update_page` 覆盖：先 `read_page` 读回那个页面。内容与本次要写的一致（多半是上一次结果未知后的重试），按下文第 5 步对账；不一致就当作冲突，把两边差异交用户决定，决定后再用新的 `request_id`、读到的当前修订号作 `expected_revision` 去 `update_page`。
 
 | 工位 | semantic | episode_ref |
 | --- | --- | --- |
 | C2 | `characters`、`setting` | 不填 |
-| C3 | `outline`（全剧结构）、`synopsis` | 不填 |
+| C3 | `outline`（送审用的剧情框架可读稿：功能地图的结局与因果链加季编排的卷级视图，送审前整理）、`synopsis` | 不填 |
 | C4 | `episode_outline` | 必填，如 `ep-03` |
 | C5 | `episode` | 必填 |
 
-C1 的定位研究与 C6 的审读记录在源码里没有对应的 semantic，不要硬套别的类型：留在本地（如 `.drama/reviews/`），按 `local_file` 装包。
+C1 的定位研究与 C6 的审读记录在源码里没有对应的 semantic，不要硬套别的类型：留在本地（如 `.drama/reviews/`），按 `local_file` 装包。C3a–C3c 的结构化产出（功能地图、底账、季编排）与分集计划的 JSON 也留在本地 `planning/`；C4 写成页面的是集纲可读稿。
 
 **步骤**：
 
-1. 读上下文：同下文历史候选的第 1 步，`get_writing_context` 读到 `nextOffset` 为 null 并记回执。页面写入的 `input_snapshot_id` 可选，填上就能看出这一版依据哪份上下文写成。
+1. 读上下文：`get_writing_context` 读到 `nextOffset` 为 null，保存响应，`receipt record <项目> <响应> --operation get_writing_context --request-id <读取ID> --input <输入>`。页面写入的 `input_snapshot_id` 可选，填上就能看出这一版依据哪份上下文写成。
 2. 写入：先把完整输入（含固定的 `request_id`）写成文件，再调用。新页面用 `create_page`；已有页面用 `update_page`，`expected_revision` 取刚读到的当前修订号（没有历史的页面为 0）。正文上限是 JSON 编码后 900,000 字节，超出就拆成多个页面。正文须逐字保真，见 [保存正文逐字保真](#保存正文逐字保真)（读回时用 `read_page`）。响应原样保存，丢失就不存。
 3. 记录：`receipt record <项目> <响应> --operation create_page|update_page|restore_page|label_page_revision --request-id <ID> --input <输入>`，写入 `.drama/receipts/<requestId>.json`，`remote` 记 `pageId` 与 `revision`。`label_page_revision` 没有 `request_id` 参数，`--request-id` 只是本地回执的名字。HTTP 409 记 `rejected_conflict`，`notes.conflict` 记服务端的 code 与 details：
-   - `VERSION_CONFLICT`：页面已被其他来源更新（details 为 `currentRevision`、`currentFingerprint`）。先 `read_page` 读最新修订，合并后用新的 `request_id`、新的 `expected_revision` 再写。
+   - `VERSION_CONFLICT`：页面已被其他来源更新（details 为 `currentRevision`、`currentFingerprint`）。先 `read_page` 读最新修订，**不自动合并**：新修订就是本次自己的前一次写入（上一次结果未知后重试）时，按第 5 步对账；否则把两边差异交用户决定，决定后再用新的 `request_id`、新的 `expected_revision` 写。用户选「基于新修订重做」时，在同一运行层另开一次运行，以新修订为底重做，另计修订预算 1 次，交接的 `decisionRefs[]` 引用这条冲突的决定。
    - `IDEMPOTENCY_CONFLICT`：同一 `request_id` 配了不同输入（同一项目内唯一；details 是原请求落成的 `pageId`、`revision`）。说明 ID 被误复用，查清原请求再决定，不要改输入重发。
 
    响应缺失、无法解析、`MCP_OUTCOME_UNKNOWN` 或 5xx 记 `unknown`，`retryAllowed` 恒为 false。
@@ -95,7 +94,7 @@ C1 的定位研究与 C6 的审读记录在源码里没有对应的 semantic，�
    - 原样重发（S＋R）：用原 `request_id` 与完全相同的输入再调一次。服务端先按 request_id 查，落地过的直接重放（`replayed: true`），没落地的这次写入。记为 `receipt record <项目> <响应> --operation <原操作> --request-id <原 requestId>.resend-1 --input <原输入> --reconciles <原 requestId>`，工具核对输入指纹与原回执相同，`pending` 记为 `resolved_verified`。`create_page` 的 unknown 还不知道 pageId，只能这样对账。例外：`unchanged: true` 的更新没有记下 request_id，页面之后被改过时重发会得到 `VERSION_CONFLICT`。
 
    对账前不换新 requestId 重试，以免重复写入。
-6. 验收与回退：主创确认某个修订后，用 `label_page_revision(project_id, page_id, revision, label)` 打标签，`label: null` 清除。回退用 `restore_page(project_id, page_id, expected_revision, to_revision, producer, request_id)`，得到的新修订号以回执为准。两者都按第 3 步记回执。
+6. 验收与回退：用户（主创）确认某个修订后，把原话记进交接（`run-handoff`），再用 `label_page_revision(project_id, page_id, revision, label)` 打标签，`label: null` 清除。回退用 `restore_page(project_id, page_id, expected_revision, to_revision, producer, request_id)`，得到的新修订号以回执为准。两者都按第 3 步记回执。
 
 **装包与失效**：`context-pack` 的选材写 `{"kind": "remote_page", "id": "<pageId>", "revision": <n>}`，从缓存按 `pageId@r<n>` 装入；同一页面的两个修订进同一个包时退出码 2。页面出了新修订后运行 `impact <项目> --page <pageId> --revision <n>`，引用该页旧修订的快照与运行标 `stale`。
 
@@ -103,11 +102,11 @@ C1 的定位研究与 C6 的审读记录在源码里没有对应的 semantic，�
 
 ## 候选保存与对账
 
-本节是迁移前的历史候选（story-artifacts）流程，保留为**只读兼容**：已有候选迁成页面后只读，新的产出按上一节写成页面。下面的 `get_story_artifact`、`list_story_artifacts`、`read_story_artifact` 与 `receipt cache`（带 slot）仍可用来读取迁移前的候选；`impact --slot`／`--artifact` 继续按 slot 判断这些候选的新旧。
+本节是迁移前的历史候选（story-artifact）流程，只用于两件事：读取与对账迁移前留下的历史候选；以及连接的部署**没有页面工具**时的旧写法。有页面工具的部署，新产出一律按上一节写成页面，不再用 `save_story_artifact`。`get_story_artifact`、`list_story_artifacts`、`read_story_artifact` 与 `receipt cache`（带 slot）仍可用来读取历史候选；`impact --slot`／`--artifact` 继续按 slot 判断它们的新旧。
 
-工位产出保存为 mali-story 候选时按本节执行。MCP 由宿主调用，响应原样存成 JSON 文件；`scripts/drama_tools.py receipt` 只读这些文件，不联网、不调用 MCP，不能证明响应真实。保存不等于采用：回执 `confirmed` 只说明服务端收下了候选。本地缓存和 save／get／list／read 回执都不是采用证据，采用只认 mali-story 的正式采用结果。
+在页面模型下：新修订写入即为当前内容，验收是给修订打标签，回退是恢复旧修订，没有单独的采用动作。本节的词按这个意思读：MCP 由宿主调用，响应原样存成 JSON 文件；`scripts/drama_tools.py receipt` 只读这些文件，不联网、不调用 MCP，不能证明响应真实。保存不等于采用：回执 `confirmed` 只说明服务端收下了这份历史候选；本地缓存和 save／get／list／read 回执都不是制作采用的证据。制作采用是制作方在 mali-story 之外作出的决定，本技能只记用户转述的原话。
 
-**producer**：`save_story_artifact` 的 `producer` 接受 `codex`、`human`、`external_ai`（mali-story v0.19.0 起，见 [mali-story#2332](https://github.com/ZhiBoLingXi/mali-story/issues/2332)）。只有宿主是 Codex 时写 `codex`；Claude Code、WorkBuddy、ChatGPT 等其他 AI 宿主一律写 `external_ai`；用户本人写的文字写 `human`。不得借用别的值。宿主与模型名记在本地 `run-handoff`，不写进 `producer`。连接的是 v0.19.0 之前的部署、工具里没有 `external_ai` 时，非 Codex 宿主不保存，保留本地稿并注明“未同步到 mali-story”。
+**producer**：`save_story_artifact` 的 `producer` 取值规则同上一节（`codex`、`human`、`external_ai`，mali-story v0.19.0 起，见 [mali-story#2332](https://github.com/ZhiBoLingXi/mali-story/issues/2332)）。连接的是 v0.19.0 之前的部署、工具里没有 `external_ai` 时，非 Codex 宿主不保存，保留本地稿并注明“未同步到 mali-story”。
 
 **工位产出 → 候选字段**：
 
@@ -135,7 +134,7 @@ slot 是跨修订的稳定身份：同一产出的每次修订用同一 slot，`
 
    get 与重发记为 `resolved_verified`。直接用原 requestId 记录重发响应会被拒绝（`outcome_differs`，退出码 2），因为原回执不会被改写。对账前不换新 requestId 重试，以免重复候选或重复计费。
 
-**旧本地项目导入**：已有本地稿件要成批存成候选时，先 `list_story_artifacts(project_id)`（不过滤，翻完所有页）存成文件，运行 `drama_tools.py import-project preview <项目> --listing <各页响应>` 给主创看计划（将建项、远端已有修订的冲突、跳过原因）；主创确认后再 `import-project apply ... --out <请求目录> --producer <值> --input-snapshot-id <snapshotId>` 生成逐条保存输入，按上面第 2、3、4 步逐条保存、记录、读回核对。映射规则见仓库 README。冲突项不生成请求，安装或计划都不等于保存授权。
+**旧本地项目导入**：`import-project` 生成的是历史候选写入（`save_story_artifact`），**只用于没有页面工具的旧部署**。有页面工具的部署先做能力发现，用上一节的 `import_pages` 导入，不批量写历史候选。旧部署上已有本地稿件要成批存成候选时，先 `list_story_artifacts(project_id)`（不过滤，翻完所有页）存成文件，运行 `drama_tools.py import-project preview <项目> --listing <各页响应>` 给用户看计划（将建项、远端已有修订的冲突、跳过原因）；用户确认后再 `import-project apply ... --out <请求目录> --producer <值> --input-snapshot-id <snapshotId>` 生成逐条保存输入，按上面第 2、3、4 步逐条保存、记录、读回核对。映射规则见仓库 README。冲突项不生成请求，安装或计划都不等于保存授权。
 
 `inputFingerprint` 是 `--input` 规范 JSON（键排序、UTF-8、紧凑分隔；忽略以 `_` 开头的顶层注释键）的 sha256，只用于本地冲突判断，与服务端 `requestFingerprint` 算法不同，不能相互比较。
 

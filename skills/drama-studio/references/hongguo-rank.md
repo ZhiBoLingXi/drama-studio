@@ -35,7 +35,7 @@
 
 ## 从榜单形成候选
 
-按需用 [候选与交接模板](../templates/benchmark-research.md) 保存到项目 `research/benchmark-research-r01.md`；由 AI 填写，只有用户需判断的事项才提问。不覆盖已有研究版本。
+按需用 [对标记录](../templates/benchmark-research.md)（记录模板）保存到项目 `research/benchmark-research-r01.md`；由 AI 填写，只有用户需判断的事项才提问。不覆盖已有研究版本。
 
 分别寻找：有窗口证据的持续热门、有两期证据的上升作品、与目标相关但具体实现不同的作品。这些是选样视角，不要求每类凑齐，也不固定分数或排名门槛。只有一天数据时仍可做当日初筛，将趋势留为未知；用户已有明确对标时直接核对，不强行重选。
 

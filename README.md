@@ -128,7 +128,7 @@ python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sam
 
 `doctor` 只证明离线工具可加载，不能证明 MCP 已连接。项目初始化只建立本地工作目录，不创建远端项目。完整命令参数使用 `--help` 查看。
 
-`contract-check <对象> <文件>` 校验[创作工位契约](skills/drama-studio/references/workstations/README.md)的交接对象（task、knowledge-card、context-snapshot、review-record、run-handoff、remote-receipt），Schema 在 `skills/drama-studio/schemas/`，示例在 `skills/drama-studio/schemas/examples/`。它拒绝超预算快照、混入评估材料、必需材料缺失却标完整、非上游变更提案、本地自称已采用等情况，退出码 2 表示违反；通过不代表远端引用存在或创作达标。首版知识卡只接受项目私有范围。`run-handoff` 有两个可选字段 `finishedAt`、`additionalSnapshotIds`，`review-record` 有可选字段 `additionalTargets`（按批审读时的其余目标）；不写这些字段的旧记录照样通过。
+`contract-check <对象> <文件>` 校验[工位契约](skills/drama-studio/references/workstations/README.md)的交接对象（task、knowledge-card、context-snapshot、review-record、run-handoff、remote-receipt），Schema 在 `skills/drama-studio/schemas/`，示例在 `skills/drama-studio/schemas/examples/`。它拒绝超预算快照、混入评估材料、必需材料缺失却标完整、非上游变更提案、本地自称已采用等情况，退出码 2 表示违反；通过不代表远端引用存在或创作达标。首版知识卡只接受项目私有范围。`run-handoff` 有两个可选字段 `finishedAt`、`additionalSnapshotIds`，`review-record` 有可选字段 `additionalTargets`（按批审读时的其余目标）；不写这些字段的旧记录照样通过。
 
 D2／D3 试点后补充的工位方法：[定向修订单独装包](skills/drama-studio/references/workstations/README.md#定向修订单独装包)、[并行子代理的临时文件](skills/drama-studio/references/workstations/README.md#并行子代理的临时文件)、[C6 审读包装什么](skills/drama-studio/references/workstations/c6-review.md#审读包装什么)（正文引用到的前文场面、已精修的前一集）、[保存正文逐字保真](skills/drama-studio/references/mali-story.md#保存正文逐字保真)。
 
@@ -369,6 +369,7 @@ python3 -B $T feedback-ingest --purge WN-xxxxxxxxxx --out feedback/ep006
 - `feedback-ingest --out <空目录>`：全路由派生。句级、来回级、话题级、场结构、信息承载 → 反例；带改法的句级 → 人工正例；来回／话题级 → 对照对草稿；信息承载、对象约定、独白与同类 ≥2 次 → 约定草稿，同类 ≥2 次另起草新问；程序、事实 → 底账修订提案与 K1 卡草稿；决定 → 决定队列条目（`decided`，`humanWords` 是原话）。每个派生物带 `fromNotes` 与 `status: drafted`，`--purge <noteId>` 按 id 清掉。输入另认 `### ` 分节的批注记录、`--section <标题>` 指定的 md 一节（表格每行一条）、追问单回答记录（文件或目录；落在程序依赖上、或 `defectKind` 为 `contradicts_reality` 的 notHolds）。`--target <台词目标>` 时，起草的约定写进升版的台词目标（新 `revision`，`changelog` 记一条，原文件不动）。
 - `contract-check dialogue-target`：有 `changelog` 时要有本修订的一条（新的在前、在后都认）；引用旧修订的任务照旧能过。`context-pack` 不装没有来源（`provenance` 或 `fromNotes`）的对照对。
 - 工作室级语料（计划 §8 #1，2026-10-15 确认）：语料缓存可以放 `<工作室根>/corpus/`（工作室根是 `STUDIO.md` 所在目录）。`context-pack --studio-corpus <工作室根>/corpus` 时，`--exemplars` 可以是这个目录里的文件（按解析后的路径判断，`..` 与指向目录外的符号链接都拒）；装入的记录要是 `scope.level: studio` 且 `origin.kind: mali_story_template`，否则输入错误；对照对与对话表仍只能取自项目。`corpus label`／`agree`／`defaults` 对这个目录里的文件照同一条件核，`corpus fetch plan` 把台账写在这里时记 `scope.level: studio`。`contract-check corpus-manifest` 与 `dialogue-exchange` 放行 studio，条件相同；对照对、批注与知识卡仍只放行项目级。不给 `--studio-corpus` 时行为不变。
+- 未发布：`feedback-ingest` 只把用户原话写成 `decided`（`--author-role user`、`--user-name`），编剧、顾问的决定类意见写 `pending` 带默认、原话记 `basisWords`；`numeric_dialogue` 只管字／行／句／来回，人数、场数类制作约束能过 `contract-check task`；`episode-check --max-scenes`；C5a 没有对话表时 `--annotations-only --exemplars <标注交换文件>` 只装标注字段；`dialogue-plan-check` 认 `deferredTo` 的 fact（`--decisions` 给决定队列）。
 - 随包数据：`default-media-profile.json` 各形态带 `n`，交换中位时长按形态重算（真人剧 10.7 秒，n=107；漫剧 12.0 秒，n=31）；`genre-lexicon.json` 每张表带 `measured`（n 与语料印证的词）。
 
 `reference-check` 核对实际保存的 mali-story 模板详情，默认沿用其声明集数，也支持显式 `--expected-episodes N`。退出码 2 表示资料声明或覆盖需要复核；字段齐全不证明原片真实、原剧完整或创作质量。见 [资料覆盖检查](skills/drama-studio/references/reference-check.md)。

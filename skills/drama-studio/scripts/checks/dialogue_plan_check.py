@@ -2,7 +2,9 @@
 
 规则（fail 的条目都带位置与原样片段，便于分辨误判）：
 1. info-ledger：对话表 infoLedger 的 factId 都在分集计划里、分集计划每个 fact 都被引用；
-   每条 `carriedBy` 有 `exchangeIds[]`（每个 id 都在对话表里）或 `pictureReason`。
+   每条 `carriedBy` 有 `exchangeIds[]`（每个 id 都在对话表里）或 `pictureReason`。容量提案拆段时，分到后段的 fact 写
+   `deferredTo: <提案 id>`，不要求承载；要求这个提案存在且有默认：对话表 `changeProposals` 里有这个 id，或 `--decisions`
+   给的决定队列里有这个 id 的条目（字面复读裁定 #15）；能读到提案的 `kind` 时须是 `capacity`。
 2. topics-segments：话题有 `situation`；每段 `between` 是说话的两个人（不是区间），两人不同，
    有 `closer`；`exchanges[].segmentId` 在本话题段里；各段的交换按 segments 顺序排开、不交错。
    `between` 里的人不在本场 participants 只记 notes（电话那头等画外对象）。
@@ -58,8 +60,9 @@ def iter_topics(dplan):
             yield scene, topic
 
 
-def check_info_ledger(dplan, episode_facts):
-    items = []
+def check_info_ledger(dplan, episode_facts, proposals=None):
+    items, deferred = [], []
+    proposals = proposals or {}
     exchange_ids = {ex.get("exchangeId") for _, topic in iter_topics(dplan) for ex in topic.get("exchanges") or []}
     referenced = set()
     for i, entry in enumerate(dplan.get("infoLedger") or []):
@@ -75,6 +78,21 @@ def check_info_ledger(dplan, episode_facts):
             if is_nonempty(entry.get("infoId")) and entry["infoId"] != episode_facts[fid]["infoId"]:
                 items.append(f"{where}: infoId={entry['infoId']!r}，分集计划里它属于 {episode_facts[fid]['infoId']!r}")
         carried = entry.get("carriedBy") if isinstance(entry.get("carriedBy"), dict) else {}
+        if "deferredTo" in entry:  # split by a capacity proposal: carried in a later part, not here
+            target = entry["deferredTo"]
+            if not is_nonempty(target):
+                items.append(f"{where}: deferredTo 是空的；写拆段的容量提案 id")
+            elif target not in proposals:
+                items.append(f"{where}: deferredTo={target!r} 找不到这个提案（对话表 changeProposals 与 --decisions 里都没有）")
+            elif not proposals[target]["default"]:
+                items.append(f"{where}: deferredTo={target!r} 的提案没有默认（default）")
+            elif proposals[target]["kind"] not in (None, "capacity"):
+                items.append(f"{where}: deferredTo={target!r} 的提案是 {proposals[target]['kind']!r} 类，拆段要指向容量提案（capacity）")
+            else:
+                deferred.append({"factId": fid, "deferredTo": target})
+            if carried.get("exchangeIds"):
+                items.append(f"{where}: 既写了 deferredTo 又由本表交换承载；分到后段的 fact 本段不承载")
+            continue
         ids = carried.get("exchangeIds")
         if ids is not None and not isinstance(ids, list):
             items.append(f"{where}: carriedBy.exchangeIds 应是数组，实际 {ids!r}")
@@ -87,7 +105,23 @@ def check_info_ledger(dplan, episode_facts):
     missing = sorted(set(episode_facts) - referenced)
     if missing:
         items.append(f"分集计划的 fact 没有被对话表 infoLedger 引用：{missing}")
-    return {"status": "fail" if items else "pass", "items": items}
+    result = {"status": "fail" if items else "pass", "items": items}
+    if deferred:
+        result["deferred"] = deferred
+    return result
+
+
+def proposal_defaults(dplan, decisions=None):
+    """proposal id -> {default: has a non-empty default, kind: its kind when it says one, else None}, from the dialogue
+    plan's changeProposals and a decision queue."""
+    found = {}
+    entries = (decisions or {}).get("entries") if isinstance(decisions, dict) else decisions
+    for entry in [*(dplan.get("changeProposals") or []), *(entries or [])]:
+        if isinstance(entry, dict) and is_nonempty(entry.get("id")):
+            old = found.get(entry["id"], {"default": False, "kind": None})
+            kind = entry.get("kind") if is_nonempty(entry.get("kind")) else None
+            found[entry["id"]] = {"default": old["default"] or is_nonempty(entry.get("default")), "kind": old["kind"] or kind}
+    return found
 
 
 def check_topics_segments(dplan):
@@ -320,7 +354,7 @@ def check_change_proposals(dplan):
     return {"status": "fail" if items else "pass", "items": items}
 
 
-def run_dialogue_plan_check(dialogue_plan_path, episode_plan_path, knows_path) -> dict:
+def run_dialogue_plan_check(dialogue_plan_path, episode_plan_path, knows_path, decisions_path=None) -> dict:
     dplan = load_json(dialogue_plan_path, "对话表")
     episode_plan = load_json(episode_plan_path, "分集计划")
     knows_index, within_index = build_knows_index(load_json(knows_path, "knows 导出"))
@@ -328,7 +362,8 @@ def run_dialogue_plan_check(dialogue_plan_path, episode_plan_path, knows_path) -
                      for f in info.get("facts") or [] if f.get("factId")}
     quota = scan_quota_keys(dplan)
     rules = {
-        "info-ledger": check_info_ledger(dplan, episode_facts),
+        "info-ledger": check_info_ledger(dplan, episode_facts,
+                                        proposal_defaults(dplan, load_json(decisions_path, "决定队列") if decisions_path else None)),
         "topics-segments": check_topics_segments(dplan),
         "listener-knows": check_listener_knows(dplan, knows_index),
         "speaker-knows": check_speaker_knows(dplan, episode_plan, knows_index, within_index),
@@ -345,10 +380,12 @@ def _main(argv):
     parser.add_argument("dialogue_plan")
     parser.add_argument("--episode-plan", required=True)
     parser.add_argument("--knows", required=True, help="ledger knows 的导出（按场、按人，含 withinScene）")
+    parser.add_argument("--decisions", help="决定队列：infoLedger 的 deferredTo 指向的容量提案在这里找")
     args = parser.parse_args(argv)
-    result = run_dialogue_plan_check(args.dialogue_plan, args.episode_plan, args.knows)
+    result = run_dialogue_plan_check(args.dialogue_plan, args.episode_plan, args.knows, args.decisions)
     result["reproduceCommand"] = reproduce_command("dialogue_plan_check", [
-        abspath(args.dialogue_plan), "--episode-plan", abspath(args.episode_plan), "--knows", abspath(args.knows)])
+        abspath(args.dialogue_plan), "--episode-plan", abspath(args.episode_plan), "--knows", abspath(args.knows)]
+        + (["--decisions", abspath(args.decisions)] if args.decisions else []))
     return result, (0 if result["passed"] else 2)
 
 

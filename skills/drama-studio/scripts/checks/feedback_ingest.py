@@ -18,7 +18,10 @@ level 推断：明写的为准；改稿按改动类型；批注按一个小词�
   来回／话题级 → 对照对草稿（contrast-pairs.jsonl，contrast-pair 形状，provenance 指回 note）；
 - 信息承载、对象约定、独白，以及同类 ≥2 次 → 约定草稿（conventions.jsonl）；同类 ≥2 次另起草新问（questions.jsonl）；
 - 程序、事实 → 底账修订提案（ledger-proposals.jsonl）与 K1 卡草稿（k1-drafts.jsonl）；
-- 决定 → 决定队列条目（decisions.json，status: decided，humanWords 是原话）。
+- 决定 → 决定队列条目（decisions.json）。只有用户原话（note 的 authorRole 为 user）写 `decided`；编剧、顾问或来源不明的
+  写 `pending`，带默认（照原话办），原话记在 basisWords（basisBy 谁说的、basisRole writer／advisor／unknown）；humanWords
+  只用在 decided 条目、只记用户原话——编剧、顾问给意见，用户定。
+  来源：评论项的 `authorRole`，或 `--author-role`；`--user-name <名字>` 让作者是这个名字的 note 算用户。都没有就不算用户。
 每个派生物带 `fromNotes`（note id）与 `status: drafted`；`--purge <noteId> --out <目录>` 按 id 清掉它派生的全部条目。
 给 `--target <台词目标>` 且起草了约定时，另写升版的台词目标（新 revision，约定 `status: drafted`、`sourceNotes`，
 `changelog` 记一条），原文件不动。派生物一律 `scope.level: project`，只写进 --out，不改原文件。
@@ -38,6 +41,8 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from checks.contract_check import REVISION_LABEL
+
+AUTHOR_ROLES = ("user", "writer", "advisor")  # who said it; only the user decides (wording rulings #1)
 from checks.text_lines import (DIALOGUE_LINE_RE, InputError, abspath, load_json, load_text, parse_lines,
                                reproduce_command, run_cli)
 
@@ -126,8 +131,11 @@ def notes_from_comments(doc, source):
     for i, item in enumerate(doc["comments"]):
         messages = [m.get("text") if isinstance(m, dict) else m for m in item.get("messages") or []] or [item.get("text")]
         note_text, suggestion = split_messages([m for m in messages if m])
-        notes.append(make_note(source, item.get("quote"), note_text, item.get("suggestion") or suggestion,
-                               item.get("author"), item.get("level"), item.get("category"), item.get("commentId") or f"comments[{i}]"))
+        note = make_note(source, item.get("quote"), note_text, item.get("suggestion") or suggestion,
+                         item.get("author"), item.get("level"), item.get("category"), item.get("commentId") or f"comments[{i}]")
+        if item.get("authorRole") in AUTHOR_ROLES:
+            note["authorRole"] = item["authorRole"]
+        notes.append(note)
     return notes
 
 
@@ -299,7 +307,7 @@ def draft_list(notes):
 
 
 def run_feedback_ingest(path, original=None, text=None, plan_text_map=None, author=None, section=None, out=None,
-                        target=None) -> dict:
+                        target=None, author_role=None, user_names=None) -> dict:
     source_path = Path(path)
     if source_path.is_dir():  # a folder of answer records (a reality review)
         docs = [load_json(str(f), "回答记录") for f in sorted(source_path.glob("*.json"))]
@@ -327,8 +335,11 @@ def run_feedback_ingest(path, original=None, text=None, plan_text_map=None, auth
             notes = notes_from_sections(body, source)
         else:
             notes = notes_from_record(body, source)
+    users = set(user_names or [])
     for note in notes:
         note["author"] = note["author"] or author
+        # wording rulings #1: only the user decides; a writer's or advisor's words are advice. Unknown is not the user.
+        note["authorRole"] = note.get("authorRole") or author_role or ("user" if note["author"] and note["author"] in users else "unknown")
     attach(notes, text, plan_text_map)
     mark_conflicts(notes)
     drafts, recurring = draft_list(notes)
@@ -403,11 +414,23 @@ def derive(notes, recurring):
 
 
 def _decision_queue(notes):
-    entries = [{"id": f"DQ-{n['noteId'][3:]}", "kind": "other", "question": n["quotedText"] or n["humanNote"],
-                "options": [{"optionId": "as_said", "text": n["humanNote"]}], "default": "as_said",
-                "defaultReason": "主创原话已定", "affects": [], "status": "decided", "decision": "as_said",
-                "decidedBy": n["author"] or "writer", "humanWords": n["humanNote"], "fromNotes": [n["noteId"]]}
-               for n in notes if n["humanNote"]]
+    """A user's words are a decision; anyone else's are a pending entry whose default is to do as they said."""
+    entries = []
+    for n in notes:
+        if not n["humanNote"]:
+            continue
+        entry = {"id": f"DQ-{n['noteId'][3:]}", "kind": "other", "question": n["quotedText"] or n["humanNote"],
+                 "options": [{"optionId": "as_said", "text": n["humanNote"]}], "default": "as_said", "affects": [],
+                 "fromNotes": [n["noteId"]]}
+        if n.get("authorRole") == "user":  # humanWords: the user's own words, on a decided entry only
+            entry.update(defaultReason="用户原话已定", status="decided", decision="as_said", decidedBy=n["author"] or "user",
+                         humanWords=n["humanNote"])
+        else:  # advice: the words it rests on are basisWords, never humanWords
+            role = n.get("authorRole") if n.get("authorRole") in ("writer", "advisor") else "unknown"
+            who = {"writer": "编剧", "advisor": "顾问"}.get(role, "来源不明的")
+            entry.update(defaultReason=f"{who}意见（{n['author'] or '未署名'}）；用户没定前按这条意见办", status="pending",
+                         decision=None, decidedBy=None, basisWords=n["humanNote"], basisBy=n["author"], basisRole=role)
+        entries.append(entry)
     return {"schemaVersion": "drama-studio/decision-queue/v0", "entries": entries}
 
 
@@ -488,6 +511,9 @@ def _main(argv):
     parser.add_argument("--text", help="被批注的正文：把被批原文定位到行号")
     parser.add_argument("--plan-text-map", help="对照表：行号挂到交换")
     parser.add_argument("--author", help="原话记录或改稿的作者")
+    parser.add_argument("--author-role", choices=AUTHOR_ROLES, help="作者是谁：user（用户本人）、writer（编剧）、advisor（顾问）；"
+                        "只有 user 的决定类意见写 decided，其余写 pending 带默认。评论项自带 authorRole 时以它为准")
+    parser.add_argument("--user-name", action="append", default=[], help="用户的名字（可多次）：作者是这个名字的 note 算用户")
     parser.add_argument("--section", help="md 只读这一节（标题开头的文字，如「二、」）；节里的表格每行一条")
     parser.add_argument("--out", help="派生物写到这个空目录（D6-4 全路由）；不给则只列草稿清单")
     parser.add_argument("--target", help="台词目标：起草了约定时另写升版的台词目标到 --out")
@@ -500,14 +526,16 @@ def _main(argv):
     if not args.input:
         raise InputError("要给 input（或 --purge <noteId> --out <目录>）")
     result = run_feedback_ingest(args.input, args.original, args.text, args.plan_text_map, args.author, args.section,
-                                 args.out, args.target)
+                                 args.out, args.target, args.author_role, args.user_name)
     command = [abspath(args.input)]
     for flag, value in (("--original", args.original), ("--text", args.text), ("--plan-text-map", args.plan_text_map)):
         if value:
             command += [flag, abspath(value)]
-    for flag, value in (("--author", args.author), ("--section", args.section)):
+    for flag, value in (("--author", args.author), ("--author-role", args.author_role), ("--section", args.section)):
         if value:
             command += [flag, value]
+    for name in args.user_name:
+        command += ["--user-name", name]
     for flag, value in (("--out", args.out), ("--target", args.target)):
         if value:
             command += [flag, abspath(value)]

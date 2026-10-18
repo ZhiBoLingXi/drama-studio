@@ -1,6 +1,6 @@
 # 集纲层：功能地图、底账、季编排与分集计划
 
-本页是集纲层的操作手册，写给执行的 AI：每一步做什么、产物放哪、跑哪条命令、退出码怎么读。新项目和新写的集纲默认走这里；人物、选题、送审的安排仍按 [策划](planning.md) 与 [两次审批](approval-flow.md)。工位对象的契约见 [创作工位契约](workstations/README.md)。
+本页是集纲层的操作手册，写给执行的 AI：每一步做什么、产物放哪、跑哪条命令、退出码怎么读。新项目和新写的集纲默认走这里；人物、选题、送审的安排仍按 [策划](planning.md) 与 [两次审批](approval-flow.md)。工位对象的契约见 [工位契约](workstations/README.md)。
 
 每条规矩标层级：**S** 是随包脚本能核的，**R** 是 mali-story 服务端保证的，**M** 是模型照做的约定。验收只引用 S／R；M 项写进记录作证据，不作通过条件。随包脚本永不联网、不调模型。
 
@@ -8,30 +8,32 @@
 
 ## 1. 总览：C3a → C3b → C3c → C4，两处人审不变
 
-| 层 | 做什么 | 产物（项目目录下） | 交接条件 |
+| 运行层 | 做什么 | 产物（项目目录下） | 放行条件 |
 | --- | --- | --- | --- |
 | C3a 功能地图 | 每条线要完成的功能；每个功能的候选实现；跨线的前提问题；选定实现；全剧结局、因果链、不可逆选择、埋设与回收位 | `planning/function-map.json` | 每个功能有 `selected` 实现或已按 §11 登记保留；选定实现的回答记录里没有承重且未登记的 `notHolds`；`losesFunctions[]` 非空的候选没被选定；勘误清零（S） |
 | C3b 底账与现实核对 | 六类账的条目、来源与状态；检索写 K1 卡；追问单回答 | `planning/ledger/ledger-ep000.json`、`knowledge/cards/`、`.drama/checks/` | 功能依赖的条目都在；选定之后 `contested` 为零；未核清单、戏剧假定清单可生成（S） |
 | C3c 季编排 | 把功能分到集；每集事件粗列与★；容量粗估；装不下时选动作；埋设与回收位 | `planning/season-plan.json` | 每集有容量记录，超出的集有动作；每个埋设有回收位（S） |
-| C4 分集计划 | 按季编排的分配把一集写成计划，声明对底账的读写（计划轨） | `planning/episodes/episode-plan-<NNN>.json`、`planning/ledger/delta-ep<NNN>.planned.json` | `plan-check` 全过；追问单对本集关键动作答完；冷读复述记录在（S＋M） |
+| C4 分集计划 | 按季编排的分配把一集写成计划，声明对底账的读写（计划轨） | `planning/episodes/episode-plan-<NNN>.json`；分集计划里的 `ledgerDelta` 另存为 `planning/ledger/delta-ep<NNN>.planned.json` | `plan-check` 全过（S）；追问单对本集关键动作答完、冷读复述记录在（记录在为 S，内容为 M） |
 
-决定队列放 `planning/decisions.json`，各层都往里登记。集号一律三位数字，拆出来的半集写 `006A`。
+决定队列放 `planning/decisions.json`，各运行层都往里登记。文件名里的集号写 `<NNN>`，三位补零，拆出来的半集写 `006A`（如 `episode-plan-006A.json`）；JSON 的 `episode` 字段按 schema 写整数或 `"6A"`。
 
-其余产物的位置：任务对象放 `.drama/tasks/`，选材清单放 `.drama/selections/`，媒介档案放 `planning/media-profile.json`，`ledger apply` 写出的新修订放 `planning/ledger/ledger-ep<NNN>.json`，跨前提一致性表放 `planning/premise-consistency.md`（§3）。快照由 `context-pack` 自己写进 `.drama/snapshots/`，不要另存它的标准输出。`init-project` 除 `planning/` 外还建 `runs/`、`knowledge/`、`planning/ledger/`、`planning/episodes/`；`.drama/runs/` 在第一次写交接时建。
+其余产物的位置：任务对象放 `.drama/tasks/`，选材清单放 `.drama/selections/`，媒介档案放 `planning/media-profile.json`，底账修订带轨道后缀：`ledger apply` 写出计划轨修订 `planning/ledger/ledger-ep<NNN>.planned.json`，`ledger replay --track actual --out` 写出实际轨修订 `planning/ledger/ledger-ep<NNN>.actual.json`（下一集有正文时，入口底账修订就是这一份）；只有开播前底账 `ledger-ep000.json` 不带后缀。跨前提一致性表放 `planning/premise-consistency.md`（§3）。快照由 `context-pack` 自己写进 `.drama/snapshots/`，不要另存它的标准输出。`init-project` 除 `planning/` 外还建 `runs/`、`knowledge/`、`planning/ledger/`、`planning/episodes/`；`.drama/runs/` 在第一次写交接时建。
 
 **启用了集纲层的判据**：项目里有 `planning/season-plan.json`、`planning/function-map.json`，或 `planning/ledger/`、`planning/episodes/` 下有 JSON 记录，任一项即是。只有 `planning/` 不算（旧项目也有这个目录，里面放旧的框架与集纲文件）；`init-project` 刚建的空目录也不算，写出第一份集纲层记录才算启用。本页凡说「启用了集纲层的项目」都按这条判；C4 装包要季编排与底账、`season-check` 的旧集纲规则是否认 `episode-plan` 记录，都用这条判据。`season-check --outline` 的集纲层七条用的是另一个条件：项目里有 `planning/season-plan.json` 才跑。所以 C3c 写出季编排之前（只有功能地图或底账时）项目已算启用，七条却还不核。
 
 人审点仍是两处：选题确认、送审包审批。前提问题、用户给定设定的去留、容量提案都进决定队列并带默认，流程按默认继续，它们不是人审点。
 
-C1 定位与 C2 人物不变，C2 只写人：欲望、顾虑、策略、关系、能力边界。钱的来路、程序、空白期各方做了什么，进底账，不进人物小传；小传里「他三年里做了 X」这类句子要有对应的时间线账条目，否则写成待定。
+**只写几集时**：C3a、C3b 仍按全剧写（结局、因果链、开播前底账，M）；C3c 季编排只需排到本次范围内的集，范围外的功能在季编排里标 `outOfScope`（`season-plan-check` 认它）。
 
-**两条轨。** C4 写计划轨 delta；C5 正文写完后，`run-handoff.stateChangeProposals[].ledgerDelta` 写实际轨 delta（`delta-ep<NNN>.actual.json`）。下一集的入口接实际轨；还没有正文时接计划轨并标「待正文对齐」。入口状态记录 `runs/state/after-ep-<NNN>.md` 由 `ledger replay --track actual --md` 从实际轨导出，不再手写。两轨对不上时 `ledger diff` 列出差异，交下一集 C4，不判谁对。
+C1 定位与 C2 人物不变，C2 只写人：欲望、顾虑、策略、关系、能力边界。钱的来路、程序、空白期各方做了什么，进底账，不进人物包（送审时称人物小传）；人物包里「他三年里做了 X」这类句子要有对应的时间线账条目，否则写成待定。
 
-**装包角色与运行记录。** C3a 用 `context-pack --role function_mapper`，C3b 用 `ledger_keeper`，C3c 用 `season_planner`，C4 用 `author`；追问单的作答与复核用 `fact_check`；分集计划冷读用 `cold_reader`（与正文冷读同一角色，靠 `target.kind` 区分）。C3a／C3b／C3c 的运行记录写 `workstation: C3`，另加 `layer: C3a`、`C3b` 或 `C3c`。集纲侧审读的每条 finding 必带 `cites`（§7）。C4 作者包须有三件：季编排（`planning/season-plan.json`）、底账修订（`planning/ledger/ledger-*.json`，是修订文件，不是 delta）、功能地图（`planning/function-map.json`），缺一件不装包（S）。知识卡按选材清单里的卡片项装（不走 `local_file`）；交接里写的 `knowledge/cards/<id>@r<n>.json` 与包里同一张卡同一修订视为同一份。集纲侧审读（C6 读分集计划、功能地图、底账或季编排）的 `task` 填可选字段 `target.kind`（`episode_plan`、`function_map`、`ledger`、`season_plan`；读正文时是 `episode_text`），填了集纲侧的值就不需要 `dialogueTarget`。底账全账不进包，按分集计划的 `reads` 只装引用到的条目。
+**两条轨。** C4 写计划轨 delta；C5b 正文写完后，`run-handoff.stateChangeProposals[].ledgerDelta` 写实际轨 delta（`delta-ep<NNN>.actual.json`）。下一集的入口接实际轨；还没有正文时接计划轨并标「待正文对齐」。入口状态记录 `runs/state/after-ep-<NNN>.md` 由 `ledger replay --track actual --md` 从实际轨导出，不再手写。两轨对不上时 `ledger diff` 列出差异，交下一集 C4，不判谁对。
+
+**装包角色与运行记录。** C3a 用 `context-pack --role function_mapper`，C3b 用 `ledger_keeper`，C3c 用 `season_planner`，C4 用 `author`；追问单的作答与复核用 `fact_check`；分集计划冷读用 `cold_reader`（与正文冷读同一角色，靠 `target.kind` 区分）。C3a／C3b／C3c 的运行记录写 `workstation: C3`，另加 `layer: C3a`、`C3b` 或 `C3c`。集纲侧审读的每条 finding 必带 `cites`（§7）。C4 作者包须有三件：季编排（`planning/season-plan.json`）、底账修订（`planning/ledger/ledger-*.json`，是修订文件，不是 delta）、功能地图（`planning/function-map.json`），缺一件不装包（S）。知识卡按选材清单里的卡片项装（不走 `local_file`）；交接里写的 `knowledge/cards/<id>@r<n>.json` 与包里同一张卡同一修订视为同一份。集纲侧审读（C6 读分集计划、功能地图、底账或季编排）的 `task` 填可选字段 `target.kind`（`episode_plan`、`function_map`、`ledger`、`season_plan`；读正文时是 `episode_text`），填了集纲侧的值就不需要 `dialogueTarget`。C4 包按上面三件装入口底账修订文件；C5a、C5b 的包不装整套底账，台词层的知情来自 `ledger knows` 的导出，入口来自入口状态记录。
 
 **审读由新上下文写。** 集纲侧的 `review-record`（读功能地图、底账、季编排或分集计划）由没参与写作的新上下文写，作者不写。作者在自己的交接或汇总里做的 `serial_self_review` 不算审读。
 
-**离线。** 集纲层的离线与正文同法（见 [离线与单代理降级](writing.md#离线与单代理降级)）：只有已有远端项目暂时断线，或用户明确同意只交本地稿（把原话记进 `PROJECT.md`），才走离线；本该存成页面的分集计划可读稿，回执记 `not_sent`；关口跑 `season-check --outline <起-止> --allow-offline`。
+**离线。** 集纲层的离线与正文同法，条件见 [离线与单代理降级](writing.md#离线与单代理降级)；本该存成页面的分集计划可读稿，回执记 `not_sent`；关口跑 `season-check --outline <起-止> --allow-offline`。
 
 **旧项目。** 没有启用集纲层的项目，行为不变：`season-check --outline` 照旧只核旧规则（输出不带 `ruleSet`）；旧文件一律不动、不搬。
 
@@ -47,7 +49,7 @@ C1 定位与 C2 人物不变，C2 只写人：欲望、顾虑、策略、关系�
 | 谁知道了什么 | `whoLearnsWhat` | 观众先于老陈知道箱子没到 |
 | 局面怎么变 | `situationChange` | 老陈从放心变成起疑 |
 
-功能不写画面和手段。检验办法（M）：把实现整个拿掉，功能句还读得通。功能服务别的线时写 `alsoServes[]`。功能状态 `open／selected／dropped`；`dropped` 必须写 `droppedCost`（哪半句落空、后面哪几集受影响），而且 `dropped` 只能由主创的决定产生，系统不默认删功能。
+功能不写画面和手段。检验办法（M）：把实现整个拿掉，功能句还读得通。功能服务别的线时写 `alsoServes[]`。功能状态 `open／selected／dropped`；`dropped` 必须写 `droppedCost`（哪半句落空、后面哪几集受影响），而且 `dropped` 只能由用户的决定产生，系统不默认删功能。
 
 **候选实现。** 每个功能下若干候选（`candidates[]`），现行或用户给的实现先登记为候选 A。候选写：
 
@@ -81,13 +83,13 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 | 步 | 做什么 | 谁 | 层级 |
 | --- | --- | --- | --- |
-| 1 | 列功能；现行或用户给的实现登记为候选 A，写 `steps` 与 `ledgerDeps` | 写作方 | S：结构；M：拿掉实现功能句仍读得通 |
+| 1 | 列功能；现行或用户给的实现登记为候选 A，写 `steps` 与 `ledgerDeps` | 作者 | S：结构；M：拿掉实现功能句仍读得通 |
 | 2 | `function-map topics` 归并检索题目：`kind: procedure` 的断言，以及 `money`／`object` 里 `required_unstated` 的断言（标 `realWorldRule: false` 的除外）；`knowledge`、`agenda`、`timeline` 讲的是戏里的人，不出题。检索代理逐题写 K1 卡（§6） | 脚本归并，检索代理写卡 | S：每题有卡（查不到的是空卡）；M：卡的内容 |
 | 3 | 候选 A 过追问单；缺口去重，标承重与依据（§5） | 新上下文的核对方 | S：格式、覆盖、跨记录一致性；M：答案 |
-| 4 | **前提问题**：把跨线的根缺口归并成若干问题，每题 2–3 个真不同的候选、一个默认、一条决定队列条目（`kind: premise`） | 写作方 | S：有默认、有队列条目、候选不少于两个；M：候选真不同 |
+| 4 | **前提问题**：把跨线的根缺口归并成若干问题，每题 2–3 个真不同的候选、一个默认、一条决定队列条目（`kind: premise`） | 作者 | S：有默认、有队列条目、候选不少于两个；M：候选真不同 |
 | 5 | 前提靠着的未核假设是新检索题目；标了 `collapseIfFalse` 的先查 | 同第 2 步 | 同第 2 步 |
 | 6 | 默认前提的组合过追问单（对象类型 `premise`）；填跨前提一致性表 | 新上下文的核对方 | S：回答记录的格式；M：答案与表的内容、表有没有空格 |
-| 7 | 分线写候选实现，用 `requiresPremise[]` 引用前提；过追问单；选定或按 §11 登记 | 写作方 → 核对方 | §1 的交接条件 |
+| 7 | 分线写候选实现，用 `requiresPremise[]` 引用前提；过追问单；选定或按 §11 登记 | 作者 → 核对方 | §1 的放行条件 |
 
 **前提对象**（`function-map.premises[]`）：`premiseId`、`question`、`candidates[]`（每个带 `description`、`origin`、`unverifiedAssumptions[]: {claim, collapseIfFalse}`、`weakensFunctions[]`、`losesFunctions[]`）、`default`、`defaultReason`、`decisionRef`、`inquiryRef`。例：「王姨为什么三年没告诉老陈箱子被退了」是礼物线、空白期线、婚事线共同的根，先定它，再分线写。
 
@@ -135,7 +137,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 | `unverified` | 查过，没查到出处 | 引用它的回答记 `not_evaluable` | 未核清单 |
 | `contested` | 与另一条互斥，带 `conflictKind` | 照常问 | 选定之后须清零 |
 | `license_pending` | 不合常规或没有出处，系统按 §11 的默认先保留 | 已登记，不再拦交接 | 戏剧假定清单（标「待确认」）＋决定队列 |
-| `accepted_license` | 主创明知不合常规仍保留；须有 `humanWords`（S） | 同上 | 戏剧假定清单 |
+| `accepted_license` | 用户明知不合常规仍保留；须有 `humanWords`（S） | 同上 | 戏剧假定清单 |
 | `retired` | 换实现后退役 | — | — |
 
 `unverified` 是不知道对不对；两种戏剧假定是知道不合常规、仍然留着。三者在送审包里分开列，不互相代替。一条戏剧假定只豁免它自己那一处，由它带出的知情、动机、后果照常问。
@@ -146,13 +148,13 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 **分段写账。** 三段以上并行写时，先定好 schema 再分段；跨段补充写 `amendments[]`；用 `ledger merge` 合并，它校验同名字段类型一致。
 
-**两轨文件。** `ledger-ep000.json` 是前史账（C3b）。`delta-ep<NNN>.planned.json` 由 C4 写，`delta-ep<NNN>.actual.json` 由 C5 之后写，各带 `episode`、`track`、`reads[]`、`writes[]`（`entryId` 或新条目、`change`、`reason`、`supportedBy`：本集的 `sceneId` 或 `beatId`）。`ledger replay --at <集> --track planned|actual` 从 ep000 按集序重放出任一集的账；`ledger apply` 写新修订（放 `planning/ledger/ledger-ep<NNN>.json`）。
+**两轨文件。** `ledger-ep000.json` 是开播前底账（C3b）。`delta-ep<NNN>.planned.json` 由 C4 写（就是分集计划里的 `ledgerDelta`，原样另存一份给 `ledger apply` 用），`delta-ep<NNN>.actual.json` 由 C5 之后写，各带 `episode`、`track`、`reads[]`、`writes[]`（`entryId` 或新条目、`change`、`reason`、`supportedBy`：本集的 `sceneId` 或 `beatId`）。`ledger replay --at <集> --track planned|actual` 从 ep000 按集序重放出任一集的账；`ledger apply` 写计划轨修订 `ledger-ep<NNN>.planned.json`；`ledger replay --track actual --out` 写实际轨修订 `ledger-ep<NNN>.actual.json`。
 
 ## 5. 追问单（16 问、信息题、`answerKind`、承重缺口的三个去处、`disposition`）
 
-**对象。** 一个候选实现（`candidate`）、一个前提（`premise`）、一个关键动作（`move`，C4 与修订时）或一条底账条目（`ledgerEntry`）。**作答的是新上下文的核对方（`--role fact_check` 装包；包里的 K1 卡 `usage` 不能是 `evaluation_only`），不是写作方。** 标准是 K1 卡；以往审查的结论只作旁证。
+**对象。** 一个候选实现（`candidate`）、一个前提（`premise`）、一个关键动作（`move`，C4 与修订时）或一条底账条目（`ledgerEntry`）。**作答的是新上下文的核对方（`--role fact_check` 装包；包里的 K1 卡 `usage` 不能是 `evaluation_only`），不是作者。** 标准是 K1 卡；以往审查的结论只作旁证。
 
-**问题单**是随包数据 `schemas/data/reality-check-questions.json`（当前 v1），题干以数据文件为准。题干合并为 v2、「材料全程没写」的自动检索，都推迟到用正式工具重做项目验证那一轮再定（D6-1 设计决定的修订行）；在那之前照 v1 作答，「没写」类结论照写 `searchScope`。
+**问题单**是随包数据 `schemas/data/reality-check-questions.json`（当前 v1），题干以数据文件为准。「材料全程没写」类结论要写 `searchScope`（见下文回答记录）。
 
 | 组 | 问 | 要点 |
 | --- | --- | --- |
@@ -168,7 +170,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 | | 10 物理与技术前提 | 成立吗，出处 |
 | D 巧合与后果 | 11 巧合 | 开场可以有一个；解难题的不行 |
 | | 12 后果 | 按现实的后果写了没有 |
-| E 总账与前提 | 13 空白期总账 | 对着 `ledger view --blank-period` 答 |
+| E 总账与前提 | 13 空白期总账 | 对着总账视图（`ledger view --blank-period` 的输出，不是文件）答 |
 | | 14 去掉实现功能还成不成 | **信息题** |
 | | 15 是不是用户给定 | **信息题** |
 | F 知情 | 16 凭什么知道他据以行动的事实 | 信息来源是哪一环 |
@@ -190,7 +192,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 | `to` | 条件 | `ref` 引什么 |
 | --- | --- | --- |
-| `confirmed_gone` | 换实现后，**新上下文的核对记录**确认它不再出现；写作方自报不算 | 那份核对记录 |
+| `confirmed_gone` | 换实现后，**新上下文的核对记录**确认它不再出现；作者自报不算 | 那份核对记录 |
 | `license` | 登记为戏剧假定：底账条目 `license_pending` 或 `accepted_license` | 底账条目 id |
 | `decision` | 进决定队列且带默认 | 队列条目 id |
 
@@ -221,7 +223,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 **不做**：不改剧情、不给改法、不判这段戏成不成立；成不成立由追问单答。查不到不编造，条目标 `unverified`，卡上写查了什么、没查到什么。
 
-**卡修订后**：`impact <项目> --card <cardId>` 列出装过旧修订的快照与运行；回答记录里的 `cardRevisions` 让你知道哪些回答按旧卡答过、要重答。主创或顾问哪天给了出处或说「不是这样」，经 `feedback-ingest` 回流成卡的草稿或条目修订。
+**卡修订后**：`impact <项目> --card <cardId>` 列出装过旧修订的快照与运行；回答记录里的 `cardRevisions` 让你知道哪些回答按旧卡答过、要重答。用户或顾问哪天给了出处或说「不是这样」，经 `feedback-ingest` 回流成卡的草稿或条目修订。
 
 [创作开发](development-lab.md#1-补充会改变选择的生活材料) 的生活材料要求（带来源、分清事实／陈述／推断／虚构）照旧；检索代理的 K1 卡就是这条要求在现实核对上的产物。
 
@@ -269,16 +271,16 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 | 动作 | 做什么 | 代价登记 |
 | --- | --- | --- |
 | `rearrange` | 把功能挪到相邻集，或把一集的两个功能分给两集 | 受影响的埋设与回收位重登 |
-| `split` | 一集拆成两集（`004A`、`004B`），总集数变 | 送审前自由；送审后是方向变更（[两次审批](approval-flow.md) §4） |
+| `split` | 一集拆成两集（`004A`、`004B`），总集数变 | 送审前自由；送审后（不论是否已批准）按默认先走，随下一次送审包一并复审（[两次审批](approval-flow.md#4-保存与恢复)） |
 | `drop_function` | 某个功能不实现 | 功能地图标 `dropped` 并写 `droppedCost` |
 
-**谁来选。** 送审前由季编排层在 `rearrange` 与 `split` 之间选，选择记进季编排的动作记录，不另找主创。`drop_function` 永不作默认：它只能作为决定队列里的一个选项；只有主创已经定了（条目 `decided` 且有原话），季编排才能记 `drop_function`，并在该集 `capacity.decisionRef` 引用这条决定（S）。送审后任何一层再超（分集计划复核、正文精估），登记为决定队列的 `capacity` 提案并带默认，流程按默认继续；默认拆法是按粗估比例拆成 N 段、本集只写第一段，其余登记为下一集的入口。
+**谁来选。** 送审前由季编排层在 `rearrange` 与 `split` 之间选，选择记进季编排的动作记录，不另找用户。`drop_function` 永不作默认：它只能作为决定队列里的一个选项；只有用户已经定了（条目 `decided` 且有原话），季编排才能记 `drop_function`，并在该集 `capacity.decisionRef` 引用这条决定（S）。送审后（不论是否已批准）任何一层再超（分集计划复核、正文精估），登记为决定队列的 `capacity` 提案并带默认，流程按默认继续，受影响的新版随下一次送审包一并复审；默认拆法是按粗估比例拆成 N 段、本集只写第一段，其余登记为下一集的入口。默认是 `drop_function` 的提案不得自动执行。
 
 **数字不当裁判。** 数字只触发「必须选一个动作」或「提案要有默认」，不判这集合不合格；选哪个动作由哪个功能非在这一集完成不可决定。对标单集的事件数、场景数只作描述，不是配额。
 
 ## 9. 分集计划字段（14 字段，`summary` 可选）
 
-C4 按季编排的分配把一集写成计划。输入：季编排本集条目、底账当前修订、前一集的实际出口（有正文时）、人物包。按顺序分段写，一段默认不超过 15 集、一个运行，前一段存好再给下一段装包，不并行。C4 不定任何全剧级事实、不改功能、不查证；需要时写 `changeProposal` 回 C3b 或 C3a。
+C4 按季编排的分配把一集写成计划。输入：季编排本集条目、入口底账修订、前一集的实际出口（有正文时）、人物包。任务写 `layer: C4`。用户明确给的制作约束（场景数、演员、特效等）在这里就要守，排场时照办，由集纲侧审读核（M）。按顺序分段写，一段默认不超过 15 集、一个运行，前一段存好再给下一段装包，不并行。C4 不定任何全剧级事实、不改功能、不查证；需要时在交接里写 `changeProposals`，`targetLayer` 写 `C3`（交接只认 C1–C6），提案正文写明是 C3a 还是 C3b。
 
 | # | 字段 | 装什么 | 不装什么 | 必填 |
 | --- | --- | --- | --- | --- |
@@ -294,7 +296,7 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 | 10 | `threads` | `pays[]`、`plants[]`（季编排里预定的回收集） | 「第 N 集要用」类散句 | 有埋设或兑现时 |
 | 11 | `exit` | `ledgerRev`（计划轨）；一两句状态；`closingEvent: {beatRef}` 指向最后一场最后一拍 | 下一集的事、悬念说法 | ● |
 | 12 | `capacity` | `infoCount`、`sceneCount`、`pictureBeats`、`estimateSec`、`targetSec`、`basis`、`status: fits` 或 `proposal:<决定 id>` | 字数上限 | ● |
-| 13 | `pending[]` | 决定队列条目 id 与本集采用的默认走法 | 没有默认走法的「待主创定」 | 有待定时 |
+| 13 | `pending[]` | 决定队列条目 id 与本集采用的默认走法 | 没有默认走法的「待用户定」 | 有待定时 |
 | 14 | `summary` | 可选：看点、情绪、爽点各一两句，给页面与拉片对照用 | `events` 里没有的人、物、事、台词 | 可选 |
 
 旧集纲的写法去向：剧情框架 → `events`（自足，不设字数上限）；单列的「关键选择」→ `moves[]`；情绪铺垫、核心爽点、核心看点 → `summary`（`plan-check` 粗核它不含新实体，只报不拦）；结尾钩子 → `exit.closingEvent`（是事件，不是说法）。六字段不再是计划格式，也不再按「有没有关键选择」审集纲。
@@ -305,7 +307,7 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 
 ## 10. 决定队列（kind 词表、`default` 必填、`decided` 须 `humanWords`）
 
-「待主创定」不再滞留：每件等人定的事登记进 `planning/decisions.json`（`{"entries": [...]}`），流程按默认继续，没有「等主创」这个状态。
+「待用户定」不再滞留：每件等人定的事登记进 `planning/decisions.json`（`{"entries": [...]}`），流程按默认继续，没有「等用户」这个状态。
 
 每条字段：`id`、`kind`、`raisedAt: {layer, runId}`、`question`、`options[]`（每项 `optionId`、`text`、可带 `cost` 与 `losesFunctions`）、`default`（一个 `optionId`）、`defaultReason`、`affects[]`（功能、底账条目、集）、`status ∈ pending／decided`。`default` 与 `defaultReason` 必填（S）。
 
@@ -321,11 +323,12 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 规则：
 
 - 提出决定的一方必须给默认；受影响的分集计划在 `pending[]` 引用条目并写本集采用的默认。
-- 删功能永远只是选项，不作默认；默认是「保留用户给定的」时，按默认走不会替主创删掉任何功能。
-- 运行交接里的 `changeProposals` 用 `decision add --from-handoff <run-handoff>` 登记，缺默认就登记不进去。
-- 主创说了话才能改成 `decided`：`decision decide --id <id> --option <optionId> --human-words "<原话>"`，原话照记。之后 `affects[]` 列出要重写的集，按 §7 修订。
-- 修订预算用完后，审读意见仍在的，两处都做：写进该运行交接的 `unfinished`（任务 `goal` 记 `partially_met`），并用 `decision add --from-handoff` 登记进队列、带默认（通常默认「按现稿交付」，另一选项是追加一次修订）；受影响的分集计划在 `pending[]` 引用这条。选了「再改一次」时，由编排方在预算用完的那一层（集纲侧通常是 C4）另开一次运行，另计预算 1 次，交接的 `decisionRefs[]` 写这条决定的 id（`contract-check run-handoff <交接> --decisions planning/decisions.json` 核引用存在，S）。不在预算之外悄悄再改。
-- 编剧、顾问的意见经 `feedback-ingest` 记成 `writer-note`，决定类的回流成 `decided` 条目，同样带原话。
+- 删功能永远只是选项，不作默认；默认是「保留用户给定的」时，按默认走不会替用户删掉任何功能。
+- 跨工位的上游变更（如 C4 提给 C3、C5 提给 C4）：运行交接里的 `changeProposals` 用 `decision add planning/decisions.json --from-handoff <交接>` 登记，缺默认就登记不进去。
+- 同一工位内的上游变更（C3b、C3c 提给 C3a，C5b 提给 C5a）：写进交接的 `unfinished`，用 `decision add planning/decisions.json --entry <条目>` 登记 `kind: upstream_change`、带默认，由编排方开一次上游运行。
+- 用户说了话才能改成 `decided`（用户在对话里的原话就算）：`decision decide --id <id> --option <optionId> --human-words "<原话>"`，原话照记。之后 `affects[]` 列出要重写的集，按 §7 修订。
+- 修订预算用完后审读意见仍在的，用 `decision add planning/decisions.json --entry <条目文件>` 直接登记、带默认（通常默认「按现稿交付」，另一选项是追加一次修订），受影响的分集计划在 `pending[]` 引用这条；`--from-handoff` 只用于交接里指向上游层的变更提案。完整做法见 [修订预算按运行层解释](workstations/README.md#修订预算按运行层解释)。
+- 编剧、顾问的意见经 `feedback-ingest` 记成 `writer-note`。决定类意见只有来源是用户本人时才写 `decided`（带 `humanWords` 用户原话与 `decidedBy`）；编剧、顾问来源的写 `pending`、带默认，依据的原话记在 `basisWords`（`basisBy` 是谁说的，`basisRole` 是身份），不写 `humanWords`，等用户定。来源靠 `--author-role user|writer|advisor` 或 `--user-name <名字>` 认，认不出算非用户。
 
 ## 11. 用户给定设定的处理（`user_given`／`user_given_modified`、不成立时默认保留并标 `license_pending`）
 
@@ -339,13 +342,13 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 | 预算内每个通过核对的候选都让某个功能句落空，或没有候选通过 | **保留用户给定的实现**，底账条目标 `license_pending`，流程按「保留」继续 | 决定队列 `license`：「按现实改掉」（逐项列哪些功能句落空）对「作为戏剧假定保留」，默认为保留 |
 | 前提一级的取舍 | 追问之前一律保留用户给定的前提并标 `license_pending`；追问之后若出现不让功能句落空的合格候选，再按候选走（同第一行） | 决定队列 `premise` |
 
-主创接受某条戏剧假定后，条目改为 `accepted_license` 并记 `humanWords`；没有原话不得标（S）。主创事后选「按现实改掉」时，`affects[]` 列出的集按 §7 重写。
+用户接受某条戏剧假定后，条目改为 `accepted_license` 并记 `humanWords`；没有原话不得标（S）。用户事后选「按现实改掉」时，`affects[]` 列出的集按 §7 重写。
 
-这些都如实写进送审包：**设定核对报告**（每条 `user_given` 与 `user_given_modified` 条目的追问结果、候选实现、默认走法）放首页，紧接着是**戏剧假定清单**，其后是未核清单与决定队列。四份附录的位置见 [两次审批](approval-flow.md#2-一次提交四项材料)。这不是向主创提项目级问题，是把矛盾摆出来，而不是埋进补丁。
+这些都如实写进送审包：**设定核对报告**（每条 `user_given` 与 `user_given_modified` 条目的追问结果、候选实现、默认走法）放首页，紧接着是**戏剧假定清单**，其后是未核清单与决定队列。四份附录的位置见 [两次审批](approval-flow.md#2-一次提交四项材料)。这不是向用户提项目级问题，是把矛盾摆出来，而不是埋进补丁。
 
 ## 12. 命令速查（每步跑哪个命令、退出码怎么读）
 
-命令都用 `python3 -B scripts/drama_tools.py <命令>` 运行（路径相对于技能目录），`--help` 看全部参数。输出是 JSON；**读结构化字段（`passed`、`errors`、各项 `status`），不要只看退出码**。通用约定：`0` 完成且规则成立；`1` 输入读不出或执行错误；`2` 有规则不成立。
+命令都用 `python3 -B scripts/drama_tools.py <命令>` 运行（路径相对于技能目录），`--help` 看全部参数。输出是 JSON；**读结构化字段（`passed`、`errors`、各项 `status`），不要只看退出码**。退出码约定见 [SKILL.md 随包工具](../SKILL.md#随包工具)：`0` 是执行完成，不一定代表规则成立（`capacity`、`retell-check` 恒为 0）；`1` 输入读不出或执行错误；`2` 有规则不成立。
 
 | 步 | 命令 | 退出码怎么读 |
 | --- | --- | --- |
@@ -357,7 +360,7 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 | C3b 合并分段 | `ledger merge <各段> --out planning/ledger/ledger-ep000.json` | 2 同名字段类型不一致等 |
 | C3b 核账 | `ledger check planning/ledger/ledger-ep000.json --stage pre-select --cards knowledge/cards --function-map planning/function-map.json --decisions planning/decisions.json` | `pre-select` 下矛盾、`why` 缺失、钱的空字段只报；选定之后去掉 `--stage`，它们变成 2 |
 | 总账视图 | `ledger view <底账> --blank-period --md`（C3a 阶段给功能地图，按线列；有底账后给底账，按方列） | 0；追问单第 13 问对着它答 |
-| 某人知道什么 | `ledger knows <底账> --who <人> --at <集>` | 0；C5a 的 `listenerKnows` 初值 |
+| 某人知道什么 | `ledger knows <底账> --who <人> --at <集>`（单查一人）；C5a 的 `listenerKnows` 初值用 `ledger knows <入口底账修订> --episode-plan <分集计划>`（按场、按人） | 0 |
 | 统计 | `ledger stats <底账>` | 0；未核、戏剧假定条数等 |
 | 追问记录 | `check-answers <回答记录…> --function-map … --decisions … --ledger … --records …` | 2 格式错、承重缺口无去处、`confirmed_gone` 引别的记录却没有 `backfilledBy`、`errata_check` 没有 `errataConfirmed`；覆盖报告与 `--cross` 只报。`--records` 可给目录：只读其中的回答记录，其余文件跳过并列在 `recordsSkipped` |
 | 两次作答对齐 | `answers-consistency <记录甲> <记录乙>` | 只报 |
@@ -365,8 +368,8 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 | 回答与卡 | `contract-check answers <记录> --cards knowledge/cards` | 2 空卡被当作 `holds` 的出处等 |
 | C3c 粗估 | `capacity season planning/season-plan.json [--media planning/media-profile.json] [--corpus <exchanges.jsonl>｜--exchange-median-sec <秒>] [--format live｜anime]` | 恒为 0（读不出为 1）；`basis.status: default_unmeasured` 表示用了随包默认值；超出时看输出里的提案占位 |
 | C3c 核季编排 | `season-plan-check planning/season-plan.json --function-map planning/function-map.json --decisions planning/decisions.json [--media planning/media-profile.json]` | 2 超出无动作、功能没分到等 |
-| C4 应用 delta | `ledger apply <入口修订> --delta planning/ledger/delta-ep<NNN>.planned.json --out planning/ledger/ledger-ep<NNN>.json` | 2 delta 应用出错（引用的条目不存在等）。规则另核：核本集 delta 用 `ledger check <入口修订> --delta <delta>`；核新修订本身用 `ledger check <新修订>`，**不带** `--delta`（带了会把 delta 再应用一次，`delta-applies` 报错） |
-| C4 核计划 | `plan-check planning/episodes/episode-plan-<NNN>.json --ledger <入口修订> --season planning/season-plan.json --function-map planning/function-map.json --decisions planning/decisions.json` | 2 有规则不成立；`speaker-knows` 为 `pass_with_not_evaluable` 时不拦，补底账；`--characters <人物包>` 核小传里的前史有没有时间线账条目，只报不拦 |
+| C4 应用 delta | `ledger apply <入口底账修订> --delta planning/ledger/delta-ep<NNN>.planned.json --out planning/ledger/ledger-ep<NNN>.planned.json` | 2 delta 应用出错（引用的条目不存在等）。规则另核：核本集 delta 用 `ledger check <入口修订> --delta <delta>`；核新修订本身用 `ledger check <新修订>`，**不带** `--delta`（带了会把 delta 再应用一次，`delta-applies` 报错） |
+| C4 核计划 | `plan-check planning/episodes/episode-plan-<NNN>.json --ledger <入口底账修订> --season planning/season-plan.json --function-map planning/function-map.json --decisions planning/decisions.json` | 2 有规则不成立；`speaker-knows` 为 `pass_with_not_evaluable` 时不拦，补底账；`--characters <人物包>` 核小传里的前史有没有时间线账条目，只报不拦 |
 | C4 复核容量 | `capacity episode <分集计划> [--media planning/media-profile.json]` | 恒为 0；同上看 `basis` |
 | 冷读导出 | `plan-events <分集计划> --out .drama/checks/events-ep<NNN>.json` | 0；冷读包只装这份 |
 | 冷读对照 | `retell-check <复述> --plan <分集计划>` | 恒为 0；看每个 fact 的 `retold／partial／missing` |

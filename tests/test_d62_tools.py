@@ -256,7 +256,8 @@ class NumericDialogueBlocklistTests(Temp):
     def test_the_bare_measure_words_are_gone_and_the_version_is_v3(self):
         data = json.loads(BLOCKLIST.read_text(encoding="utf-8"))
         numeric = next(c for c in data["categories"] if c["id"] == "numeric_dialogue")
-        self.assertEqual((data["version"], numeric["terms"]), ("v3", ["换人数", "换人次数"]))
+        # wording rulings #2 changed this on purpose: v4 narrows the count units to 字/行/句/来回; the terms are unchanged
+        self.assertEqual((data["version"], numeric["terms"]), ("v4", ["换人数", "换人次数"]))
 
 
 class PlanCheckCharactersTests(Temp):

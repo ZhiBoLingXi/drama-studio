@@ -1,9 +1,9 @@
 # 拉片资料覆盖检查
 
-AI 将实际读取的 mali-story 模板详情保存为 JSON，用户不需要手工整理。支持详情对象或 `mali-tool-result/v1` 结构化结果，要求包含 `template` 和 `content.episodeOutlines`。列表行或任务回执不足以检查覆盖。
+AI 将实际读取的 mali-story 拉片模板详情保存为 JSON，用户不需要手工整理。支持详情对象或 `mali-tool-result/v1` 结构化结果，要求包含 `template` 和 `content.episodeOutlines`。列表行或任务回执不足以检查覆盖。
 
 ```sh
-python3 scripts/drama_tools.py reference-check /absolute/path/to/template-detail.json
+python3 -B <技能目录>/scripts/drama_tools.py reference-check /absolute/path/to/template-detail.json
 ```
 
 默认使用 `template.episodesTotal`，不硬编码剧集数。已确认其他范围时加 `--expected-episodes N`，不为消除问题而降低 N。报告列出缺行、缺集纲／原始分析、重复／越界集号、`hasOutline` 与正文冲突、可识别的 `episodesTotal:` 汇总计数矛盾，并附输入 SHA-256 和模板版本。

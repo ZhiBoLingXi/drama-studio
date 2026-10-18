@@ -39,13 +39,13 @@
   "changeProposals": [
     {
       "targetLayer": "C4",
-      "problem": "和解缺少关键选择",
+      "problem": "父亲的和解动作在 moves[] 里没有写出为什么不走更省事的做法（whyNot）",
       "evidence": {
         "kind": "remote_page",
         "id": "page-ep21-outline",
         "revision": 2
       },
-      "proposedChange": "集纲补一个父亲放弃便利的选择",
+      "proposedChange": "分集计划为父亲这一动作补写 wants 与 whyNot，答不出时回 C3a 换实现",
       "unknownScope": "第22集开场可能受影响",
       "needsDecision": true
     }

@@ -159,7 +159,7 @@ def main() -> int:
     episode.add_argument("--config", dest="config_path", help="Explicit project constraints JSON; never auto-discovered")
     episode.add_argument("--preset", choices=sorted(PRESETS), help="Opt-in historical example, not a quality standard")
     episode.add_argument("--min-rounds", type=int, help="Deprecated alias for --min-speaker-changes")
-    for key in ("min-chars", "min-scenes", "min-speaker-changes", "max-locations"):
+    for key in ("min-chars", "min-scenes", "max-scenes", "min-speaker-changes", "max-locations"):
         episode.add_argument("--" + key, type=int)
     for key in ("min-delta-ratio", "min-paren-ratio"):
         episode.add_argument("--" + key, type=float)
@@ -194,9 +194,10 @@ def main() -> int:
     pack.add_argument("--budget", required=True, type=int, help="Character budget; exceeding it exits 2 without writing")
     pack.add_argument("--dry-run", action="store_true", help="Run every check and print the package; write nothing")
     pack.add_argument("--allow-unverified", action="store_true", help="Accept manifest entries marked verified: false and note them in unknowns")
-    pack.add_argument("--exemplars", help="C5a/C5b: masked sample records to pack the plan's cited positives from -- a JSONL file, or the dialogue plan itself (its exemplars.positives); inside the project")
+    pack.add_argument("--exemplars", help="C5a/C5b: masked sample records to pack the plan's cited positives from -- a JSONL file, or the dialogue plan itself (its exemplars.positives); inside the project. With --annotations-only (C5a, no dialogue plan yet) it is labelled exchanges, packed as their annotation fields only")
     pack.add_argument("--contrast-pairs", help="C5a/C5b: contrast-pairs.jsonl (inside the project) to pack the plan's cited pairs from")
     pack.add_argument("--studio-corpus", help="C5a/C5b: the studio corpus folder (<studio root>/corpus/, beside STUDIO.md); --exemplars may then be a file in it, whose records must be scope.level studio from a mali-story template")
+    pack.add_argument("--annotations-only", action="store_true", help="C5a without a dialogue plan: pack the labelled exchanges of --exemplars as annotation fields only (situation, walkthrough, skeleton, about, ids); raw and masked lines stripped into .drama/packs/annotations/")
     pack.add_argument("--quotes-per-topic", type=int, default=2, help="C5a/C5b: masked original lines (maskedLines) a topic's samples may carry in all, default 2; 0 for none")
     knowledge = commands.add_parser("knowledge", help="Read-only project-private knowledge cards: validate, search, show")
     knowledge_commands = knowledge.add_subparsers(dest="knowledge_command", required=True)
@@ -300,7 +301,8 @@ def main() -> int:
             result = run_context_pack(args.project, args.task, args.selection, args.role, args.budget,
                                       dry_run=args.dry_run, allow_unverified=args.allow_unverified,
                                       exemplars=args.exemplars, contrast_pairs=args.contrast_pairs,
-                                      quotes_per_topic=args.quotes_per_topic, studio_corpus=args.studio_corpus)
+                                      quotes_per_topic=args.quotes_per_topic, studio_corpus=args.studio_corpus,
+                                      annotations_only=args.annotations_only)
         elif args.command == "import-project" and args.import_command == "preview":
             result = run_preview(args.project, args.listing)
         elif args.command == "import-project":

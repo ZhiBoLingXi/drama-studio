@@ -704,6 +704,9 @@ def _rules_decision_queue(doc: dict, ctx=None, notes=None) -> list[str]:
             errors.append(f"{where}: decided needs humanWords (the lead's own words)")
         if entry["status"] == "decided" and entry.get("decision") not in options:
             errors.append(f"{where}: decided needs decision, the chosen optionId (one of {list(options)})")
+        # wording rulings #1: humanWords are the user's words on a decided entry; advice behind a pending one is basisWords
+        if entry["status"] == "pending" and (entry.get("humanWords") or "").strip():
+            errors.append(f"{where}: a pending entry has no humanWords (those are the user's decision); put the words it rests on in basisWords")
     return errors
 
 
@@ -759,7 +762,14 @@ def _rules_dialogue_plan(doc: dict, ctx=None, notes=None) -> list[str]:
     for duplicate in _duplicates(segments_used):
         errors.append(f"scenes: segmentId {duplicate} repeats")
     for index, item in enumerate(doc["infoLedger"]):
-        carried = item["carriedBy"]
+        if "deferredTo" in item:  # wording rulings #15: carried after a capacity split; dialogue-plan-check finds the proposal
+            if not item["deferredTo"]:
+                errors.append(f"infoLedger[{index}] {item['factId']}: deferredTo is empty; name the capacity proposal")
+            continue
+        carried = item.get("carriedBy")
+        if carried is None:
+            errors.append(f"infoLedger[{index}] {item['factId']}: carriedBy is required unless the fact is deferredTo a proposal")
+            continue
         if not carried.get("exchangeIds") and not carried.get("pictureReason"):
             errors.append(f"infoLedger[{index}] {item['factId']}: carried by no exchange and no registered picture reason")
         unknown = [ref for ref in carried.get("exchangeIds", []) if ref not in exchanges]

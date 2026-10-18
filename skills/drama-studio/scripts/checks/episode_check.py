@@ -24,12 +24,13 @@ PRESETS = {"legacy-aigc": dict(min_chars=1200, min_scenes=10, min_speaker_change
 RULES = {
     "min_chars": ("chars", "min", "汉字数"),
     "min_scenes": ("scenes", "min", "已识别场标题数"),
+    "max_scenes": ("scenes", "max", "已识别场标题数（每集场数上限，计场头）"),  # a production limit such as 每集最多三个场景
     "min_speaker_changes": ("speaker_changes", "min", "场内说话人交替次数"),
     "min_delta_ratio": ("delta_ratio", "min", "动作行／台词行比"),
     "max_locations": ("locations", "max", "已识别地点标签数"),
     "min_paren_ratio": ("paren_ratio", "min", "对白括注率"),
 }
-COUNT_RULES = {"min_chars", "min_scenes", "min_speaker_changes", "max_locations"}
+COUNT_RULES = {"min_chars", "min_scenes", "max_scenes", "min_speaker_changes", "max_locations"}
 
 
 def validate_constraints(values: dict) -> dict:

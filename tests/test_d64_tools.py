@@ -204,7 +204,8 @@ class FeedbackRouting(Temp):
         self.assertTrue((out / "k1-drafts.jsonl").is_file())
         queue = json.loads((out / "decisions.json").read_text(encoding="utf-8"))
         self.assertEqual(contracts.check_contract("decision-queue", queue), [])
-        self.assertEqual(queue["entries"][0]["status"], "decided")
+        # wording rulings #1 changed this on purpose: a note with no user source is pending with a default, not decided
+        self.assertEqual((queue["entries"][0]["status"], queue["entries"][0]["default"]), ("pending", "as_said"))
 
     def test_purge_by_note_id_and_no_overwrite(self):
         out = self.base / "derived"

@@ -22,6 +22,9 @@ masked lines a topic's samples carry in all (default 2, 0 for none); a sample th
 path; `..` or a symlink out of it is refused); its packed records must be scope.level studio from a mali-story template,
 and are packed under the id studio-corpus/<path>. Contrast pairs and dialogue plans stay project files. A written package appends its samples to .drama/packs/history.json, and a sample the previous
 episode's package also held is reported under samples.repeatedFromPreviousEpisode (reported, not refused).
+With --annotations-only, a C5a (dialogue_designer) package with --exemplars and no dialogue plan yet (wording rulings #11) packs the labelled
+exchanges of that file as their annotation fields only (situation, walkthrough, skeleton, about, ids): raw and masked
+lines are stripped into a view under .drama/packs/annotations/, which the sample ranges point into.
 
 D6-2: in a project that has started the outline layer (season_check.outline_project: planning/season-plan.json or
 planning/function-map.json, or a JSON record under planning/ledger/ or planning/episodes/; the empty folders
@@ -44,6 +47,8 @@ from .season_check import layer_records, outline_project, record_kind
 PARTITIONS = ["task", "project_facts", "current_plan", "knowledge", "unknowns", "samples"]  # samples: D6-3, no longer in current_plan
 QUOTES_PER_TOPIC = 2  # masked corpus lines (positives) per topic (D6-3 decisions §1, plan §8 #2); 0 packs none
 HISTORY = ".drama/packs/history.json"  # which samples went into which episode's package
+ANNOTATIONS = ".drama/packs/annotations"  # C5a's label-only views of labelled exchange files (wording rulings #11)
+ANNOTATION_FIELDS = ("exchangeId", "templateId", "episodeIndex", "about", "situation", "walkthrough", "skeleton")
 LOCAL_ROOTS = (".drama", "runs", "planning")  # the only folders a local_file selection item may read from
 SAMPLE_ROOTS = (".drama", "runs", "knowledge", "planning", "corpus")  # corpus exchanges, project contrast pairs, a dialogue plan;
 # corpus/ at the project root is where a new project keeps its corpus (D6-4 decisions §2)
@@ -213,7 +218,8 @@ def _name(errors: list[str], item_labels: list[str], omitted_labels: list[str]) 
 
 def run_context_pack(project, task, selection, role: str, budget: int, dry_run: bool = False,
                      allow_unverified: bool = False, exemplars: str | None = None, contrast_pairs: str | None = None,
-                     quotes_per_topic: int = QUOTES_PER_TOPIC, studio_corpus: str | None = None) -> dict:
+                     quotes_per_topic: int = QUOTES_PER_TOPIC, studio_corpus: str | None = None,
+                     annotations_only: bool = False) -> dict:
     root = Path(project).expanduser().absolute()
     if not root.is_dir():
         raise ValueError(f"Project directory not found: {root}")
@@ -323,12 +329,25 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
         item_labels.append(where)
 
     errors.extend(_role_rules(root, role, task_doc, items, item_labels, packed_docs))
-    samples = None
+    samples, view = None, None
     if exemplars or contrast_pairs:
         if role not in SAMPLE_ROLES or (role == "author" and task_doc.get("layer") != "C5b"):
             raise ValueError("--exemplars/--contrast-pairs pack samples for C5a (dialogue_designer) or C5b (author with task.layer C5b) only")
-        samples = _pack_samples(root, packed_docs, exemplars, contrast_pairs, budget - sum(i["chars"] for i in items),
-                                items, item_labels, omitted, omitted_labels, quotes_per_topic, studio)
+        room = budget - sum(i["chars"] for i in items)
+        has_plan = any(record_kind(doc) == "dialogue-plan" for _, doc in packed_docs)
+        if annotations_only:
+            # wording rulings #11: C5a picks its samples before the dialogue plan exists, from labelled exchanges
+            if role != "dialogue_designer" or not exemplars or contrast_pairs or has_plan:
+                raise ValueError("--annotations-only is for a C5a (dialogue_designer) package with --exemplars, no --contrast-pairs "
+                                 "and no dialogue plan in the selection")
+            samples = _pack_annotations(root, exemplars, studio, room, items, item_labels, omitted, omitted_labels)
+        elif role == "dialogue_designer" and not has_plan:
+            raise ValueError("a C5a package without a dialogue plan packs samples with --annotations-only (the annotation fields of "
+                             "labelled exchanges); with a dialogue plan, --exemplars packs the positives it cites")
+        else:
+            samples = _pack_samples(root, packed_docs, exemplars, contrast_pairs, room,
+                                    items, item_labels, omitted, omitted_labels, quotes_per_topic, studio)
+        view = samples.pop("_view", None)
         history = _history(root)
         samples["repeatedFromPreviousEpisode"] = _repeats(history, samples)
     partition_chars = {name: sum(i["chars"] for i in items if i["partition"] == name) for name in PARTITIONS}
@@ -383,6 +402,10 @@ def run_context_pack(project, task, selection, role: str, budget: int, dry_run: 
     if not dry_run:
         folder.mkdir(parents=True, exist_ok=True)
         _inside(folder, root, ".drama/snapshots")
+        if view:  # the annotation view the snapshot's sample ranges point into; content-addressed, never overwritten
+            view[0].parent.mkdir(parents=True, exist_ok=True)
+            _inside(view[0].parent, root, ANNOTATIONS)
+            _publish(view[0], view[1])
         written = [path.name for path, content in ((target, body), (sidecar, sidecar_body)) if _publish(path, content)]
         result.update(written=target.name in written, existing=target.name not in written, written_files=written)
         if samples is not None and samples["keys"]:
@@ -542,6 +565,58 @@ def _masked_problem(row: dict) -> str | None:
     if not isinstance(row.get("maskedLines"), list) and "pairId" not in row:
         return "没有 maskedLines（遮蔽后的原句）" + masked_only
     return None
+
+
+def _pack_annotations(root, exemplars, studio, room, items, labels, omitted, omitted_labels) -> dict:
+    """C5a without a dialogue plan (wording rulings #11): the labelled exchanges of --exemplars (annotated, through
+    corpus filter) go in as their annotation fields only -- situation, walkthrough, skeleton, about and ids. Raw lines,
+    masked lines and every other field are stripped, so no original line reaches the package. The stripped rows are a
+    view written to .drama/packs/annotations/<sha>.jsonl (with the snapshot, never overwritten) that the sample ranges
+    point into. Rows labelled low and rows with no situation are left out and counted. In file order, whole rows,
+    while the budget lasts."""
+    ident, data, spans, rows, in_studio = _sample_file(root, exemplars, "--exemplars", studio)
+    if not rows:
+        raise ValueError("--exemplars for C5a without a dialogue plan is a JSONL of labelled exchanges; this file has none")
+    kept, low, unlabelled = [], [], []
+    for key in sorted(rows, key=lambda k: spans[k][0]):
+        row = rows[key]
+        problem = studio_row_problem(row) if in_studio else None
+        if problem:
+            raise ValueError(f"sample {key} {problem}")
+        if row.get("labelConfidence") == "low" or (row.get("quality") or {}).get("label") == "low":
+            low.append(key)
+        elif not isinstance(row.get("situation"), dict):
+            unlabelled.append(key)
+        else:
+            kept.append({field: row[field] for field in ANNOTATION_FIELDS if field in row})
+    lines = [json.dumps(row, ensure_ascii=False, sort_keys=True) for row in kept]
+    body = ("\n".join(lines) + "\n").encode("utf-8") if lines else b""
+    path = root / ANNOTATIONS / f"{_sha(body).split(':')[1][:16]}.jsonl"
+    view_id = path.relative_to(root).as_posix()
+    packed, left, keys, offset = 0, 0, [], 0
+    for row, line in zip(kept, lines):
+        start, end = offset, offset + len(line)
+        offset = end + 1
+        ref = {"kind": "local_file", "id": view_id, "revision": _sha(body), "sha256": _sha(body), "range": {"start": start, "end": end}}
+        label = f"sample 标注 {row['exchangeId']}"
+        if len(line) <= room:
+            room -= len(line)
+            packed += 1
+            keys.append({"kind": "annotation", "key": row["exchangeId"], "topicId": None})
+            items.append({"ref": ref, "partition": "samples", "required": False, "usage": "creative_reference", "chars": len(line),
+                          "sha256": _sha(line.encode("utf-8")),
+                          "reason": f"样本标注：交换 {row['exchangeId']} 的处境、结构说明、骨架（取自 {ident}@{_sha(data)}，已剥掉原始台词行）"})
+            labels.append(label)
+        else:
+            left += 1
+            omitted.append({"ref": ref, "required": False, "reason": "budget"})
+            omitted_labels.append(label)
+    return {"packed": packed, "mode": "annotations_only", "fromStudioCorpus": in_studio, "source": ident, "sourceSha256": _sha(data),
+            "view": view_id, "fields": list(ANNOTATION_FIELDS), "leftOutLowLabel": low, "leftOutUnlabelled": unlabelled,
+            "omittedForBudget": left, "omittedForQuoteCap": 0, "unresolved": [], "episode": None, "keys": keys,
+            "_view": (path, body),
+            "policy": "C5a 还没有对话表：只装标注交换的标注字段（处境、结构说明、骨架），不装原始台词行与遮蔽句；"
+                      "低一致的与没有处境的不装；C5a 选定后把遮蔽句写进对话表 exemplars.positives，C5b 再从对话表装"}
 
 
 def _pack_samples(root, docs, exemplars, contrast_pairs, room, items, labels, omitted, omitted_labels,
