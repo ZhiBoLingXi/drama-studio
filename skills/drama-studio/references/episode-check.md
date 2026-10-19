@@ -20,19 +20,19 @@ schema v2 保留原字段，逐集新增 `parse_coverage`：scene_headers、loca
 
 ## 显式项目规格
 
-编剧／制片已给出要求时，AI 可以整理为项目目录中的 JSON；不要求编剧手写。每个文件必须记录规格来源，例如“制作 Brief 第 3 版”。本工具不验证该来源是否已获批准，宿主应先核对实际约定。
+编剧／制片已给出要求时，AI 可以整理为项目目录中的 JSON；不要求编剧手写。每个文件必须记录规格来源，例如“制作规格第 3 版”。本工具不验证该来源是否已获批准，宿主应先核对实际约定。
 
 ```json
 {
   "schemaVersion": 1,
-  "source": "制作 Brief 第 3 版：每集最多两个地点标签",
+  "source": "制作规格第 3 版：每集最多两个地点标签",
   "constraints": {
     "max_locations": 2
   }
 }
 ```
 
-执行 `episode-check 剧本.md --config 项目规格.json`。支持的键为 `min_chars`、`min_scenes`、`min_speaker_changes`、`min_delta_ratio`、`max_locations`、`min_paren_ratio`。只配置项目确实有要求的项；空 constraints 仍表示未配置。未知键、非法数值、缺失来源或文件读取失败均报错，不能静默退回默认值。
+执行 `episode-check 剧本.md --config 项目规格.json`。支持的键为 `min_chars`、`min_scenes`、`max_scenes`（每集场数上限，按场头计；用户说「每集最多三个场景」就配它，也可用 `--max-scenes`）、`min_speaker_changes`、`min_delta_ratio`、`max_locations`（地点标签数，与场数不同）、`min_paren_ratio`。只配置项目确实有要求的项；空 constraints 仍表示未配置。未知键、非法数值、缺失来源或文件读取失败均报错，不能静默退回默认值。
 
 临时明确要求可用 `--min-chars`、`--min-scenes`、`--min-speaker-changes`、`--min-delta-ratio`、`--max-locations`、`--min-paren-ratio`。只传一个选项只核对一条规则。旧 `--min-rounds` 作为弃用别名保留并警告，不能与新名称同时使用。
 
@@ -53,4 +53,4 @@ schema v2 保留原字段，逐集新增 `parse_coverage`：scene_headers、loca
 
 输入或执行错误为 `ok: false`、退出码 1。当不满足项与无法核验项同时存在，总状态为 unmet；调用方还需检查每集 checks 的逐项状态。每个 check 包含规则名、指标、方向、实际值、要求、来源及状态。
 
-相较 0.1.0：移除默认硬阈值；`rounds` 改为 `speaker_changes`；移除 `ending_hook`、隐式 SLOT 次数政策、`fails` 与“全部过闸”结论；用 `checks` 逐项记录规格偏差。`thresholds` 仅包含显式生效规则。旧调用方必须允许 `passed` 为 null，不能将退出码 0 或 `ok: true` 解读为质量通过。
+`thresholds` 只包含显式生效的规则；调用方必须允许 `passed` 为 null，不能把退出码 0 或 `ok: true` 读成质量通过。

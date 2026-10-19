@@ -11,6 +11,7 @@
 | `planning/function-map.json` | 功能地图（C3a，含前提层、候选、`closes[]`） | C3a |
 | `planning/ledger/ledger-ep000.json` | 开播前底账（C3b） | C3b |
 | `planning/ledger/delta-ep<NNN>.planned.json`、`delta-ep<NNN>.actual.json` | 两轨逐集修订 | C4（计划轨）、C5 之后（实际轨） |
+| `planning/ledger/ledger-ep<NNN>.planned.json`、`ledger-ep<NNN>.actual.json` | 两轨各集的底账修订：前者是 `ledger apply` 的输出（计划轨），后者是 `ledger replay --track actual --out` 的输出（下一集的入口底账修订） | 脚本 |
 | `planning/season-plan.json` | 季编排（C3c，含容量与动作） | C3c |
 | `planning/episodes/episode-plan-<NNN>.json` | 分集计划（C4，14 字段） | C4 |
 | `planning/decisions.json` | 决定队列（每条带 `default`） | 各层登记 |
@@ -18,6 +19,8 @@
 | `.drama/tasks/` | 任务对象 | 编排方 |
 | `knowledge/cards/` | K1 卡（检索代理产出，现有位置不变） | 检索代理 |
 | `runs/state/after-ep-<NNN>.md` | 由 `ledger replay` 从实际轨导出（文件名沿用，退役表 #12） | 脚本 |
+
+**修订（2026-10-18）**：底账修订文件名带轨道后缀，`ledger-ep<NNN>.planned.json`／`ledger-ep<NNN>.actual.json`；除开播前底账 `ledger-ep000.json` 外，不再有无后缀的 `ledger-ep<NNN>.json`。原因：计划轨与实际轨的修订原先同名，下一集的入口会拿错轨。工具认 `planning/ledger/ledger-*.json`，不受影响。
 
 集号一律三位数字，半集或拆集写 `006A`。`season-check` 已按「任意深度＋schema 标记」认记录，布局只是约定，不是新的识别规则。`init-project` 在已有的 `planning/` 之外再建 `planning/ledger/`、`planning/episodes/` 空目录。`context-pack` 的 `local_file` 放行 `planning/`。
 

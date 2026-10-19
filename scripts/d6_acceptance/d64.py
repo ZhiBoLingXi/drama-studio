@@ -98,6 +98,26 @@ def fetch_rows(base):
                 note="D6-4 没有 mali-story 连接，取用只在编造夹具上跑；真实读取调用次数与预算读数见 docs/d6/d6-4-corpus.md")]
 
 
+LATER_FIELDS = ("authorRole",)  # writer-note fields added after the D6-4 project copy was written
+
+
+def same_but_later_fields(kept, fresh):
+    """The fresh derivatives equal the kept copy once the writer-note fields added later are left out."""
+    if sorted(p.name for p in kept.iterdir()) != sorted(p.name for p in fresh.iterdir()):
+        return False
+    for path in fresh.iterdir():
+        old, new = (kept / path.name).read_bytes(), path.read_bytes()
+        if old == new:
+            continue
+        if path.name != "writer-notes.jsonl":
+            return False
+        rows = [json.loads(line) for line in new.decode("utf-8").splitlines() if line.strip()]
+        stripped = "".join(json.dumps({k: v for k, v in r.items() if k not in LATER_FIELDS}, ensure_ascii=False) + "\n" for r in rows)
+        if stripped.encode("utf-8") != old:
+            return False
+    return True
+
+
 def feedback_rows(project, base):
     runs = project / "runs"
     sources = [("第 6 集批注", [runs / "input/feedback/writer-feedback-ep006-2026-10-13.md"], "ep006-notes"),
@@ -114,18 +134,26 @@ def feedback_rows(project, base):
             if path.name != "writer-notes.jsonl":
                 traceable &= all(json.loads(l).get("fromNotes") for l in path.read_text(encoding="utf-8").splitlines() if l.strip())
         target = kept / folder
+        kept_note = None
         if not target.exists():  # the project keeps one copy, written once
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(out_dir, target)
             kept_note = "首次写入项目目录"
-        else:
+        explanation = None
+        if kept_note is None:
             same = sorted(p.name for p in target.iterdir()) == sorted(p.name for p in out_dir.iterdir()) and all(
                 (target / p.name).read_bytes() == p.read_bytes() for p in out_dir.iterdir())
             kept_note = "与项目目录里已有的派生物逐字节相同" if same else "与项目目录里已有的派生物不同（项目副本未改）"
-            traceable &= same
-        rows.append(row(f"feedback-ingest：{name}", f"drama_tools.py feedback-ingest <{folder}> --out <tmp>", code == 0 and traceable,
+            if not same and same_but_later_fields(target, out_dir):
+                explanation = {"why": "D6-4 之后 writer-note 多了 authorRole（字面复读裁定 #1）；去掉这一字段后与项目副本逐字节相同",
+                               "laterFields": list(LATER_FIELDS)}
+            elif not same:
+                traceable = False
+        rows.append(row(f"feedback-ingest：{name}", f"drama_tools.py feedback-ingest <{folder}> --out <tmp>",
+                        code == 0 and traceable and explanation is None,
                         notes=len(out.get("writerNotes", [])), levels={k: v for k, v in (out.get("levelCounts") or {}).items() if v},
-                        derived=counts, everyDerivedHasFromNotes=traceable, projectCopy=f"runs/d64-feedback/{folder}", kept=kept_note))
+                        derived=counts, everyDerivedHasFromNotes=traceable, projectCopy=f"runs/d64-feedback/{folder}", kept=kept_note,
+                        **({"explanation": explanation} if explanation else {})))
     return rows
 
 

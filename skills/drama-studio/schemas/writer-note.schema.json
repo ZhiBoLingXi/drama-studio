@@ -22,6 +22,16 @@
     "author": {
       "type": "string"
     },
+    "authorRole": {
+      "type": "string",
+      "enum": [
+        "user",
+        "writer",
+        "advisor",
+        "unknown"
+      ],
+      "description": "作者是谁：只有 user（用户本人）的决定类意见算已定；编剧、顾问给意见"
+    },
     "date": {
       "type": "string"
     },

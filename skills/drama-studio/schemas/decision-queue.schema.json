@@ -126,7 +126,31 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "decided 时用户本人的原话；pending 条目不写（依据原话写 basisWords）"
+        },
+        "basisWords": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "pending 条目所依据的原话（如编剧、顾问的意见）；不是决定"
+        },
+        "basisBy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "basisWords 是谁说的"
+        },
+        "basisRole": {
+          "type": "string",
+          "enum": [
+            "writer",
+            "advisor",
+            "unknown"
+          ],
+          "description": "basisWords 的来源：编剧、顾问或不明；用户的原话直接写成 decided"
         },
         "decision": {
           "type": [

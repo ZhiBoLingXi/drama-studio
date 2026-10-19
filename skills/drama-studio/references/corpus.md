@@ -8,12 +8,12 @@
 
 ## 1. 放在哪、范围多大
 
-- 语料缓存默认放工作室级：`<工作室根>/corpus/`（工作室根是放 `STUDIO.md` 的那个目录，见 [初始化](initialization.md)），几部剧共用一份，不必每个项目各取一遍。语料只是 mali-story 模板数据的只读缓存，不是知识卡，也不是共享知识；工作室级的交换与清单写 `scope.level: studio`。项目内的 `corpus/`（项目根下）仍可用，写 `scope.level: project`。两处都不预建，第一次取用时建。
-- 装包时用工作室级语料：`context-pack … --studio-corpus <工作室根>/corpus/`（只给 C5a、C5b），这时 `--exemplars` 可以是这个目录里的文件，其中的记录须是 `scope.level: studio`、来自 mali-story 模板。
+- 语料缓存默认放工作室级：`<工作室根目录>/corpus/`（工作室根目录是放 `STUDIO.md` 的那个目录，见 [初始化](initialization.md)），几部剧共用一份，不必每个项目各取一遍。语料只是 mali-story 模板数据的只读缓存，不是知识卡，也不是共享知识；工作室级的交换与清单写 `scope.level: studio`。项目内的 `corpus/`（项目根下）仍可用，写 `scope.level: project`。两处都不预建，第一次取用时建。
+- 装包时用工作室级语料：`context-pack … --studio-corpus <工作室根目录>/corpus/`（只给 C5a、C5b），这时 `--exemplars` 可以是这个目录里的文件，其中的记录须是 `scope.level: studio`、来自 mali-story 模板。
 - 不论放哪一级，对照对、批注（`writer-note`）、本项目来源的反例与人工正例只能是项目级（`knowledge/contrast/`）；知识卡规则不变，仍只允许项目私有。
 - 目录结构（下面的 `corpus/` 指缓存所在的那一级目录）：
   - `corpus/raw/<templateId>/ep-<episodeIndex>.json`：取回的证据原样存（含 `snapshotId`）。
-  - `corpus/fetch-ledger.json`：取用账本（`corpus fetch` 写），记计划、每次调用、预算读数与回执 ID。
+  - `corpus/fetch-ledger.json`：取用台账（`corpus fetch` 写；这就是语料读取的回执），记计划、每次调用、预算读数与回执 ID。
   - `corpus/manifest.json`（`corpus-manifest`）：每集的 `templateId`、`episodeIndex`、`snapshotId`、`fetchedAt`、`source`，以及 `readCalls: {total, failures, billing}`。
   - `corpus/exchanges.jsonl`（`dialogue-exchange`，一行一条）：切分与标注后的交换。
   - `corpus/labels/`：标注记录；双跑时两次各一份。
@@ -24,26 +24,26 @@
 
 取用一集就是一次 `get_deconstruction_evidence(template_id, episode_index, expected_snapshot_id?)` 读取。返回体有 `rawMd`、`episodeOutlineMd`、`snapshotId`、`missingFields`、`contentTrust: reference_data`、`evidenceValidation: not_run`。代理调用工具、把每次返回存成文件；`corpus fetch` 只记账，不联网：
 
-1. **发现工具**：先确认当前会话里实际有这个读取工具，以及 `get_shared_creation_budget`、`list_shared_creation_budget_receipts`（见 [能力发现](mali-story.md#能力发现与模板复用)）。没有连接时不取，账本与交接里如实写「未连接」，不拿旧缓存冒充新取的。
-2. **列计划**：把模板清单（`[{templateId, episodes 或 episodesTotal, snapshotId?}]`）存成文件，`corpus fetch plan <模板清单> --out corpus/fetch-ledger.json [--series 3] [--episodes-per-series 10]` 写出小样本的取用计划，每集带预期的 `snapshotId`（清单给了时）。它不覆盖已有账本。
+1. **发现工具**：先确认当前会话里实际有这个读取工具，以及 `get_shared_creation_budget`、`list_shared_creation_budget_receipts`（见 [能力发现](mali-story.md#能力发现与模板复用)）。没有连接时不取，台账与交接里如实写「未连接」，不拿旧缓存冒充新取的。
+2. **列计划**：把模板清单（`[{templateId, episodes 或 episodesTotal, snapshotId?}]`）存成文件，`corpus fetch plan <模板清单> --out corpus/fetch-ledger.json [--series 3] [--episodes-per-series 10]` 写出小样本的取用计划，每集带预期的 `snapshotId`（清单给了时）。它不覆盖已有台账。
 3. **取前读预算**：调用 `get_shared_creation_budget`（与 `list_shared_creation_budget_receipts`），存下返回，`corpus fetch budget corpus/fetch-ledger.json --label before --reading <预算返回> [--receipts <回执列表返回>]`。
 4. **逐集读取**：有预期 `snapshotId` 的传 `expected_snapshot_id`；返回体原样存进 `corpus/raw/<templateId>/ep-<N>.json`，再 `corpus fetch record corpus/fetch-ledger.json --template <T> --episode <N> --response <返回文件> [--tool <工具名>]`。返回缺失、读不出或带错误的记为失败；返回的 `snapshotId` 与预期对比，记 `match`、`snapshot_mismatch` 或 `not_evaluable`。尝试次数自动累计。
 5. **断点续取**：中断后先跑 `corpus fetch resume corpus/fetch-ledger.json [--max-attempts 3]`，它列出没读过的、失败了还能重试的、已放弃的；只读这份清单里的集，不从头再来，也不把部分结果写成整部已取。
-6. **取后读预算并核对**：再读一次预算（`--label after`），然后 `corpus fetch verify corpus/fetch-ledger.json`。它给出计费结论 `deduction_seen`（额度下降或出现新的回执 ID）、`no_change_seen`（前后都读得到且相等）或 `unconfirmed`（某次读数缺失、未配置或为空），以及快照不符与调用计数。**看到扣费或快照不符时退出码 2：停下、记录，不往全库走。**
+6. **取后读预算并核对**：再读一次预算（`--label after`），然后 `corpus fetch verify corpus/fetch-ledger.json`，它给出计费结论（三个结论词的意思见 §3）、快照不符与调用计数。**看到扣费或快照不符时退出码 2：停下、记录，不往全库走。**
 7. **核对内容**：每集的 `missingFields` 照记；`evidenceValidation: not_run` 照原样保留，不改述成「已核验」。
 
-`verify` 输出里的观察块（调用次数、预算读数、回执 ID）是可以写进报告的全部内容；报告不写账户余额以外的账户信息。读取次数以账本或 `corpus/manifest.json` 的 `readCalls.total` 为准，不按记忆估。
+读取次数以台账或 `corpus/manifest.json` 的 `readCalls.total` 为准，不按记忆估。
 
 ## 3. 计费观察：事实核查，有扣费迹象即停
 
-读取证据会不会扣费，是一个**事实问题**，不是要主创拍板的决定：查清楚就行，查不到就按「未确认」处理。
+读取证据会不会扣费，是一个**事实问题**，不是要用户（主创）拍板的决定：查清楚就行，查不到就按「未确认」处理。
 
 1. 先取 3 部、每部 10 集左右的小样本。
 2. 取用前、取用后各读一次 `get_shared_creation_budget`，并看每次读取的回执。
 3. 读数或回执有任何扣费迹象（`verify` 给 `deduction_seen`：额度下降或出现新的回执 ID）：**立即停**，记下哪次调用前后变了多少，不再取，不取全库。
 4. 读数前后不变、回执无新 ID（`verify` 给 `no_change_seen`）：记为「这几次读取未观察到扣费」。这只说明这几次，不推到全库，不写成「不计费」。
 5. 没有连接、读不到预算（`verify` 给 `unconfirmed`）时：`manifest.readCalls.billing` 写 `not_observed`，全库取用列为待办。
-6. 记录只写调用次数、预算读数和回执 ID，不写账户余额以外的账户信息，不把余额当成本次总价。
+6. 报告只写 `verify` 输出里的观察块（调用次数、预算读数、回执 ID），不写账户余额以外的账户信息，不把余额当成本次总价。
 
 计费未确认之前，全库（约 700 集）一律不取；台词层照样能用小样本或没有样本运行（[台词层](dialogue-structure.md#4-样本怎么用处境检索遮蔽每话题上限verbatimfrom)）。
 
@@ -86,9 +86,9 @@
 - **结构说明** `walkthrough`：一两句，用处境解释形状（「她在气头上，他每次只说半句就被打断」），不用形状解释形状（「短句多、换人密」），不评措辞好坏。
 - **说话人归属可疑** `speakerAttributionSuspect`：脚本按转写标出候选（同一人连续两段被标成不同人等），标了的样本检索时靠后。
 
-`corpus label <labels.jsonl> [--raw-dir corpus/raw]` 核标注的 S 部分：必需字段在、类型对、行号区间合法、`exchangeId` 不重复、取值在词表里。
+`corpus label <labels.jsonl> [--raw-dir corpus/raw]` 核标注的 S 部分：必需字段在、类型对、行号区间合法、`exchangeId` 不重复。词表是开放的：词表外的取值只报告，`quality.note` 里没写说明时记为缺陷，但不拦。
 
-**双跑**：同一批交换由两次独立运行（不同会话、同一词表）各标一份，再用 `corpus agree <标注 JSONL> [--second <第二次的 JSONL>] [--out <新文件>]` 比对（词表 `schemas/data/corpus-label-vocabulary.json`）：功能的近义项算同一个；关系相同或一个是另一个的上位时算一致（保留更具体的）；信息模式的集合有交集算一致。功能或关系仍不同、信息模式没有交集的记 `labelConfidence: low`；`--out` 写一份带 `labelConfidence`、`labelAgreement` 的副本，`low` 的行加 `quality.label: low`，`corpus filter` 不把它放进通过名单，所以它进不了检索结果。原文件不改；不一致是答案不是失败（退出码 0）。结构说明也两次各写，由第三次判是否说的是同一个走法。没有两份可比对的标注时，如实写「未双跑」，不把单次标注当成一致。`reviewedBy` 字段留着，有人看过再填，人不是必经环节。
+**双跑**：同一批交换由两次独立运行（不同会话、同一词表）各标一份，再用 `corpus agree <标注 JSONL> [--second <第二次的 JSONL>] [--out <新文件>]` 比对（词表 `schemas/data/corpus-label-vocabulary.json`）：功能的近义项算同一个；关系相同或一个是另一个的上位时算一致（保留更具体的）；信息模式的集合有交集算一致。功能或关系仍不同、信息模式没有交集的记 `labelConfidence: low`；`--out` 写一份带 `labelConfidence`、`labelAgreement` 的副本，`low` 的行加 `quality.label: low`，`corpus filter` 不把它放进通过名单，所以它进不了检索结果。原文件不改；不一致是答案不是失败（退出码 0）。不设第三次裁判：记为 `low` 的交换就不进检索，等以后新的一次双跑一致了再升。没有两份可比对的标注时，如实写「未双跑」，不把单次标注当成一致。`reviewedBy` 字段留着，有人看过再填，人不是必经环节。
 
 不让模型给交换打「好坏分」。「优秀」只是可记录的筛选条件：已上线爆款、转写干净、结构完整、锚到看点（锚到本集拉片的爽点或钩子的进 Tier 1，其余合格的进 Tier 2）。
 
@@ -111,17 +111,17 @@
 
 | 步 | 命令 | 退出码怎么读 |
 | --- | --- | --- |
-| 取用计划 | `corpus fetch plan <模板清单> --out corpus/fetch-ledger.json [--series 3] [--episodes-per-series 10]` | 1 账本已存在（不覆盖） |
-| 记一次读取 | `corpus fetch record <账本> --template <T> --episode <N> --response <返回文件>` | 0；失败与快照不符写进账本 |
-| 记预算读数 | `corpus fetch budget <账本> --label before｜after --reading <预算返回> [--receipts <回执列表返回>]` | 0 |
-| 断点清单 | `corpus fetch resume <账本> [--max-attempts 3]` | 0；只读 |
-| 计费与快照核对 | `corpus fetch verify <账本>` | **2 看到扣费或快照不符：停下、记录，不取全库**；`unconfirmed` 时退出码 0，按未确认处理 |
+| 取用计划 | `corpus fetch plan <模板清单> --out corpus/fetch-ledger.json [--series 3] [--episodes-per-series 10]` | 1 台账已存在（不覆盖） |
+| 记一次读取 | `corpus fetch record <台账> --template <T> --episode <N> --response <返回文件>` | 0；失败与快照不符写进台账 |
+| 记预算读数 | `corpus fetch budget <台账> --label before｜after --reading <预算返回> [--receipts <回执列表返回>]` | 0 |
+| 断点清单 | `corpus fetch resume <台账> [--max-attempts 3]` | 0；只读 |
+| 计费与快照核对 | `corpus fetch verify <台账>` | **2 看到扣费或快照不符：停下、记录，不取全库**；`unconfirmed` 时退出码 0，按未确认处理 |
 | 切分候选 | `corpus segment <转写…> [--pause-ms 4000]` | 0；候选边界，M 再确认 |
 | 过滤 | `corpus filter <exchanges.jsonl…> [--manifest corpus/manifest.json]` | 0；每条给保留或剔除原因；1 读不出 |
-| 标注格式 | `corpus label <labels.jsonl> [--raw-dir corpus/raw]` | 2 格式或词表不对 |
+| 标注格式 | `corpus label <labels.jsonl> [--raw-dir corpus/raw]` | 2 格式不对；词表外取值只报（没写 note 时记缺陷） |
 | 双跑比对 | `corpus agree <标注 JSONL> [--second <JSONL>] [--out <新文件>]` | 0；不一致的记 `low`，不进检索 |
 | 重算默认值 | `corpus defaults <corpus 目录> [--out <文件>]` | 0；候选词只进 `--out` |
 | 语速与停顿 | `corpus rate <corpus/raw> [--series-format <templateId>=live｜anime]` | 0；只给物理量与 `n` |
-| 禁词扫描 | `corpus lexicon <正文> --project-genre <题材>` | 只报 `GENRE_LEAK` |
-| 用工作室语料装包 | `context-pack … --role dialogue_designer｜author --studio-corpus <工作室根>/corpus/ --exemplars <其中的文件>` | 2 记录不是 `scope.level: studio` 或不是来自 mali-story 模板等 |
+| 禁词扫描 | `corpus lexicon <正文> --project-genre <题材>` | 恒为 0（读不出为 1）；只报 `GENRE_LEAK` |
+| 用工作室语料装包 | `context-pack … --role dialogue_designer｜author --studio-corpus <工作室根目录>/corpus/ --exemplars <其中的文件>` | 2 记录不是 `scope.level: studio` 或不是来自 mali-story 模板等 |
 | 对象格式 | `contract-check {dialogue-exchange｜corpus-manifest｜contrast-pair} <文件>` | 2 违反 schema；对照对与批注不是 `scope.level: project`；工作室级记录里混进项目句子 |

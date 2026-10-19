@@ -2,6 +2,12 @@
 
 技能 `skills/drama-studio/` 与随包工具的变化，按版本倒序。写法参照 Keep a Changelog，分「新增／变更／退役／修正」。只记技能与工具本身，不记任何项目的剧情、人物或台词。各阶段的验收证据见 [docs/d6/](docs/d6/README.md)。
 
+## 0.7.3 — 2026-10-19（文档措辞统一与工具对齐）
+
+### 变更
+
+- 字面复读后的工具修正：`feedback-ingest` 只把用户原话（`--author-role user`、`--user-name` 或评论的 `authorRole`）写成 `decided`，编剧、顾问与来源不明的决定类意见写 `pending` 带默认，依据原话记 `basisWords`（`humanWords` 只留给用户的 `decided`）；禁令表 v4 的 `numeric_dialogue` 只认字／行／句／来回，「演员不超过 5 人」这类制作约束能过；`episode-check` 加 `max_scenes`（`--max-scenes`）；C5a 还没有对话表时 `context-pack --annotations-only --exemplars <标注交换文件>` 只装标注字段、剥掉原始台词行；`dialogue-plan-check` 接受 `deferredTo: <容量提案 id>` 的 fact（提案要在对话表 `changeProposals` 或 `--decisions` 里、有默认，写了 kind 的须是 `capacity`）。
+
 ## 0.7.2 — 2026-10-16（语体与台词质感）
 
 ### 新增
