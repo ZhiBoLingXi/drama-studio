@@ -47,7 +47,9 @@ def payload(host: str = "generic") -> dict[str, bytes]:
     if host == "workbuddy":
         original = files["SKILL.md"].decode("utf-8")
         version = (ROOT / "VERSION").read_text().strip()
-        fields = ("description_zh: 短剧市场研究、对标拉片与原创剧本创作工作流\n"
+        fields = ("display_name: 短剧工作室\n"
+                  "display_name_en: Drama Studio\n"
+                  "description_zh: 短剧市场研究、对标拉片与原创剧本创作工作流\n"
                   "description_en: Research short dramas and develop original screenplays with mali-story.\n"
                   f"version: {version}\nauthor: Drama Studio\n")
         files["SKILL.md"] = original.replace("\n---\n", "\n" + fields + "---\n", 1).encode("utf-8")

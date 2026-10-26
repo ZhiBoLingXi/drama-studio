@@ -136,7 +136,7 @@ class DistributionTests(unittest.TestCase):
         with zipfile.ZipFile(archive) as bundle:
             self.assertEqual(set(bundle.namelist()), set(installer.inventory(installer.SOURCE)))
             text = bundle.read("SKILL.md").decode()
-            for field in ("description_zh:", "description_en:", "version:", "author:"):
+            for field in ("display_name:", "display_name_en:", "description_zh:", "description_en:", "version:", "author:"):
                 self.assertIn(field, text.split("---")[1])
             self.assertIn("references/provenance.md", bundle.namelist())
             bundle.extractall(self.base / "extracted")
