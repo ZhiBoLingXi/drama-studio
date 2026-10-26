@@ -53,16 +53,12 @@ def payload(host: str = "generic") -> dict[str, bytes]:
                   "description_en: An end-to-end writers' room for Chinese short dramas, from market research and benchmark breakdowns to original pitches, characters, episode outlines, full scripts, multi-pass review and feedback-driven revisions. The AI makes the creative calls, bundled scripts run objective checks for literal duplication, format and continuity, and you approve every key step. Built for short-drama and animated-drama writers and teams.\n"
                   "examples_zh:\n"
                   "- \"帮我开一个新短剧项目：都市逆袭题材，80 集，先做市场研究再挑对标剧\"\n"
-                  "- \"根据这三部对标剧的拉片资料，给我出 5 个原创选题，标出和对标剧的差异\"\n"
                   "- \"按已经审过的集纲，写第 1–10 集剧本，每集写完都过一遍检查\"\n"
                   "- \"用主编视角审一下这集剧本：钩子、节奏、人物动机和台词问题都指出来\"\n"
-                  "- \"编剧反馈说第 3 集反派太脸谱化，按这条意见改稿，别动已经定稿的部分\"\n"
                   "examples_en:\n"
                   "- \"Start a new short-drama project: an urban comeback story, 80 episodes; research the market first, then pick benchmark shows\"\n"
-                  "- \"From the breakdowns of these three benchmark shows, pitch 5 original topics and show how each differs from them\"\n"
                   "- \"Write episodes 1-10 from the approved outline and run the checks after each episode\"\n"
                   "- \"Review this episode as an editor-in-chief: point out problems with hooks, pacing, character motivation and dialogue\"\n"
-                  "- \"The writer says the villain in episode 3 feels flat; revise per that note without touching locked parts\"\n"
                   f"version: {version}\nauthor: MaLiAI\n")
         original = original.replace("\nname: drama-studio\n", "\nname: mali-drama-studio\n", 1)  # "drama-studio" is taken on WorkBuddy
         files["SKILL.md"] = original.replace("\n---\n", "\n" + fields + "---\n", 1).encode("utf-8")

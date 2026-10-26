@@ -139,6 +139,10 @@ class DistributionTests(unittest.TestCase):
             for field in ("display_name:", "display_name_en:", "description_zh:", "description_en:", "examples_zh:", "examples_en:", "version:", "author:"):
                 self.assertIn(field, text.split("---")[1])
             self.assertIn("\nname: mali-drama-studio\n", text.split("---")[1])
+            for field in ("examples_zh:", "examples_en:"):  # WorkBuddy accepts at most 3 each
+                block = text.split("---")[1].split(field)[1].split("\n")[1:]
+                items = next(i for i, line in enumerate(block) if not line.startswith("- "))
+                self.assertTrue(1 <= items <= 3, field)
             self.assertIn("references/provenance.md", bundle.namelist())
             bundle.extractall(self.base / "extracted")
         result = subprocess.run([sys.executable, "-B", str(self.base / "extracted/scripts/drama_tools.py"), "doctor"],
