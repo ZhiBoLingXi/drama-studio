@@ -2,7 +2,7 @@
 
 日期：2026-10-15　分支：`feat/d6-3-dialogue-layer`　性质：M 项证据，不是通过条件。
 
-接着 [D6-2 走通演示](d6-2-walkthrough.md) 的同一项目 `projects/d62-walkthrough/`（《旧楼电梯》，编造材料，gitignore），从第 1 集分集计划出发，走完台词层。说明书只用随包文档：[SKILL.md](../../skills/drama-studio/SKILL.md)、[writing.md](../../skills/drama-studio/references/writing.md)、[台词层](../../skills/drama-studio/references/dialogue-structure.md)、工位文件 [C5a](../../skills/drama-studio/references/workstations/c5a-dialogue-plan.md)、[C5b](../../skills/drama-studio/references/workstations/c5b-text.md)、[C6](../../skills/drama-studio/references/workstations/c6-review.md)、[整季分批](../../skills/drama-studio/references/workstations/season-run.md)、[工位契约](../../skills/drama-studio/references/workstations/README.md)，加 schema 例子与 `--help`。没有读 `docs/`、`tests/`、工具源码；[d6-3-decisions](d6-3-decisions.md) 走完才读。下文路径都相对项目目录。
+接着 [D6-2 走通演示](d6-2-walkthrough.md) 的同一项目 `projects/d62-walkthrough/`（《旧楼电梯》，编造材料，gitignore），从第 1 集分集计划出发，走完台词层。说明书只用随包文档：[SKILL.md](../../skills/drama-studio/SKILL.md)、[writing.md](../../skills/drama-studio/references/writing.md)、[台词层](../../skills/drama-studio/references/dialogue-structure.md)、工位文件 [C5a](../../skills/drama-studio/references/workstation-c5a-dialogue-plan.md)、[C5b](../../skills/drama-studio/references/workstation-c5b-text.md)、[C6](../../skills/drama-studio/references/workstation-c6-review.md)、[整季分批](../../skills/drama-studio/references/workstation-season-run.md)、[工位契约](../../skills/drama-studio/references/workstations.md)，加 schema 例子与 `--help`。没有读 `docs/`、`tests/`、工具源码；[d6-3-decisions](d6-3-decisions.md) 走完才读。下文路径都相对项目目录。
 
 结论先说：走到了关口。`season-check --episodes 1 --allow-offline` 最后一次退出 2，`episodeRuleSet: dialogue-layer`，`dialogueLayerRules` 十三条里十二条 `passed`，只剩 `dup-two-tier` 失败（项目没有语料，13 字全库档没法跑，发现 1），见「关口」一节。不加 `--allow-offline` 时另多 `saved` 一条失败。离线授权的原话来自编排方任务消息（不是真人），已记在 `PROJECT.md`。
 
@@ -111,7 +111,7 @@ C6 交接 `run-c6-ep001-text` 把首读 f1、次读 f2 合成一条 C4 变更提
 
 2. **台词目标的 `corpusManifest` 不许为空。** 没有语料时只能填一个占位字符串（我写 `none:本项目无语料`），文档没给写法。位置：dialogue-structure.md §2；dialogue-target schema。
 3. **说话人说出自己的表态被判不知情。** 孙老师说「我不同意」，分集计划把这条 fact 挂在她的图谋账 `L-ag-001` 上，`dialogue-plan-check` 的 `speaker-knows` 判 speaker-not-knows。§3 说「本集他自己做的、在场的」算知情，但没说哪类账、哪种写法才算；图谋账不算。只能回 C4 去掉 `ledgerRef`，得到 `notEvaluable`。位置：dialogue-structure.md §3「说话人凭什么知道」；outline-layer.md §9 `infoLedger`（`ledgerRef` 没有说明）。
-4. **按决定队列默认改上游，谁执行、占不占预算，没写。** C5a 发现要改分集计划的一个引用字段，C4 返修预算已用完；我登记决定后开了一个 `revisionBudget: 0` 的 C4 运行按默认改。§10 只说「流程按默认继续」，没说默认要求改上游文件时由哪一层动手、算不算返修。位置：outline-layer.md §10；workstations/README.md「返修上限按层解释」。
+4. **按决定队列默认改上游，谁执行、占不占预算，没写。** C5a 发现要改分集计划的一个引用字段，C4 返修预算已用完；我登记决定后开了一个 `revisionBudget: 0` 的 C4 运行按默认改。§10 只说「流程按默认继续」，没说默认要求改上游文件时由哪一层动手、算不算返修。位置：outline-layer.md §10；workstations.md「返修上限按层解释」。
 5. **第 1 集没有前一集，文档没说怎么装作者包。** `season-check` 报 `author-previous-text`（提示「应装 planning/ledger/ledger-ep000.json」）与 `author-state`（要 `runs/state/after-ep-000.md`）。文档只写「前一集最新稿原文、入口状态 after-ep-<前一集>」。`ledger replay --at 0 --track actual --md` 能导出 `after-ep-000.md`，但哪里都没写；我按提示补装了两个包。位置：writing.md 第 5 步；c5b-text.md「必读本剧依据」；dialogue-structure.md §5「作者包」。
 6. **两稿各做一次处境对照，被当成同一稿两次。** `consistency-record` 要求原稿与修订稿两份处境对照之间有 `answers-consistency`；文档写的是「同一稿做两次独立作答时」才要。我照规则跑了一份存档，但跨稿比对没有意义。位置：dialogue-structure.md §6 末段；`season-check` 的 `consistency-record`。
 7. **`preserved-human-source` 回溯核到启用台词层之前写的集纲审读。** D6-2 的 `rev-ep001-outline-2` 用纯字符串写 `preserved`，当时合规；项目启用台词层后被判失败。文档说旧写法「只在旧项目放行」，没说半路启用的项目里旧记录怎么办；我请那份记录的原作者（同一个子代理）自己迁移：它把三项挪进 `goalAssessments[].evidence`（加前缀注明是模型判断），删掉一项与 f11 重复的。原记录其实有 4 项，`season-check` 的报错只列了 `preserved[0]`–`[2]`。位置：dialogue-structure.md §8 末段、§9 末段。
@@ -122,7 +122,7 @@ C6 交接 `run-c6-ep001-text` 把首读 f1、次读 f2 合成一条 C4 变更提
 9. **题材禁词表怎么进作者包没写。** §5 与 c5b 说作者包装「本剧题材的禁词表」，但没给选材写法（问题单有 `question-set:` 写法，禁词表没有）。我没装，禁词扫描照跑。位置：dialogue-structure.md §5「作者包」；c5b-text.md「主要知识」。
 10. **次读包用哪个角色没写。** 首读、冷读、处境对照都有角色名，次读只说「再装一个包」；我用了 `evaluation`。位置：c6-review.md「正文侧」第 2 条；writing.md 第 6 步。
 11. **`review-record` 的 `layer` 只有 C5，文档要求按 C5a／C5b 归层。** 两位审读者都只能写 C5，再在 `claim` 里注明。位置：c6-review.md「方法要点」第 3 条；review-record schema。
-12. **一致性检查的打断位置与例子对不上。** 对话表例子只写 `interruptedBy: null`，打断位置字段没定义，我写的 `atExchange` 工具读不到（次读者指出）；随包例子 `plan-text-consistency.json` 的命令行（`--plan`）和状态词（`consistent`）与工具（`--dialogue-plan`，`pass／report`）不一致。位置：dialogue-structure.md §3「`interruptedBy`」、§7；schemas/examples/plan-text-consistency.json。
+12. **一致性检查的打断位置与例子对不上。** 对话表例子只写 `interruptedBy: null`，打断位置字段没定义，我写的 `atExchange` 工具读不到（次读者指出）；随包例子 `plan-text-consistency.json` 的命令行（`--plan`）和状态词（`consistent`）与工具（`--dialogue-plan`，`pass／report`）不一致。位置：dialogue-structure.md §3「`interruptedBy`」、§7；examples/plan-text-consistency.json。
 13. **封存与首读的认定。** 文档只说首读 sha256「算出来并记下」，没说记在哪（我存了 `.sha256` 旁注文件，`season-check` 认了）；`first-read-sealed` 还把集纲侧审读（`firstReadWithoutAuthorNotes: true`）当成未封存的首读报警告。位置：writing.md 第 6 步；season-run.md 记录表。
 14. **处境对照记录的格式缝。** 一答只能有一种落点（`landsOn` 与 `quoteRef` 二选一），`n/a` 也得引一句；`defectKind` 词表是为追问单写的；`target.kind: topic` 没有枚举；无样本时第 15 问写 `n/a` 还是 `not_evaluable` 没定，而两者会让 `outcome` 不同（两位核对方都报了）。位置：dialogue-structure.md §6「处境对照」；answers schema。
 15. **正文冷读记录装不下「从哪句知道」。** §6 要逐条写「我是从第几行哪句知道的」，`retell-record` 没有对应字段，冷读者拿不到 factId 也写不了 `factRefs`；两次冷读都自加了字段。人物表、场头里的信息（全名、「老师」身份、门牌）既不是画面也不是对白，也没处放。位置：dialogue-structure.md §6「冷读复述」；retell-record schema。
@@ -199,7 +199,7 @@ C6 交接 `run-c6-ep001-text` 把首读 f1、次读 f2 合成一条 C4 变更提
 | # | 严重度 | 发现 | 位置 |
 | --- | --- | --- | --- |
 | N1 | 小 | 无语料时 §5 说 13 字档「记 `not_evaluable`」，但 `dialogueLayerRules` 里 `dup-two-tier` 报的是 `passed`，看不出 13 字档其实没跑；`consistency-record` 遇到不适用时报的是 `not_evaluated`，两条规则的写法不一致 | dialogue-structure.md §5；`season-check` 的 `dup-two-tier` |
-| N2 | 小 | 「交接引用该决定」没有指定字段：`run-handoff` 只有 `changeProposals[].decisionId`，开去执行决定的运行没有地方写它执行的是哪条决定（我写进了 `readScope` 与 `unknowns`） | workstations/README.md「返修上限按层解释」末段；run-handoff schema |
+| N2 | 小 | 「交接引用该决定」没有指定字段：`run-handoff` 只有 `changeProposals[].decisionId`，开去执行决定的运行没有地方写它执行的是哪条决定（我写进了 `readScope` 与 `unknowns`） | workstations.md「返修上限按层解释」末段；run-handoff schema |
 | N3 | 小 | 打断检查没对齐：对话表例子里话题级的 `interruptedBy` 只写了 `{by}`，工具仍按 `interruptedBy.at` 取交换 id，取不到就记 `notEvaluable`；写了 `interruptedAt` 之后又报「打断 X-T3-01，之后第一条对白是赵建国，不是周敏」，好像要求被打断的人接着说，而被打断后本来就是打断的人说话。只报不拦 | dialogue-structure.md §3「`interruptedBy`、交换上的 `interruptedAt`」；`plan-text-consistency` 的 `interrupted-by` |
 | N4 | 小 | `capacity text` 不给参数时用默认档案的 58 秒，而本集分集计划写的是 120 秒；要得到 120 秒就得显式给 `--episode-plan`，§12 命令速查没提这个参数（编排方说取法还在改） | dialogue-structure.md §12「口播与估时」行 |
 

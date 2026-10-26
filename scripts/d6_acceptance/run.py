@@ -26,7 +26,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-CHECKS = TOOL.parent / "checks"
+CHECKS = TOOL.parent
 SEGMENTS = ("schemas", "ledger", "checks", "corpus", "d62", "d63", "d64")
 BASELINE_0_3_6 = "6a0ab3e"  # feat(skill): ... 0.3.6 (#73); VERSION there is 0.3.6
 PROJECTS = ("yuanxinsuo", "qige-xiongdi")  # real projects with 0.3.6-era records and no D6 records

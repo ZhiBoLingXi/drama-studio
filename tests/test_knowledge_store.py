@@ -10,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-EXAMPLE = json.loads((ROOT / "skills/drama-studio/schemas/examples/knowledge-card.json").read_text(encoding="utf-8"))
+EXAMPLE = json.loads((ROOT / "skills/drama-studio/examples/knowledge-card.json").read_text(encoding="utf-8"))
 
 
 def card(card_id, revision=1, knowledge_type="K3", workstations=("C2", "C4", "C5"), usage="creative_reference",

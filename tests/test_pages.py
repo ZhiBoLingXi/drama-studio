@@ -14,11 +14,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 FIXTURES = ROOT / "tests/fixtures/mcp-pages-synthetic"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 sys.path.insert(0, str(ROOT / "skills/drama-studio/scripts"))
 sys.dont_write_bytecode = True
-from checks import receipt  # noqa: E402
-from checks.contract_check import check_contract  # noqa: E402
+import receipt  # noqa: E402
+from contract_check import check_contract  # noqa: E402
 
 PROJECT = "2f70c1e9fad74f35ae27f"
 PAGE = "5b0d6c1e-8f3a-4e2b-9c47-1a2b3c4d5e6f"

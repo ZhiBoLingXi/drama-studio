@@ -223,7 +223,7 @@
           }
         }
       },
-      "description": "Optional: task constraints with their origin; any hit on schemas/data/constraint-blocklist.json is rejected whatever the origin"
+      "description": "Optional: task constraints with their origin; any hit on data/constraint-blocklist.json is rejected whatever the origin"
     },
     "dialogueTarget": {
       "type": "object",

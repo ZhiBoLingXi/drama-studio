@@ -1,7 +1,7 @@
 """season-check D6-1: the outline-layer and dialogue-layer rule sets beside the legacy ones, chosen per project.
 
 Synthetic fixtures only: the compliant legacy season and outlines of test_season_check, plus the D6 records built from
-schemas/examples/ (小镇、老陈的编造例子). Each new rule has one breaking change that reports that rule alone.
+examples/ (小镇、老陈的编造例子). Each new rule has one breaking change that reports that rule alone.
 """
 import copy
 import json
@@ -12,7 +12,7 @@ import unittest
 from test_season_check import Outlines, Season, run
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 
 
 def example(name):

@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 
-CHECKS = Path(__file__).resolve().parents[1] / "skills/drama-studio/scripts/checks"
+CHECKS = Path(__file__).resolve().parents[1] / "skills/drama-studio/scripts"
 
 TEXT = "# 第1集\n场1-1 镇上仓库 日 内\n人物：老陈、王姨\n老陈：别碰！\n王姨：烧了算了。\n老陈：钥匙给你。\n"
 

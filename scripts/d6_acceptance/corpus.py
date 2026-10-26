@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-CORPUS_DIR = ROOT / "skills/drama-studio/scripts/checks/corpus"
+CORPUS_DIR = ROOT / "skills/drama-studio/scripts"
 PY = [sys.executable, "-B"]
 
 SERIES_FORMAT = {
@@ -33,7 +33,7 @@ def _E(V: Path) -> Path:
 
 
 def cli(module, *args):
-    command = [*PY, str(CORPUS_DIR / f"{module}.py"), *map(str, args)]
+    command = [*PY, str(CORPUS_DIR / f"corpus_{module}.py"), *map(str, args)]
     run = subprocess.run(command, capture_output=True, text=True)
     try:
         out = json.loads(run.stdout) if run.stdout.strip() else json.loads(run.stderr)

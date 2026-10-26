@@ -15,8 +15,8 @@ TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 FIXTURES = ROOT / "tests/fixtures/mcp-synthetic"
 sys.path.insert(0, str(ROOT / "skills/drama-studio/scripts"))
 sys.dont_write_bytecode = True
-from checks import receipt  # noqa: E402
-from checks.contract_check import check_contract  # noqa: E402
+import receipt  # noqa: E402
+from contract_check import check_contract  # noqa: E402
 
 SNAPSHOT = "sha256:23c10720efd4880fd3b431374bbc44cfd0552ceb18a2be6f7e67aa9b20894225"
 ART1 = "9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41"
@@ -1259,7 +1259,7 @@ class CacheTests(ProjectCase):
             {"ref": {"kind": "remote_artifact", "id": ART1, "revision": 1}, "partition": "current_plan", "required": True, "reason": "测试"}]}),
             encoding="utf-8")
         run = subprocess.run([sys.executable, "-B", str(TOOL), "context-pack", str(self.project), "--task",
-                              str(ROOT / "skills/drama-studio/schemas/examples/task.json"), "--selection", str(selection),
+                              str(ROOT / "skills/drama-studio/examples/task.json"), "--selection", str(selection),
                               "--role", "author", "--budget", "20000", "--dry-run"], capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertEqual(json.loads(run.stdout)["omitted_count"], 0)
@@ -1395,7 +1395,7 @@ class ReceiptCliTests(ProjectCase):
 
 
 class DocsTests(unittest.TestCase):
-    ANCHOR = "../mali-story.md#候选保存与对账"
+    ANCHOR = "mali-story.md#候选保存与对账"
 
     def test_method_section_covers_the_contract(self):
         text = (ROOT / "skills/drama-studio/references/mali-story.md").read_text(encoding="utf-8")
@@ -1428,7 +1428,7 @@ class DocsTests(unittest.TestCase):
             self.assertIn(needle, docstring)
 
     def test_workstation_steps_link_the_method(self):
-        lines = (ROOT / "skills/drama-studio/references/workstations/README.md").read_text(encoding="utf-8").splitlines()
+        lines = (ROOT / "skills/drama-studio/references/workstations.md").read_text(encoding="utf-8").splitlines()
         steps = {line[:2]: line for line in lines if line[:2] in ("3.", "5.")}
         for step in ("3.", "5."):
             self.assertIn(self.ANCHOR, steps[step])

@@ -37,7 +37,7 @@
 | 范围 | 改动 |
 | --- | --- |
 | `corpus fetch` | 新子命令，只记账、不联网：`plan`（取用计划，默认 3 部各 10 集，带 `expectedSnapshotId`；不覆盖已有台账）、`record`（一次调用的结果、尝试次数、快照核对 `match`／`snapshot_mismatch`／`not_evaluable`、响应指纹）、`budget`（预算读数与当时的回执 ID）、`resume`（断点清单：未取、待重试、放弃，默认最多 3 次）、`verify`（计费 `deduction_seen`／`no_change_seen`／`unconfirmed`；有扣费迹象或快照不符退出 2，提示停下、不取全库） |
-| `corpus agree` | 新子命令，双跑比对的 S 部分。按 `schemas/data/corpus-label-vocabulary.json`（新数据文件，`source: assumed`）收敛：功能词同组算一致，关系一方是另一方的上位时算一致并取更具体的那个，infoMode 有交集算一致。三项都一致为 `high`，否则 `low`。`--out` 写带 `labelConfidence` 的副本，不改输入 |
+| `corpus agree` | 新子命令，双跑比对的 S 部分。按 `data/corpus-label-vocabulary.json`（新数据文件，`source: assumed`）收敛：功能词同组算一致，关系一方是另一方的上位时算一致并取更具体的那个，infoMode 有交集算一致。三项都一致为 `high`，否则 `low`。`--out` 写带 `labelConfidence` 的副本，不改输入 |
 | `corpus filter` | 新排除原因 `label_low` |
 | `corpus defaults` | 新子命令：从语料重算媒介档案默认值（与 `corpus rate` 同一公式）与按格式的交换中位时长，都标 n；按题材禁词表统计每个词在本题材与其他题材的出现，给出语料确认的词与候选新词，并与随包文件比对。候选词可能含系列专有词，只写进 `--out`，标准输出只报个数 |
 | 随包数据 | `default-media-profile.json`：各格式加 n，交换中位时长分格式记（见第五节）；`genre-lexicon.json`：每张表加 `measured` 块（n、确认数、未见数、其他题材出现的词、能否评估）。两份都只放统计量与词表 |

@@ -38,7 +38,7 @@
         "null"
       ],
       "minLength": 1,
-      "description": "The project media profile; null means the bundled schemas/data/default-media-profile.json, as capacity uses it (D6-3 walkthrough #17)"
+      "description": "The project media profile; null means the bundled data/default-media-profile.json, as capacity uses it (D6-3 walkthrough #17)"
     },
     "corpusManifest": {
       "type": [

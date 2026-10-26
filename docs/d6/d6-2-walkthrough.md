@@ -2,7 +2,7 @@
 
 日期：2026-10-15　分支：`feat/d6-2-outline-layer`　性质：M 项证据，不是通过条件。
 
-演示者扮演一个刚装好技能、第一次按新文档写集纲的 AI。说明书只用 [SKILL.md](../../skills/drama-studio/SKILL.md) 及其链接的 references（主要是 [策划](../../skills/drama-studio/references/planning.md)、[集纲层](../../skills/drama-studio/references/outline-layer.md)、[工位契约](../../skills/drama-studio/references/workstations/README.md) 与 C1、C2、C3a、C3b、C3c、C4、C6 工位文件），外加它们指向的 `schemas/` 示例与 `--help`。没有读 `docs/`、`tests/`、`scripts/d6_acceptance/`、真实项目目录，也没有读工具源码。
+演示者扮演一个刚装好技能、第一次按新文档写集纲的 AI。说明书只用 [SKILL.md](../../skills/drama-studio/SKILL.md) 及其链接的 references（主要是 [策划](../../skills/drama-studio/references/planning.md)、[集纲层](../../skills/drama-studio/references/outline-layer.md)、[工位契约](../../skills/drama-studio/references/workstations.md) 与 C1、C2、C3a、C3b、C3c、C4、C6 工位文件），外加它们指向的 `schemas/` 示例与 `--help`。没有读 `docs/`、`tests/`、`scripts/d6_acceptance/`、真实项目目录，也没有读工具源码。
 
 项目：`projects/d62-walkthrough/`（gitignore，不入库），剧名《旧楼电梯》。材料全部编造：六层老楼一单元 12 户要加装电梯，四楼周敏的母亲困在楼上，一楼独居的孙老师不签字，因为电梯井会挡住她家唯一朝南的窗。人物 4 个（周敏、孙老师、赵建国、社区林晓），10 集，单集 120 秒。下文路径都相对项目目录。
 
@@ -106,13 +106,13 @@
 1. **K1 卡用途与 fact_check 装包矛盾。** 集纲层 §6 说 K1 卡 `usage` 取 `comparison_only` 或 `creative_reference`；§5 与 c3a 只说 fact_check 包里的卡不能是 `evaluation_only`。`context-pack --role fact_check` 却拒收 `comparison_only`（「limited to similarity_review/evaluation」）。我只好出 r2 改成 `creative_reference`。位置：outline-layer.md §5、§6；c3a-function-map.md 方法要点第 4 条。
 2. **容量命令要语料，新项目没有。** `capacity season`／`episode` 必须给 `--corpus` 或 `--exchange-median-sec`。文档写的是「同类处境语料交换中位时长」，没说新项目从哪拿语料、也没有默认值，我假定了 8 秒。位置：outline-layer.md §8、§12；c3c-season-plan.md。
 3. **总账视图不能从 ledgerDeps 生成。** §3 说逐方总时间线「底账写出之前就能从 `ledgerDeps` 生成」，但 `ledger view` 只认带 `entries` 的底账文件（喂功能地图 → 1）。我把 C3b 建账提前到追问之前。位置：outline-layer.md §3「跨前提一致性表」段。
-4. **`promptVersion` 的要求前后不一。** `check-answers` 要求回答记录有 `promptVersion`；`contract-check answers` 不要求，随包示例 `answers.json` 也没有，核对方照示例写就过不了。我作为编排方补上。位置：outline-layer.md §5「回答记录」；schemas/examples/answers.json。
+4. **`promptVersion` 的要求前后不一。** `check-answers` 要求回答记录有 `promptVersion`；`contract-check answers` 不要求，随包示例 `answers.json` 也没有，核对方照示例写就过不了。我作为编排方补上。位置：outline-layer.md §5「回答记录」；examples/answers.json。
 5. **`ledger check` 的字段要求比文档和 contract-check 严。** `schema-basic` 要求时间线条目一定有 `didNot` 键（§4 说 `did`／`didNot` 至少一个）；有 `whyNotApplicable` 也还要 `why` 键；`state` 子型要 `knownTo`（§4 子型字段只列 `stateOf`、`state`、`validFrom`、`validTo`）；图谋 `validTo` 为空要登记。`contract-check ledger-entry` 对同一文件是 0。我补了 `null` 值和 `emptyFields`。位置：outline-layer.md §4。
 6. **`money-closed` 要一个文档没提的标记。** 报「account 为空且未标 no_trace」。文档只说空字段列进 `emptyFields[]`、照报到有人补上，没有提 `no_trace`。我编了一个 account 值（标「设计，未核」）。位置：outline-layer.md §4「材料没给的，登记不编」。
 7. **`--records` 一处收目录、一处不收。** `check-answers --records .drama/checks` → 1（Is a directory）；`defects build --records .drama/checks` 和 `function-map check --rc-dir` 都收目录。§12 两处都写成目录形式。位置：outline-layer.md §12「追问记录」行。
-8. **C1、C2 没有装包角色。** `run-handoff.contextSnapshotId` 必须是字符串，但 `context-pack` 的角色表里没有给 C1、C2 的，文档也没说这两个工位怎么装包。我填了 `unknown:…`。位置：workstations/README.md「每次运行的固定协议」第 2 条；c1、c2 工位文件。
-9. **冷读包「只装 events」做不到，工具也拦不住。** 文档说冷读包只放本集 `events` 一项，却没说怎么从分集计划里只取 events。`context-pack --role cold_reader` 实测接受整份分集计划（含 `moves`、`infoLedger`、`summary`），它只数项数。我手抽成单独文件，第一次还漏删了拍上的 `saysFact`，等于把 factId 泄露给冷读者。位置：outline-layer.md §9「本集要过的核对」；c6-review.md 三读第 3 条；workstations/README.md 执行层级「冷读包只装一项」。
-10. **C4 包要装什么，文档和 season-check 说的不一样。** c4「整季集纲怎么写」第 3 条列的是季编排、底账、功能地图、人物包、前一集计划；`season-check` 的 `outline-structure` 还要 C3 最新运行的全部产出（这里包括媒介档案）。`outline-characters` 要 `run-c2` 的产出与包里的引用一致：我在交接里把声音卡写成 `local_file` 路径，包里却只能按 `knowledge_card` 装（`knowledge/` 不在 `local_file` 允许的目录里），于是对不上。文档没说交接里怎么引用知识卡。位置：c4-episode-outline.md「整季集纲怎么写」第 3 条；workstations/README.md「定向修订单独装包」。
+8. **C1、C2 没有装包角色。** `run-handoff.contextSnapshotId` 必须是字符串，但 `context-pack` 的角色表里没有给 C1、C2 的，文档也没说这两个工位怎么装包。我填了 `unknown:…`。位置：workstations.md「每次运行的固定协议」第 2 条；c1、c2 工位文件。
+9. **冷读包「只装 events」做不到，工具也拦不住。** 文档说冷读包只放本集 `events` 一项，却没说怎么从分集计划里只取 events。`context-pack --role cold_reader` 实测接受整份分集计划（含 `moves`、`infoLedger`、`summary`），它只数项数。我手抽成单独文件，第一次还漏删了拍上的 `saysFact`，等于把 factId 泄露给冷读者。位置：outline-layer.md §9「本集要过的核对」；c6-review.md 三读第 3 条；workstations.md 执行层级「冷读包只装一项」。
+10. **C4 包要装什么，文档和 season-check 说的不一样。** c4「整季集纲怎么写」第 3 条列的是季编排、底账、功能地图、人物包、前一集计划；`season-check` 的 `outline-structure` 还要 C3 最新运行的全部产出（这里包括媒介档案）。`outline-characters` 要 `run-c2` 的产出与包里的引用一致：我在交接里把声音卡写成 `local_file` 路径，包里却只能按 `knowledge_card` 装（`knowledge/` 不在 `local_file` 允许的目录里），于是对不上。文档没说交接里怎么引用知识卡。位置：c4-episode-outline.md「整季集纲怎么写」第 3 条；workstations.md「定向修订单独装包」。
 11. **审读记录该由谁写，文档没说。** 三读都由新上下文做了，各留了记录，但 `season-check` 的 `outline-review` 只看 `review-record.context`。由作者汇总的记录只能如实填 `serial_self_review`，于是判「只有作者自审」。我另开了一个新上下文来写审读记录。文档没说集纲侧的 review-record 由三读者之一写、还是由编排方汇总。位置：c6-review.md「集纲侧三读」。
 12. **集纲侧的离线做法没写。** writing.md 的离线一节只讲正文。集纲侧没有 mali-story 时，`outline-saved` 必然失败，只有 `--allow-offline` 能过，而这个参数要「用户同意」。这里用户就是演示者自己。位置：outline-layer.md §12「关口」行；c4-episode-outline.md 第 5、6 条。
 13. **C4 自己写错的承重缺口没有合适去处。** 三个去处（`confirmed_gone`／`license`／`decision`）都是按 C3a 实现层设计的。分集计划自己写错（102 户没敲门）时，核对方只能在作答当时乱填一个（`license → L-obj-002`），被 `check-answers` 拒。合理的走法是先改计划、再由新上下文复核、回头把去处填成 `confirmed_gone`，但文档没说回答记录的 `disposition` 事后由谁改。位置：outline-layer.md §5「承重缺口的三个去处」、§7。
@@ -121,13 +121,13 @@
 
 14. **跨前提一致性表没有落点。** 没有 schema、没有存放位置，也没有命令核它（§3 说「脚本只核每格有内容」）。我手写成 md，没有任何命令读它。位置：outline-layer.md §3。
 15. **`function-map topics` 会出检索不了的题。** 它也归并 `knowledge`、`agenda` 类的 `required_unstated` 断言（如「周敏起初以为多数人同意就行」），但这些没有可检索的对象。§3 第 2 步却要求「每题有卡（查不到的是空卡）」，不清楚这类题要不要写空卡。位置：outline-layer.md §3 第 2 步、§6「输入」。
-16. **writing.md 与 README 说的允许目录不一致。** writing.md 离线一节说 `local_file` 只读 `.drama/`、`runs/`，`planning/` 下的文件会被拒；workstations/README.md 和实际工具都允许 `planning/`。位置：writing.md「没有 mali-story 连接」第 1 条。
+16. **writing.md 与 README 说的允许目录不一致。** writing.md 离线一节说 `local_file` 只读 `.drama/`、`runs/`，`planning/` 下的文件会被拒；workstations.md 和实际工具都允许 `planning/`。位置：writing.md「没有 mali-story 连接」第 1 条。
 17. **§11 表第三行「同上」有歧义。** 前提一级的用户给定设定不成立时，「同上」可以读成「按第二行保留并标 `license_pending`」，也可以读成「先看有没有通过核对的候选（第一行）」。而且第 4 步要在追问前定默认，这时还不知道哪个候选能过。我按「保留」走。位置：outline-layer.md §11 表。
 18. **勘误「清零」做不到也没人核。** 交接条件写「勘误清零（S）」，但勘误记在核对方的回答记录里，作者改了地图之后记录照旧，`function-map check --stage v1` 也照样通过。不清楚该怎么清零、由谁清。位置：outline-layer.md §1 表、§2「选定规则」。
 19. **回答记录的 `outcome` 没什么信息量。** 只要有一条没继承来源的 `notHolds`，不论承不承重，脚本都要求 `fail`，所以只有不承重缺口的候选也拿不到 `pass_with_unverified`（核对方报告）。位置：outline-layer.md §5「`outcome`」。
 20. **`move` 对象的记录分不出是哪个动作。** 一份记录覆盖多个 moves 时没有字段指明某一答属于哪个动作，核对方借用了 `targetClause`。同样，前提记录也没有字段说明答的是哪个默认候选。位置：outline-layer.md §5「对象」。
 21. **`because` 三个值的边界没定义。** 卡在、但卡上没有这一问的条时，填 `no_card`、`card_says_not_found` 还是 `cannot_answer`，文档没说。位置：outline-layer.md §5。
-22. **问题单装不进包。** 问题单在技能目录，不在项目内，没法作为 `local_file` 进 `fact_check` 包，子代理只能另读。位置：outline-layer.md §5；workstations/README.md「定向修订单独装包」。
+22. **问题单装不进包。** 问题单在技能目录，不在项目内，没法作为 `local_file` 进 `fact_check` 包，子代理只能另读。位置：outline-layer.md §5；workstations.md「定向修订单独装包」。
 23. **几个产物没有规定位置。** task、selection、媒介档案、ledger apply 的新修订放哪都没写（我分别用了 `.drama/tasks/`、`.drama/selections/`、`planning/media-profile.json`、`planning/ledger/rev/`）。另外，`init-project` 不建 `runs/`、`knowledge/`、`.drama/runs/`。位置：outline-layer.md §1、§12。
 24. **读输出时容易误会。** `status` 把已完成的旧运行标成「未结束」；`ledger view --blank-period` 把 `state` 子型条目放在「（未写 who）」下；`retell-check` 对已复述到的收尾拍判 `partial`，还会提示「readingScope 应只有一项」，可当时本来就只有一项。位置：outline-layer.md §12。
 25. **`season-check` 只列失败。** 七条集纲层规则通过时输出里不列出来，要靠反证才能确认它们跑了。`plan-check` 的 `speaker-knows` 在有 `notEvaluable` 时仍报 pass（人物说自己的表态也要一条知识账）。位置：outline-layer.md §12「关口」行。
@@ -192,9 +192,9 @@
 | N4 | 小 | `contract-check answers` 对缺 `promptVersion` 的记录仍是 0，`check-answers` 判错。两个命令对同一份记录结论不一样；照例子写就不会踩到 | outline-layer.md §5「回答记录」 |
 | N5 | 小 | §3 说逐方总时间线「就是 `ledger view --blank-period` 的总账视图，底账写出之前就能从 `ledgerDeps` 生成」，但 C3a 阶段的视图是按线列的、不分「方」，工具输出自己也这么说明。文档措辞与输出对不上 | outline-layer.md §3「跨前提一致性表」段 |
 | N6 | 小 | `check-answers --records <目录>` 会读目录里所有 `.json`。我把它的输出重定向进同一目录，shell 先把文件清空了，命令读到一个空 JSON 就退出 1。文档没说输出该放哪，也没说目录里放了别的 JSON 会怎样 | outline-layer.md §12「追问记录」行 |
-| N7 | 小 | 修订预算用完后的审读意见怎么办，文档说法不统一：工位契约写「交付未达标候选并写明瓶颈」，§10 写交接里的 `changeProposals` 都用 `from-handoff` 登记。追加预算算不算等人定的事（`needsDecision`）、进不进决定队列，没写 | workstations/README.md「返修上限按层解释」；outline-layer.md §10 |
+| N7 | 小 | 修订预算用完后的审读意见怎么办，文档说法不统一：工位契约写「交付未达标候选并写明瓶颈」，§10 写交接里的 `changeProposals` 都用 `from-handoff` 登记。追加预算算不算等人定的事（`needsDecision`）、进不进决定队列，没写 | workstations.md「返修上限按层解释」；outline-layer.md §10 |
 | N8 | 小 | 冷读者问 `present` 指的是有名有姓的出场人，还是所有在场的人（1-2 场敲了十来户门，`present` 只列了两人）。§9 的字段说明没写 | outline-layer.md §9 第 4、5 行 |
-| N9 | 小 | 一份为了绕过而出的卡修订（r2 只改了 `usage`）该怎么撤，文档没说。`processing: retired` 会让整张卡退出检索；撤掉 r2 又会让已经引用 r2 的 `cardRevisions` 悬空。我把它留着了 | workstations/README.md「知识库目录与命令」 |
+| N9 | 小 | 一份为了绕过而出的卡修订（r2 只改了 `usage`）该怎么撤，文档没说。`processing: retired` 会让整张卡退出检索；撤掉 r2 又会让已经引用 r2 的 `cardRevisions` 悬空。我把它留着了 | workstations.md「知识库目录与命令」 |
 
 新发现阻断 0 条、绕过了 0 条、小 9 条。
 

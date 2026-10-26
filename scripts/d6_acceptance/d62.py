@@ -134,7 +134,7 @@ def mutation_rows(project: Path, base: Path) -> list[dict]:
 def pack_rows(project: Path, base: Path) -> list[dict]:
     """context-pack --role author for a C4 task on the moved project: the C4 checklist (season plan, ledger, function
     map) in the package or exit 2."""
-    task = json.loads((ROOT / "skills/drama-studio/schemas/examples/task.json").read_text(encoding="utf-8"))
+    task = json.loads((ROOT / "skills/drama-studio/examples/task.json").read_text(encoding="utf-8"))
     task.update(taskId="task-ep007-plan", workstation="C4", goal="按季编排与底账写第7集分集计划", writeScope=[])
     task_path = base / "task-c4.json"
     task_path.write_text(json.dumps(task, ensure_ascii=False), encoding="utf-8")

@@ -932,11 +932,11 @@ D6-0 之后增加的规则（设计；其中带 † 的在临时脚本里有过�
 | 19 | `SKILL.md` 路由表：「集纲」一行改指新文档；命令表加 `ledger`、`plan-check`、`capacity`、`check-answers`、`retell-check`（`tests/test_skill_routing.py` 同步） | M | 新会话按文档走通 |
 | 20 | `references/planning.md` 重写「蓝图、设定圣经与集纲」一节 | M | — |
 | 21 | 新 `references/outline-layer.md`：功能地图、底账六类账、追问单、检索代理、季编排与容量、分集计划字段、修订规则、决定队列、用户给定设定的处理 | M | — |
-| 22 | `workstations/c3-structure.md` 拆为 c3a/c3b/c3c；`c4-episode-outline.md` 改写；`README.md` 工位索引更新；`season-run.md` §1「上游 C1–C4」与「入口状态」改为底账 | M | — |
+| 22 | `workstation-c3-structure.md` 拆为 c3a/c3b/c3c；`c4-episode-outline.md` 改写；`README.md` 工位索引更新；`season-run.md` §1「上游 C1–C4」与「入口状态」改为底账 | M | — |
 | 23 | 系统架构 v1.2 修订：§5.1 C3/C4 交接对象；§6.4 加「底账两轨」；§6.1 主数据加 `function-map`、`ledger`；路线图 D3「从素材到故事的上游能力」加注 | M | — |
 | 24 | README.md 记新命令 | M | `validate.py` 通过 |
 | 25 | `impact --card <K1 id>`（现有 `impact` 命令的扩展）：按回答记录的 `cardRevisions` 列出按旧卡作答、需要重答的回答 | S | 夹具：卡修订后旧回答被列出 |
-| 26 | C3a 写作任务书的随包条款：四种不允许的修法与三条规矩（§8.1），写进 `workstations/c3a-function-map.md`；`task.revisionBudget` 在 C3a 默认 2 | M（条款）；S（`patch` 字段在、带 `patch` 的缺口不计入 `closes[]`） | 正反用例 |
+| 26 | C3a 写作任务书的随包条款：四种不允许的修法与三条规矩（§8.1），写进 `workstation-c3a-function-map.md`；`task.revisionBudget` 在 C3a 默认 2 | M（条款）；S（`patch` 字段在、带 `patch` 的缺口不计入 `closes[]`） | 正反用例 |
 | 27 | 送审包附录「戏剧假定清单」（§9.3），由脚本从底账生成；写进 `approval-flow.md` | S（清单生成）＋M（文档） | 夹具：两种状态的条目都列出 |
 
 R 级（mali-story 服务端）无新增；功能地图、底账、季编排、分集计划首版留本地文件（主创 2026-10-14 已定），`episode_outline` 页面继续存分集计划的可读稿。

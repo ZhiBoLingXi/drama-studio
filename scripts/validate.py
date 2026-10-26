@@ -44,10 +44,12 @@ def main():
         path = SOURCE / name
         if path.suffix not in {".md", ".py", ".json"}:
             failures.append(f"Unexpected bundled file: {name}")
+        if name.count("/") > 1:  # WorkBuddy accepts root/dir/file only
+            failures.append(f"Bundled file nested deeper than one folder: {name}")
         if path.suffix == ".json":
             try:
                 schema = json.loads(path.read_text(encoding="utf-8"))
-                if name.startswith(("schemas/examples/", "schemas/data/")):
+                if name.startswith(("examples/", "data/")):
                     continue
                 if not name.startswith("schemas/") or schema.get("$id") != schema.get("properties", {}).get("schemaVersion", {}).get("const"):
                     failures.append(f"Bundled JSON must be a schema with matching $id: {name}")

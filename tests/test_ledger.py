@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/checks/ledger.py")]
+TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/ledger.py")]
 
 
 def run(*args, cwd=None):

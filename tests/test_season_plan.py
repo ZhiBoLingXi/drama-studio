@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/checks/season_plan_check.py")]
+TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/season_plan_check.py")]
 
 
 def cap(info, pics, status="fits", **extra):

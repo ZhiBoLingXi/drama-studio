@@ -1,6 +1,6 @@
 """context-pack D6-1 roles: cold_reader, C5a (dialogue_designer) capacity gate, C5b dialogue-plan gate, samples by topic.
 
-Synthetic fixtures from schemas/examples/ only. The old roles' behaviour is covered, unchanged, by test_context_pack.
+Synthetic fixtures from examples/ only. The old roles' behaviour is covered, unchanged, by test_context_pack.
 """
 import copy
 import json
@@ -12,7 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 TEXT = "场3-1 镇口小卖部 上午\n刘叔：你那箱子，该不会也在里头？\n老陈：哪个仓库？\n"
 
 

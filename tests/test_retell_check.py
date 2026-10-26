@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 
-CHECKS = Path(__file__).resolve().parents[1] / "skills/drama-studio/scripts/checks"
+CHECKS = Path(__file__).resolve().parents[1] / "skills/drama-studio/scripts"
 
 PLAN = {"episode": "1", "infoLedger": [
             {"infoId": "I1", "facts": [{"factId": "I1-f1", "text": "老陈在仓库找到箱子", "keywords": ["老陈", "箱子", "仓库"]}]},

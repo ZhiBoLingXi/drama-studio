@@ -127,7 +127,7 @@ class SpeechVolumeTests(unittest.TestCase):
 
     def test_speech_volume_is_opt_in_and_counts_spoken_han_only(self):
         sys.path.insert(0, str(ROOT / "skills/drama-studio/scripts"))
-        from checks.episode_check import run_episode_check
+        from episode_check import run_episode_check
 
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "ep.md"

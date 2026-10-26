@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-_spec = importlib.util.spec_from_file_location("contract_check", ROOT / "skills/drama-studio/scripts/checks/contract_check.py")
+_spec = importlib.util.spec_from_file_location("contract_check", ROOT / "skills/drama-studio/scripts/contract_check.py")
 contracts = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(contracts)
 
@@ -177,7 +177,7 @@ def run(V) -> list[dict]:
                 if explanation:
                     row["explanation"] = explanation
             rows.append(row)
-    for data in sorted((ROOT / "skills/drama-studio/schemas/data").glob("*-questions.json")):
+    for data in sorted((ROOT / "skills/drama-studio/data").glob("*-questions.json")):
         result = contracts.run_contract_check("question-set", str(data))
         rows.append({"stream": "schemas", "object": "question-set", "file": str(data), "passed": result["passed"],
                      "errorCount": len(result["errors"]), "errors": result["errors"], "legacyForms": [],

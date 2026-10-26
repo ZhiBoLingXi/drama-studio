@@ -80,7 +80,7 @@
 | 19 | `outcome`：只有不承重的 `notHolds` 时允许 `pass_with_unverified` | T＋M |
 | 20 | 回答记录每答可带可选 `subject`（`move` id 或候选 id），一份记录覆盖多个动作时必填 | T＋M |
 | 21 | `because`：`no_card`＝没有覆盖这个题目的卡；`card_says_not_found`＝有卡、卡上这条写明查无出处（`coverage: empty` 或 `support: not_found`）；`cannot_answer`＝有卡但卡不涉及这一问 | M |
-| 22 | 问题单可进包：`context-pack` 允许装随包 `schemas/data/` 下的问题单（只读、按 id），不必复制进项目 | T＋M |
+| 22 | 问题单可进包：`context-pack` 允许装随包 `data/` 下的问题单（只读、按 id），不必复制进项目 | T＋M |
 | 23 | 产物位置：任务 `.drama/tasks/`、选材 `.drama/selections/`、媒介档案 `planning/media-profile.json`、`ledger apply` 的新修订 `planning/ledger/ledger-ep<NNN>.json`；快照由 `context-pack` 自己写进 `.drama/snapshots/`，不要存标准输出；`init-project` 补建 `runs/`、`knowledge/`；`.drama/runs/` 在第一份交接写入时再建（现有测试锁定「空项目的 `.drama/` 只有 `project.json`」，不为一个空目录改它） | T＋M |
 | 24 | `status` 不把已交接的运行标成未结束；`blank-period` 把 `state` 子型按 `stateOf` 归人；`retell-check` 收尾拍判法与「readingScope 只应一项」的误报修掉 | T |
 | 25 | `season-check` 在 `ruleSet: outline-layer` 下列出跑过且通过的规则（旧输出不变）；`plan-check` 的 `speaker-knows` 有 `notEvaluable` 时状态写 `pass_with_not_evaluable` | T＋M |

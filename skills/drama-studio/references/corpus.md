@@ -88,14 +88,14 @@
 
 `corpus label <labels.jsonl> [--raw-dir corpus/raw]` 核标注的 S 部分：必需字段在、类型对、行号区间合法、`exchangeId` 不重复。词表是开放的：词表外的取值只报告，`quality.note` 里没写说明时记为缺陷，但不拦。
 
-**双跑**：同一批交换由两次独立运行（不同会话、同一词表）各标一份，再用 `corpus agree <标注 JSONL> [--second <第二次的 JSONL>] [--out <新文件>]` 比对（词表 `schemas/data/corpus-label-vocabulary.json`）：功能的近义项算同一个；关系相同或一个是另一个的上位时算一致（保留更具体的）；信息模式的集合有交集算一致。功能或关系仍不同、信息模式没有交集的记 `labelConfidence: low`；`--out` 写一份带 `labelConfidence`、`labelAgreement` 的副本，`low` 的行加 `quality.label: low`，`corpus filter` 不把它放进通过名单，所以它进不了检索结果。原文件不改；不一致是答案不是失败（退出码 0）。不设第三次裁判：记为 `low` 的交换就不进检索，等以后新的一次双跑一致了再升。没有两份可比对的标注时，如实写「未双跑」，不把单次标注当成一致。`reviewedBy` 字段留着，有人看过再填，人不是必经环节。
+**双跑**：同一批交换由两次独立运行（不同会话、同一词表）各标一份，再用 `corpus agree <标注 JSONL> [--second <第二次的 JSONL>] [--out <新文件>]` 比对（词表 `data/corpus-label-vocabulary.json`）：功能的近义项算同一个；关系相同或一个是另一个的上位时算一致（保留更具体的）；信息模式的集合有交集算一致。功能或关系仍不同、信息模式没有交集的记 `labelConfidence: low`；`--out` 写一份带 `labelConfidence`、`labelAgreement` 的副本，`low` 的行加 `quality.label: low`，`corpus filter` 不把它放进通过名单，所以它进不了检索结果。原文件不改；不一致是答案不是失败（退出码 0）。不设第三次裁判：记为 `low` 的交换就不进检索，等以后新的一次双跑一致了再升。没有两份可比对的标注时，如实写「未双跑」，不把单次标注当成一致。`reviewedBy` 字段留着，有人看过再填，人不是必经环节。
 
 不让模型给交换打「好坏分」。「优秀」只是可记录的筛选条件：已上线爆款、转写干净、结构完整、锚到看点（锚到本集拉片的爽点或钩子的进 Tier 1，其余合格的进 Tier 2）。
 
 ## 8. 媒介档案与禁词表
 
-- **媒介档案物理量**：`corpus rate <corpus/raw> [--series-format <templateId>=live|anime]`（没写的剧按 `live` 算并标 `formatSource: assumed`） 从时间码量语速（说话期间每分钟汉字）、停顿比、每集每分钟台词汉字（第二口径），只有物理量，不出任何句数、换人数配额。样本量写进 `n`；漫剧没量过的项写 `null` 并说明。随包默认档案 `schemas/data/default-media-profile.json` 就是这样算出来的；项目有了自己的语料，就在项目里重算一份放 `planning/media-profile.json`。
-- **题材禁词表**：两种题材的语料做词频对照，在一种题材高频、另一种近零的词进另一种的禁词表（如现实题材里的「为师」「宗门」，仙侠题材里的「物业」「快递」）。表是数据（`schemas/data/genre-lexicon.json`，标 `source` 与 `n`），不是规则；语料更新就重算。`corpus lexicon <正文> --project-genre <题材>` 扫正文，命中报 `GENRE_LEAK`，是事实核对，只报不拦。
+- **媒介档案物理量**：`corpus rate <corpus/raw> [--series-format <templateId>=live|anime]`（没写的剧按 `live` 算并标 `formatSource: assumed`） 从时间码量语速（说话期间每分钟汉字）、停顿比、每集每分钟台词汉字（第二口径），只有物理量，不出任何句数、换人数配额。样本量写进 `n`；漫剧没量过的项写 `null` 并说明。随包默认档案 `data/default-media-profile.json` 就是这样算出来的；项目有了自己的语料，就在项目里重算一份放 `planning/media-profile.json`。
+- **题材禁词表**：两种题材的语料做词频对照，在一种题材高频、另一种近零的词进另一种的禁词表（如现实题材里的「为师」「宗门」，仙侠题材里的「物业」「快递」）。表是数据（`data/genre-lexicon.json`，标 `source` 与 `n`），不是规则；语料更新就重算。`corpus lexicon <正文> --project-genre <题材>` 扫正文，命中报 `GENRE_LEAK`，是事实核对，只报不拦。
 
 **重算默认值**：`corpus defaults <corpus 目录> [--series-format <templateId>=live|anime] [--out <文件>]` 从语料重算媒介档案默认值（与 `corpus rate` 同一公式）和每种形态的交换中位时长，各带 `n`（几部、几集、几条交换）；对禁词表逐表统计它在本题材与其他题材里出现多少次、哪些假定的词得到语料确认，并给出新的候选词；最后与随包的 `default-media-profile.json`、`genre-lexicon.json` 对比。候选词可能带出某部剧特有的词，只写进 `--out`（项目里），不进随包数据。它只读，`--out` 不覆盖已有文件。
 

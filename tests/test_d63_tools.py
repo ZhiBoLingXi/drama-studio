@@ -1,7 +1,7 @@
 """D6-3 tools: the dialogue-layer criterion, --legacy-dialogue, dialogueLayerRules, retell-after-revise on records,
 the revision-list scan, numeric task constraints, and context-pack's samples partition, quote cap and pack history.
 
-One passing and one failing case per S rule; synthetic fixtures from schemas/examples/ and the season-check fixtures.
+One passing and one failing case per S rule; synthetic fixtures from examples/ and the season-check fixtures.
 """
 import copy
 import json
@@ -14,11 +14,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/drama-studio/scripts"
 TOOL = SCRIPTS / "drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(Path(__file__).parent))
-from checks import contract_check as contracts  # noqa: E402
-from checks import season_check  # noqa: E402
+import contract_check as contracts  # noqa: E402
+import season_check  # noqa: E402
 import test_context_pack_d6 as packs  # noqa: E402  (module import: its TestCase is not collected twice)
 from test_season_check import Season, run  # noqa: E402
 from test_season_check_d6 import DialogueLayer, put  # noqa: E402

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/checks/plan_check.py")]
+TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/plan_check.py")]
 
 
 def entry(eid, kind, **fields):

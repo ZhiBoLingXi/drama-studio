@@ -338,7 +338,7 @@ class DupListHitsTests(unittest.TestCase):
         self.new.write_text("场1-1 镇上 日 内\n人物：老陈\n老陈：今天天气真好适合出门走走看看风景啊。\n△老陈推门出去。\n", encoding="utf-8")
 
     def hits(self, *args):
-        run = subprocess.run([sys.executable, "-B", str(ROOT / "skills/drama-studio/scripts/checks/dup_check.py"),
+        run = subprocess.run([sys.executable, "-B", str(ROOT / "skills/drama-studio/scripts/dup_check.py"),
                               "--new", str(self.new), "--list-hits", *map(str, args)], capture_output=True, text=True)
         return run.returncode, json.loads(run.stdout or run.stderr)
 

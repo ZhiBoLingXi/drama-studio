@@ -16,16 +16,16 @@ import sys
 import uuid
 
 sys.dont_write_bytecode = True
-from checks.contract_check import question_sets, run_contract_check, schema_names
-from checks.context_pack import run_context_pack
-from checks.dup_check import run_dup_check
-from checks.episode_check import PRESETS, run_episode_check
-from checks.import_project import PRODUCERS, run_apply, run_preview
-from checks.knowledge_store import run_knowledge_search, run_knowledge_show, run_knowledge_validate
-from checks.project_status import render_status, run_impact, run_status
-from checks.reference_check import run_reference_check
-from checks.season_check import run_season_check
-from checks.receipt import EXPECTED as RECEIPT_OPERATIONS, KINDS as ARTIFACT_KINDS, run_receipt
+from contract_check import question_sets, run_contract_check, schema_names
+from context_pack import run_context_pack
+from dup_check import run_dup_check
+from episode_check import PRESETS, run_episode_check
+from import_project import PRODUCERS, run_apply, run_preview
+from knowledge_store import run_knowledge_search, run_knowledge_show, run_knowledge_validate
+from project_status import render_status, run_impact, run_status
+from reference_check import run_reference_check
+from season_check import run_season_check
+from receipt import EXPECTED as RECEIPT_OPERATIONS, KINDS as ARTIFACT_KINDS, run_receipt
 
 
 def initialize(path: Path, title: str) -> dict:
@@ -50,22 +50,22 @@ def initialize(path: Path, title: str) -> dict:
 
 # D6-1 commands that live in their own modules: drama_tools subcommand -> (module, leading argv it adds)
 DELEGATED = {
-    "ledger": ("checks.ledger", "Ledger: init/merge/apply/replay/check/diff/knows/view/stats; S rules only"),
-    "plan-check": ("checks.plan_check", "Episode-plan S check (presence, speaker-knows, delta support); --characters reports, never blocks"),
-    "plan-events": ("checks.plan_events", "Export an episode plan's events only (no saysFact or design fields) for the cold_reader package"),
-    "season-plan-check": ("checks.season_plan_check", "Season-plan S check against the function map, capacity and decision queue"),
-    "capacity": ("checks.capacity", "Capacity season/episode/text: one formula, both bases reported; exceeding writes a proposal and still exits 0"),
-    "decision": ("checks.decision", "Decision queue add/list/decide/check; every pending entry carries a default, decide needs humanWords"),
-    "function-map": ("checks.function_map", "Function map check/merge/topics (retrieval topics from required_unstated procedure deps)"),
-    "defects": ("checks.function_map", "defects build: derive the defect register from answer records (the records stay the only source)"),
-    "check-answers": ("checks.answers_check", "Answer-record format against its question set; coverage and --cross reports never block"),
-    "retell-check": ("checks.retell_check", "Cold retell against the plan's infoLedger facts and closing event: retold/partial/missing"),
-    "answers-consistency": ("checks.consistency", "Two answer records on the same target: where their three-state answers differ (reports only)"),
-    "dialogue-plan-check": ("checks.dialogue_plan_check", "Dialogue-plan S check (segments, closers, carries, listenerKnows from the ledger)"),
-    "plan-text-consistency": ("checks.plan_text_consistency", "Text against its dialogue plan: speakers, topic boundaries, closers, carried keywords"),
-    "dialogue-diagnose": ("checks.diagnose", "Dialogue signals with position and situation; no within/outside verdicts"),
-    "feedback-ingest": ("checks.feedback_ingest", "Writer feedback -> writer-note records routed by level (derivatives are drafts)"),
-    "corpus": ("checks.corpus", "Corpus S commands: segment/label/agree/filter/lexicon/rate/defaults, and fetch bookkeeping; offline"),
+    "ledger": ("ledger", "Ledger: init/merge/apply/replay/check/diff/knows/view/stats; S rules only"),
+    "plan-check": ("plan_check", "Episode-plan S check (presence, speaker-knows, delta support); --characters reports, never blocks"),
+    "plan-events": ("plan_events", "Export an episode plan's events only (no saysFact or design fields) for the cold_reader package"),
+    "season-plan-check": ("season_plan_check", "Season-plan S check against the function map, capacity and decision queue"),
+    "capacity": ("capacity", "Capacity season/episode/text: one formula, both bases reported; exceeding writes a proposal and still exits 0"),
+    "decision": ("decision", "Decision queue add/list/decide/check; every pending entry carries a default, decide needs humanWords"),
+    "function-map": ("function_map", "Function map check/merge/topics (retrieval topics from required_unstated procedure deps)"),
+    "defects": ("function_map", "defects build: derive the defect register from answer records (the records stay the only source)"),
+    "check-answers": ("answers_check", "Answer-record format against its question set; coverage and --cross reports never block"),
+    "retell-check": ("retell_check", "Cold retell against the plan's infoLedger facts and closing event: retold/partial/missing"),
+    "answers-consistency": ("consistency", "Two answer records on the same target: where their three-state answers differ (reports only)"),
+    "dialogue-plan-check": ("dialogue_plan_check", "Dialogue-plan S check (segments, closers, carries, listenerKnows from the ledger)"),
+    "plan-text-consistency": ("plan_text_consistency", "Text against its dialogue plan: speakers, topic boundaries, closers, carried keywords"),
+    "dialogue-diagnose": ("diagnose", "Dialogue signals with position and situation; no within/outside verdicts"),
+    "feedback-ingest": ("feedback_ingest", "Writer feedback -> writer-note records routed by level (derivatives are drafts)"),
+    "corpus": ("corpus", "Corpus S commands: segment/label/agree/filter/lexicon/rate/defaults, and fetch bookkeeping; offline"),
 }
 CORPUS_COMMANDS = ("segment", "label", "agree", "filter", "lexicon", "rate", "defaults", "fetch")
 TOOL = Path(__file__).resolve()
@@ -80,12 +80,12 @@ def reproduce(words: list[str], argv: list[str]) -> str:
 def delegate(argv: list[str]) -> int:
     """Run a D6-1 module command and print its output with reproduceCommand in drama_tools form."""
     command, rest = argv[0], argv[1:]
-    words, module = [command], DELEGATED.get(command, ("checks.dup_check",))[0]
+    words, module = [command], DELEGATED.get(command, ("dup_check",))[0]
     if command == "corpus":
         if not rest or rest[0] not in CORPUS_COMMANDS:
             print(json.dumps({"ok": False, "error": f"corpus needs one of: {', '.join(CORPUS_COMMANDS)}"}, ensure_ascii=False), file=sys.stderr)
             return 1
-        module, words, rest = f"checks.corpus.{rest[0]}", [command, rest[0]], rest[1:]
+        module, words, rest = f"corpus_{rest[0]}", [command, rest[0]], rest[1:]
     elif command == "defects":
         rest = ["defects", *rest]
         words = []
@@ -176,7 +176,7 @@ def main() -> int:
     reference = commands.add_parser("reference-check", help="Inspect saved template detail coverage, not source truth")
     reference.add_argument("path")
     reference.add_argument("--expected-episodes", type=int)
-    contract = commands.add_parser("contract-check", help="Validate a workstation handoff object; shape and script rules only (examples in schemas/examples/)")
+    contract = commands.add_parser("contract-check", help="Validate a workstation handoff object; shape and script rules only (examples in examples/)")
     contract.add_argument("contract", choices=schema_names())
     contract.add_argument("path")
     contract.add_argument("--records", nargs="+", help="Answer records a function map's selected candidates cite (inquiryRef)")

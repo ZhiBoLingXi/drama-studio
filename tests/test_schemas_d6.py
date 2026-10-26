@@ -11,7 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 SCHEMAS = ROOT / "skills/drama-studio/schemas"
-spec = importlib.util.spec_from_file_location("contract_check", ROOT / "skills/drama-studio/scripts/checks/contract_check.py")
+spec = importlib.util.spec_from_file_location("contract_check", ROOT / "skills/drama-studio/scripts/contract_check.py")
 contracts = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(contracts)
 
@@ -21,7 +21,7 @@ D6 = ["function-map", "ledger-entry", "ledger-delta", "question-set", "answers",
 
 
 def example(name):
-    return json.loads((SCHEMAS / "examples" / f"{name}.json").read_text(encoding="utf-8"))
+    return json.loads((SCHEMAS.parent / "examples" / f"{name}.json").read_text(encoding="utf-8"))
 
 
 class Case(unittest.TestCase):
@@ -71,7 +71,7 @@ class SchemaFilesTests(Case):
 
     def test_contract_module_uses_only_the_standard_library(self):
         import ast
-        source = (ROOT / "skills/drama-studio/scripts/checks/contract_check.py").read_text(encoding="utf-8")
+        source = (ROOT / "skills/drama-studio/scripts/contract_check.py").read_text(encoding="utf-8")
         modules = {alias.name.split(".")[0] for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Import) for alias in node.names}
         modules |= {node.module.split(".")[0] for node in ast.walk(ast.parse(source)) if isinstance(node, ast.ImportFrom) and node.module}
         self.assertLessEqual(modules, {"__future__", "datetime", "json", "pathlib", "re"})

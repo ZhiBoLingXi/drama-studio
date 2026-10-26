@@ -158,7 +158,7 @@ def gate_rows(V: Path, project: Path, base: Path) -> list[dict]:
         code, out, _ = tool("contract-check", "plan-text-map", V / name)
         rows.append(row(f"contract-check plan-text-map（D6-0 {Path(name).name}）", f"drama_tools.py contract-check plan-text-map <{name}>",
                         code == 0, exitCode=code, errors=out.get("errors"), legacyForms=out.get("legacyForms")))
-    task = json.loads((ROOT / "skills/drama-studio/schemas/examples/task.json").read_text(encoding="utf-8"))
+    task = json.loads((ROOT / "skills/drama-studio/examples/task.json").read_text(encoding="utf-8"))
     task.update(taskId="task-ep006A-c5b", layer="C5b", writeScope=[], dialogueTarget={"targetId": "pilot", "revision": "v0.1"})
     task_path = base / "task-c5b.json"
     task_path.write_text(json.dumps(task, ensure_ascii=False), encoding="utf-8")

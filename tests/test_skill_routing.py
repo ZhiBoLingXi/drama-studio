@@ -74,7 +74,7 @@ class SkillRoutingTests(unittest.TestCase):
         writing = [row for row in rows if "写作" in row.split("|")[1]]
         self.assertEqual(len(writing), 1, writing)
         self.assertIn("(references/writing.md#工位流程)", writing[0])
-        self.assertIn("(references/workstations/season-run.md)", writing[0])
+        self.assertIn("(references/workstation-season-run.md)", writing[0])
         self.assertNotIn("实验性", text)
         steps = section(text, "## 一次完整创作")
         for needle in ("init-project", "status", "context-pack --role author", "reader_effect", "封存", "定向修订一次",
@@ -102,13 +102,13 @@ class SkillRoutingTests(unittest.TestCase):
             self.assertIn(needle, offline, needle)
 
     def test_season_run_carries_the_batch_rules(self):
-        text = (SKILL / "references/workstations/season-run.md").read_text(encoding="utf-8")
+        text = (SKILL / "references/workstation-season-run.md").read_text(encoding="utf-8")
         for needle in ("一个写者", "前一批保存", "精修", "先上报", "像后补", "cmp", "fingerprint", "--reconciles",
                        "不换新 requestId", "临时文件", "跨段对账"):
             self.assertIn(needle, text, needle)
         self.assertNotIn("docs/", text)  # the installed skill has no docs/ folder
-        index = (SKILL / "references/workstations/README.md").read_text(encoding="utf-8")
-        self.assertIn("(season-run.md)", index)
+        index = (SKILL / "references/workstations.md").read_text(encoding="utf-8")
+        self.assertIn("(workstation-season-run.md)", index)
 
 
 class DialogueLayerRoutingTests(unittest.TestCase):
@@ -145,12 +145,12 @@ class OutlineLayerRoutingTests(unittest.TestCase):
             self.assertIn(needle, six, needle)
 
     def test_c3_is_three_files_linked_from_the_index(self):
-        folder = SKILL / "references/workstations"
-        index = (folder / "README.md").read_text(encoding="utf-8")
-        for name in ("c3a-function-map.md", "c3b-ledger.md", "c3c-season-plan.md"):
+        folder = SKILL / "references"
+        index = (folder / "workstations.md").read_text(encoding="utf-8")
+        for name in ("workstation-c3a-function-map.md", "workstation-c3b-ledger.md", "workstation-c3c-season-plan.md"):
             self.assertTrue((folder / name).is_file(), name)
             self.assertIn(f"({name})", index, name)
-        self.assertFalse((folder / "c3-structure.md").exists())
+        self.assertFalse((folder / "workstation-c3-structure.md").exists())
         stale = [str(path.relative_to(SKILL)) for path in SKILL.rglob("*.md") if "c3-structure.md" in path.read_text(encoding="utf-8")]
         self.assertEqual(stale, [], "仍链到已删的 c3-structure.md")
         self.assertTrue((SKILL / "references/outline-layer.md").is_file())
