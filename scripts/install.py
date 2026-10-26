@@ -47,10 +47,10 @@ def payload(host: str = "generic") -> dict[str, bytes]:
     if host == "workbuddy":
         original = files["SKILL.md"].decode("utf-8")
         version = (ROOT / "VERSION").read_text().strip()
-        fields = ("display_name: 短剧工作室\n"
+        fields = ("display_name: 剧本工作室\n"
                   "display_name_en: Drama Studio\n"
-                  "description_zh: 短剧市场研究、对标拉片与原创剧本创作工作流\n"
-                  "description_en: Research short dramas and develop original screenplays with mali-story.\n"
+                  "description_zh: 从对标爆款到成稿交付的一站式短剧编剧工作台。市场调研、对标拉片、原创选题、人物与集纲、逐集剧本、多轮审读、按反馈改稿，一条流程走完。AI 负责创作判断，内置脚本做字面查重、格式与连续性核对，关键节点由你拍板，每一步状态真实可查。适合短剧、漫剧编剧与内容团队。\n"
+                  "description_en: An end-to-end writers' room for Chinese short dramas, from market research and benchmark breakdowns to original pitches, characters, episode outlines, full scripts, multi-pass review and feedback-driven revisions. The AI makes the creative calls, bundled scripts run objective checks for literal duplication, format and continuity, and you approve every key step. Built for short-drama and animated-drama writers and teams.\n"
                   f"version: {version}\nauthor: Drama Studio\n")
         original = original.replace("\nname: drama-studio\n", "\nname: mali-drama-studio\n", 1)  # "drama-studio" is taken on WorkBuddy
         files["SKILL.md"] = original.replace("\n---\n", "\n" + fields + "---\n", 1).encode("utf-8")
