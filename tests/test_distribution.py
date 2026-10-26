@@ -138,6 +138,7 @@ class DistributionTests(unittest.TestCase):
             text = bundle.read("SKILL.md").decode()
             for field in ("display_name:", "display_name_en:", "description_zh:", "description_en:", "version:", "author:"):
                 self.assertIn(field, text.split("---")[1])
+            self.assertIn("\nname: mali-drama-studio\n", text.split("---")[1])
             self.assertIn("references/provenance.md", bundle.namelist())
             bundle.extractall(self.base / "extracted")
         result = subprocess.run([sys.executable, "-B", str(self.base / "extracted/scripts/drama_tools.py"), "doctor"],

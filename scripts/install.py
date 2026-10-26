@@ -52,6 +52,7 @@ def payload(host: str = "generic") -> dict[str, bytes]:
                   "description_zh: 短剧市场研究、对标拉片与原创剧本创作工作流\n"
                   "description_en: Research short dramas and develop original screenplays with mali-story.\n"
                   f"version: {version}\nauthor: Drama Studio\n")
+        original = original.replace("\nname: drama-studio\n", "\nname: mali-drama-studio\n", 1)  # "drama-studio" is taken on WorkBuddy
         files["SKILL.md"] = original.replace("\n---\n", "\n" + fields + "---\n", 1).encode("utf-8")
     return files
 
