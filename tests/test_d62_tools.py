@@ -1,5 +1,5 @@
 """D6-2 tools: init-project's planning/ layout, context-pack's planning/ local files and C4 author gate, and the
-constraint blocklist on tasks. One passing and one failing case per S rule; synthetic fixtures from schemas/examples/."""
+constraint blocklist on tasks. One passing and one failing case per S rule; synthetic fixtures from examples/."""
 import json
 from pathlib import Path
 import subprocess
@@ -9,8 +9,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
-BLOCKLIST = ROOT / "skills/drama-studio/schemas/data/constraint-blocklist.json"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
+BLOCKLIST = ROOT / "skills/drama-studio/data/constraint-blocklist.json"
 
 
 def example(name):

@@ -1,5 +1,5 @@
 """D6-1 corpus S commands: segment / label (S part) / filter / lexicon / rate
-(skills/drama-studio/scripts/checks/corpus/). One positive and one negative fixture per S rule,
+(skills/drama-studio/scripts/corpus_*.py). One positive and one negative fixture per S rule,
 all synthetic (shared brief rule #2 -- no project names, plot or dialogue from any real show).
 """
 import contextlib
@@ -13,11 +13,11 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CORPUS_DIR = ROOT / "skills/drama-studio/scripts/checks/corpus"
+CORPUS_DIR = ROOT / "skills/drama-studio/scripts"
 
 
 def load(name):
-    spec = importlib.util.spec_from_file_location(f"corpus_{name}", CORPUS_DIR / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"corpus_{name}", CORPUS_DIR / f"corpus_{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -316,7 +316,7 @@ class CliSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             write_episode(Path(tmp) / "T1" / "ep-001.json", "T1", 1, text)
             run = subprocess.run(
-                [sys.executable, "-B", str(CORPUS_DIR / "rate.py"), tmp],
+                [sys.executable, "-B", str(CORPUS_DIR / "corpus_rate.py"), tmp],
                 capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads(run.stdout)

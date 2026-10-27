@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-CHECKS = Path(__file__).resolve().parents[1] / "skills/drama-studio/scripts/checks"
+CHECKS = Path(__file__).resolve().parents[1] / "skills/drama-studio/scripts"
 
 QUESTIONS = {"id": "reality-check-questions", "version": "v1", "answerStates": ["holds", "notHolds", "not_evaluable", "n/a"],
              "questions": [{"q": 1, "text": "更省事的做法"}, {"q": 2, "text": "机构会不会出手"},

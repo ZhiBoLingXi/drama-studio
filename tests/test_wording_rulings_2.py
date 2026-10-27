@@ -17,10 +17,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/drama-studio/scripts"
 TOOL = SCRIPTS / "drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(Path(__file__).parent))
-from checks import contract_check as contracts  # noqa: E402
+import contract_check as contracts  # noqa: E402
 import test_context_pack_d6 as packs  # noqa: E402
 import test_dialogue_plan_check as plan_checks  # noqa: E402
 

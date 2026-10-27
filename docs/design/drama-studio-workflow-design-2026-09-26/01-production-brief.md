@@ -81,7 +81,7 @@ P0：已有材料提取、约束分类、来源与范围、冻结说明、未知
 
 ## Where
 
-目标仓库复用：`skills/drama-studio/references/initialization.md`、`planning.md`、`writing.md`、`episode-check.md` 与 `scripts/checks/episode_check.py`。
+目标仓库复用：`skills/drama-studio/references/initialization.md`、`planning.md`、`writing.md`、`episode-check.md` 与 `scripts/episode_check.py`。
 
 拟新增：`references/production-brief.md`、`templates/production-brief.md`；公共元数据检查交 M5，约束解析继续复用已有逻辑。项目产物放 `planning/production/`，不放安装目录。
 

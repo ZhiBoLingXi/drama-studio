@@ -14,7 +14,7 @@
 
 AI 的操作入口是 **[INSTALL.md](INSTALL.md)**。安装脚本只需要 Python 3.10+，不用安装 Python 包，不修改模型配置。用户无需手写 YAML、JSON 或复制个人密钥。
 
-当前源码版本 `0.7.3` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
+当前源码版本 `0.7.4` 提供自包含 Skill、离线安装／升级／校验、技能包导出及本地检查工具。0.3.0 起内容以 mali-story 带版本的页面保存（像飞书文档：新版本立即生效，验收打标签，回退用恢复），需要 mali-story v0.20.0 及以上；旧版存的候选仍可读取。它不是已发布到各平台市场的应用；完整创作、视频上传、桌面操作和宿主真实验收的状态见 [支持范围](docs/hosts.md)。
 
 ## 让 AI 升级
 
@@ -40,7 +40,7 @@ AI 会自己拉取最新代码、升级并校验；安装器会拒绝覆盖你�
 
 > 按已审集纲写第 31–40 集正文。
 
-这类请求默认走[工位流程](skills/drama-studio/references/writing.md#工位流程)，不再一次写完一批再整体自检：先 `status` 找到项目，没有项目就 `init-project`，把集纲和前文转成文本放进 `runs/input/`；按因果依赖分批（[整季分批](skills/drama-studio/references/workstations/season-run.md)），每集一个页面、一个写者；每集用 `context-pack --role author` 装包，C5 写正文，C6 先用 `reader_effect` 包首读并封存记录，再次读；C5 层的问题定向修订一次，C4 及以上的问题写成变更提案交编剧决定；正文逐字核对后存为 mali-story 页面修订，`receipt record`／`receipt cache` 记回执，`run-handoff` 写进 `.drama/runs/`；前一批存好后才给下一批装包。
+这类请求默认走[工位流程](skills/drama-studio/references/writing.md#工位流程)，不再一次写完一批再整体自检：先 `status` 找到项目，没有项目就 `init-project`，把集纲和前文转成文本放进 `runs/input/`；按因果依赖分批（[整季分批](skills/drama-studio/references/workstation-season-run.md)），每集一个页面、一个写者；每集用 `context-pack --role author` 装包，C5 写正文，C6 先用 `reader_effect` 包首读并封存记录，再次读；C5 层的问题定向修订一次，C4 及以上的问题写成变更提案交编剧决定；正文逐字核对后存为 mali-story 页面修订，`receipt record`／`receipt cache` 记回执，`run-handoff` 写进 `.drama/runs/`；前一批存好后才给下一批装包。
 
 保存页面需要已授权的 mali-story 连接。没有连接时走[离线降级](skills/drama-studio/references/writing.md#离线与单代理降级)：装包与两读照做，材料放在项目 `runs/` 或 `.drama/` 下按 `local_file` 装入，回执记 `not_sent`，交付标“本地草稿，未写入 mali-story”；宿主不能开子代理时，审读记录如实写 `serial_self_review`。单集篇幅按项目规格核对，没有规格先问。
 
@@ -102,7 +102,7 @@ python3 -B skills/drama-studio/scripts/drama_tools.py init-project ../my-drama -
 python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sample-episode.md
 python3 -B skills/drama-studio/scripts/drama_tools.py dup-check --new examples/sample-episode.md --source examples/sample-reference.md
 python3 -B skills/drama-studio/scripts/drama_tools.py reference-check /absolute/path/to/template-detail.json
-python3 -B skills/drama-studio/scripts/drama_tools.py contract-check context-snapshot skills/drama-studio/schemas/examples/context-snapshot.json
+python3 -B skills/drama-studio/scripts/drama_tools.py contract-check context-snapshot skills/drama-studio/examples/context-snapshot.json
 python3 -B skills/drama-studio/scripts/drama_tools.py knowledge validate ../my-drama
 python3 -B skills/drama-studio/scripts/drama_tools.py knowledge search ../my-drama --workstation C5 --type K3
 python3 -B skills/drama-studio/scripts/drama_tools.py knowledge show ../my-drama kc-apology-cost --revision 1
@@ -128,9 +128,9 @@ python3 -B skills/drama-studio/scripts/drama_tools.py episode-check examples/sam
 
 `doctor` 只证明离线工具可加载，不能证明 MCP 已连接。项目初始化只建立本地工作目录，不创建远端项目。完整命令参数使用 `--help` 查看。
 
-`contract-check <对象> <文件>` 校验[工位契约](skills/drama-studio/references/workstations/README.md)的交接对象（task、knowledge-card、context-snapshot、review-record、run-handoff、remote-receipt），Schema 在 `skills/drama-studio/schemas/`，示例在 `skills/drama-studio/schemas/examples/`。它拒绝超预算快照、混入评估材料、必需材料缺失却标完整、非上游变更提案、本地自称已采用等情况，退出码 2 表示违反；通过不代表远端引用存在或创作达标。首版知识卡只接受项目私有范围。`run-handoff` 有两个可选字段 `finishedAt`、`additionalSnapshotIds`，`review-record` 有可选字段 `additionalTargets`（按批审读时的其余目标）；不写这些字段的旧记录照样通过。
+`contract-check <对象> <文件>` 校验[工位契约](skills/drama-studio/references/workstations.md)的交接对象（task、knowledge-card、context-snapshot、review-record、run-handoff、remote-receipt），Schema 在 `skills/drama-studio/schemas/`，示例在 `skills/drama-studio/examples/`。它拒绝超预算快照、混入评估材料、必需材料缺失却标完整、非上游变更提案、本地自称已采用等情况，退出码 2 表示违反；通过不代表远端引用存在或创作达标。首版知识卡只接受项目私有范围。`run-handoff` 有两个可选字段 `finishedAt`、`additionalSnapshotIds`，`review-record` 有可选字段 `additionalTargets`（按批审读时的其余目标）；不写这些字段的旧记录照样通过。
 
-D2／D3 试点后补充的工位方法：[定向修订单独装包](skills/drama-studio/references/workstations/README.md#定向修订单独装包)、[并行子代理的临时文件](skills/drama-studio/references/workstations/README.md#并行子代理的临时文件)、[C6 审读包装什么](skills/drama-studio/references/workstations/c6-review.md#审读包装什么)（正文引用到的前文场面、已精修的前一集）、[保存正文逐字保真](skills/drama-studio/references/mali-story.md#保存正文逐字保真)。
+D2／D3 试点后补充的工位方法：[定向修订单独装包](skills/drama-studio/references/workstations.md#定向修订单独装包)、[并行子代理的临时文件](skills/drama-studio/references/workstations.md#并行子代理的临时文件)、[C6 审读包装什么](skills/drama-studio/references/workstation-c6-review.md#审读包装什么)（正文引用到的前文场面、已精修的前一集）、[保存正文逐字保真](skills/drama-studio/references/mali-story.md#保存正文逐字保真)。
 
 `context-pack` 按任务和宿主给出的选材清单（`selection`，格式见 `skills/drama-studio/schemas/selection.schema.json` 与示例）确定性地组装 `context-snapshot`。选材是模型的判断，装包只做读取、截取、计数、过滤和写出：
 
@@ -146,11 +146,11 @@ python3 -B skills/drama-studio/scripts/drama_tools.py context-pack ../my-drama -
 - 缓存或知识卡不存在 → 记入 `omitted`（reason `missing`），必需项缺失时 `completeness: incomplete`，退出码仍为 0；退役知识卡记为 `not_relevant`。
 - 页面（架构 v1.2）用 `{"kind": "remote_page", "id": "<pageId>", "revision": <n>}` 引用，按 manifest 里 `pageId` 与 `revision` 都相同的条目读取 `.drama/cache/<pageId>@r<n>.md`；revision 必须是整数，否则退出码 1。迁移前的历史候选仍按 `remote_artifact` 引用。manifest 的 v0 与 v1 都能读。
 - 退出码 2（不写任何文件，错误指出选材序号与引用）：超预算（按分区报告字数与超出量，不截断）、缓存字节与 manifest 的 sha256 不符、manifest 标 `verified: false`、同一页面出现两个修订、同一 slot 出现两个修订（slot 取该产物修订来源最强的 manifest 条目，见下文 `slotSource`）或同一知识卡两个修订、`evaluation_only`／`comparison_only` 进入不允许的角色、`reader_effect` 带 `current_plan`、最终快照未通过 `contract-check`。退出码 1：输入错误，如区间越界（指出引用与文本长度）、引用类型不是 `remote_page`／`remote_artifact`／`knowledge_card`／`local_file`、修订为空、任务未指定工位。
-- `local_file` 用于定向修订时装入审读记录、修改单等本地文件：`ref.id` 写项目内相对路径，只能在 `.drama/`（不含 `.drama/cache/`）、`runs/` 或 `planning/`（0.5.0 起）之内，例如 `{"kind": "local_file", "id": ".drama/reviews/rev-ep45-1.json", "revision": null}`；绝对路径、`..`、反斜杠退出码 1，符号链接解析到目录之外退出码 2。`revision` 为 `null` 或钉住的 `sha256:<hex>`（与文件不符退出码 2）；工具把文件的实际 sha256 写进快照的 `revision` 与 `sha256`，文件不存在时列入 `omitted`。`impact` 不评估这类依赖，报 `unknown`。方法见 [定向修订单独装包](skills/drama-studio/references/workstations/README.md#定向修订单独装包)。
+- `local_file` 用于定向修订时装入审读记录、修改单等本地文件：`ref.id` 写项目内相对路径，只能在 `.drama/`（不含 `.drama/cache/`）、`runs/` 或 `planning/`（0.5.0 起）之内，例如 `{"kind": "local_file", "id": ".drama/reviews/rev-ep45-1.json", "revision": null}`；绝对路径、`..`、反斜杠退出码 1，符号链接解析到目录之外退出码 2。`revision` 为 `null` 或钉住的 `sha256:<hex>`（与文件不符退出码 2）；工具把文件的实际 sha256 写进快照的 `revision` 与 `sha256`，文件不存在时列入 `omitted`。`impact` 不评估这类依赖，报 `unknown`。方法见 [定向修订单独装包](skills/drama-studio/references/workstations.md#定向修订单独装包)。
 - `.drama/cache/`、`knowledge/cards/`、`.drama/snapshots/` 若是指向项目外的符号链接，退出码 1；知识卡的 `scope.projectId` 必须等于任务的 `project.localId`，否则退出码 2。写入先落临时文件再硬链接到位，中断不会留下半截快照。
 - `--dry-run` 执行全部检查（含已存在快照的冲突检查）并打印将装入的项、字数与遗漏，输出 `would_write` 而非 `snapshot_path`，不写文件。`--allow-unverified` 允许装入服务端指纹未核验的缓存，并在快照 `unknowns` 写明 `服务端指纹未核验：<artifactId>@r<修订>`。
 
-`knowledge {validate,search,show} <项目>` 只读管理项目私有知识卡：卡片放在 `knowledge/cards/<cardId>@r<revision>.json`，本地证据放在 `knowledge/sources/<sourceId>/`。validate 逐卡运行契约校验并核对文件名；search 只返回每卡最新有效修订，默认排除退役卡（`--include-retired` 可纳入），按类型、工位、用途、关键词过滤，并标注共享 sourceId 的同源卡（只说明来源重复，不说明可靠）；show 打印卡片与来源位置并核对本地证据文件存在。无效卡、来源缺失或越界时退出码 2；`knowledge/` 不存在时返回空结果与目录提示、退出码 0。详见[知识库目录与命令](skills/drama-studio/references/workstations/README.md#知识库目录与命令)。
+`knowledge {validate,search,show} <项目>` 只读管理项目私有知识卡：卡片放在 `knowledge/cards/<cardId>@r<revision>.json`，本地证据放在 `knowledge/sources/<sourceId>/`。validate 逐卡运行契约校验并核对文件名；search 只返回每卡最新有效修订，默认排除退役卡（`--include-retired` 可纳入），按类型、工位、用途、关键词过滤，并标注共享 sourceId 的同源卡（只说明来源重复，不说明可靠）；show 打印卡片与来源位置并核对本地证据文件存在。无效卡、来源缺失或越界时退出码 2；`knowledge/` 不存在时返回空结果与目录提示、退出码 0。详见[知识库目录与命令](skills/drama-studio/references/workstations.md#知识库目录与命令)。
 
 `receipt` 把宿主保存的 mali-story MCP 响应记成回执（`.drama/receipts/`），把完整读到的页面（或迁移前候选）正文写入本地缓存（`.drama/cache/`），工具本身不联网、不调用 MCP。页面操作（架构 v1.2，mali-story v0.20.0 源码）以合成夹具演示（`tests/fixtures/mcp-pages-synthetic/`，按源码手写，不是真实响应）：
 
@@ -259,7 +259,7 @@ python3 -B skills/drama-studio/scripts/drama_tools.py season-check ../my-drama -
 
 ### 集纲层与台词层的只读工具（0.4.0）
 
-这些命令都只读本地文件、不联网、不调模型，输出 JSON 并带可直接运行的 `reproduceCommand`（drama_tools 子命令形式，文件参数为绝对路径）；`--help` 看参数。退出码同上：0 完成（含只报不拦的报告与容量提案），1 输入错误，2 显式规则不满足。对象的 Schema 与合成示例在 `skills/drama-studio/schemas/`，问题单、禁词表、题材词表在 `schemas/data/`。
+这些命令都只读本地文件、不联网、不调模型，输出 JSON 并带可直接运行的 `reproduceCommand`（drama_tools 子命令形式，文件参数为绝对路径）；`--help` 看参数。退出码同上：0 完成（含只报不拦的报告与容量提案），1 输入错误，2 显式规则不满足。对象的 Schema 在 `skills/drama-studio/schemas/`，合成示例在 `skills/drama-studio/examples/`，问题单、禁词表、题材词表在 `skills/drama-studio/data/`。
 
 ```sh
 T=skills/drama-studio/scripts/drama_tools.py
@@ -307,7 +307,7 @@ python3 -B $T contract-check task c4-task.json
 - `init-project` 多建 `planning/ledger/` 与 `planning/episodes/` 两个空目录；`status` 不看它们，旧项目没有也不报错。
 - `context-pack` 的 `local_file` 可以取 `planning/` 下的文件（同样拒绝绝对路径、`..` 与指向目录外的符号链接）。
 - `context-pack --role author` 给 C4 装包（任务 `workstation` 或 `layer` 为 `C4`）时，如果项目已经开始用集纲层，包里必须有季编排（`season-plan` 记录）和底账（`ledger-entry` 记录：`ledger-ep000` 或 `ledger replay --out` 写出的修订），缺一项退出码 2，对应 `season-check` 的 `outline-season-assigned` 与 `outline-ledger-delta`。「已经开始用集纲层」指有 `planning/season-plan.json` 或 `planning/function-map.json`，或者 `planning/ledger/`、`planning/episodes/` 下有 JSON 记录；`init-project` 刚建的空目录不算。0.3.6 时代的项目一项都没有，C4 包的行为不变。
-- `contract-check task` 逐条扫描 `constraints[].text`，命中 `schemas/data/constraint-blocklist.json`（v3）的任一类就拒绝，不论 `origin`，退出码 2。一类是「不动集数／标题／★、只改一次、不拆集」：v2 起也认「不要改集数」「别动标题」「禁止改★」「只能修改一次」「不要拆成两集」这类说法。另一类是数值型台词约束：带数字的（「少40字」「删两句」「台词压到五行」「每句不超过十个字」），把度量当目标的（「控制字数」「压缩台词量」「精简句数」），以及「换人数」「换人次数」。v3 起「字数」「行数」「句数」「台词量」不再按裸词拦，「字数统计仅供参考」「行数按正文实际统计」放行。说集数与拆集由季编排决定的约束不受影响。
+- `contract-check task` 逐条扫描 `constraints[].text`，命中 `data/constraint-blocklist.json`（v3）的任一类就拒绝，不论 `origin`，退出码 2。一类是「不动集数／标题／★、只改一次、不拆集」：v2 起也认「不要改集数」「别动标题」「禁止改★」「只能修改一次」「不要拆成两集」这类说法。另一类是数值型台词约束：带数字的（「少40字」「删两句」「台词压到五行」「每句不超过十个字」），把度量当目标的（「控制字数」「压缩台词量」「精简句数」），以及「换人数」「换人次数」。v3 起「字数」「行数」「句数」「台词量」不再按裸词拦，「字数统计仅供参考」「行数按正文实际统计」放行。说集数与拆集由季编排决定的约束不受影响。
 - `season-check --outline`：有 `planning/season-plan.json` 的项目跑集纲层七条（0.4.0 已实现），旧的工位交接规则照旧；没有季编排的项目输出与 0.3.6 逐字节相同。七条只看季编排，因为它们按季编排的分配核每一集，C3c 之前没法跑。旧规则（`outline-run`、`outline-review`、`outline-saved` 等）在已经开始用集纲层的项目里（判据同上，与 `context-pack` 共用一个函数）也认 `planning/` 下带 `episode-plan` 标记的 JSON 分集计划：C4 运行产出它、审读记录以它为对象、回执保存它，都算本集集纲。旧项目没有这类记录，结果不变。
 - `plan-check --characters <人物包>`：小传里的前史事件有没有时间线账条目，只报不拦（`rules.characters-prehistory`，不影响 `passed` 与退出码）。人物包两种最小格式：JSON `{"characters": [{"name", "prehistory": [{"text", "ledgerRef", "pending"}]}]}`；Markdown 里标题含「前史」的一节，每个列表项或段落行算一件事，`L-…` 是底账 id，写「待定」的标为待定。列出没有底账 id 的事件（待定的作提示）、入口底账里没有的 id、不是时间线条目的 id。
 - `ledger replay --delta <目录>`：目录代表其中的 `delta-*.json`，按集序重放（与逐个给文件结果相同）；目录里没有 delta 时退出码 1。`--md` 导出时，实际轨借用计划轨的集（`plannedFallback`）和应用错误写在开头的「重放说明」一节；有错误时另把错误以 JSON 打到 stderr，退出码 2。
@@ -315,7 +315,7 @@ python3 -B $T contract-check task c4-task.json
 - `contract-check review-record`：审读对象（`target` 或 `additionalTargets`）是 `planning/episodes/` 下的分集计划时，每条不是 `kind: preference` 的 finding 都要有 `cites`，否则退出码 2。审读其他对象的记录照旧。
 - 走通演示之后（[D6-2 决定 §5](docs/d6/d6-2-decisions.md)）：
   - `plan-events <分集计划> --out .drama/checks/events-ep<NNN>.json`：新命令，只导出 events（每拍留 beatId、who、text、quote、offscreen，去掉 saysFact、picture 等设计字段）。`context-pack --role cold_reader` 只收这份导出，整份分集计划退出码 2。
-  - `capacity` 不给 `--media` 用随包 `schemas/data/default-media-profile.json`，不给 `--corpus`／`--exchange-median-sec` 用其中的交换中位时长（真人剧 10.8 秒，D6-0 语料 138 条；漫剧没量过，要自己给）；输出 `basis.status: default_unmeasured`，退出码 0。
+  - `capacity` 不给 `--media` 用随包 `data/default-media-profile.json`，不给 `--corpus`／`--exchange-median-sec` 用其中的交换中位时长（真人剧 10.8 秒，D6-0 语料 138 条；漫剧没量过，要自己给）；输出 `basis.status: default_unmeasured`，退出码 0。
   - `ledger view <功能地图> --blank-period`：C3a 阶段底账还没写时，按线列各候选的 ledgerDeps（procedure 除外）；状态子型条目按 `stateOf` 归人。
   - `ledger check` 的 `schema-basic` 与 `contract-check ledger-entry` 用同一套必填（读 schema）；`whyNotApplicable` 可以代替 `why`；`money-closed` 里列进 `emptyFields` 的空字段算已交代，列在 `registeredEmpty`。
   - `check-answers --records` 收目录（目录里只读回答记录，其余文件跳过并列在 `recordsSkipped`）；回填的 `confirmed_gone` 要写 `backfilledBy`、不能引用本记录，被引用的复核记录对同一 `defectKey` 不能仍判 `notHolds`；只有不承重的 `notHolds` 时 `outcome` 也可以写 `pass_with_unverified`；`target.ids` 列了两个以上对象时，每答要写 `subject`。
@@ -364,7 +364,7 @@ python3 -B $T feedback-ingest --purge WN-xxxxxxxxxx --out feedback/ep006
 ```
 
 - `corpus fetch`：取用记账，不联网。`plan` 按模板清单排出前 3 部各 10 集（带期望的 `snapshotId`）；`record` 记一次调用的结果（响应读不出或带 error 记 failed，`snapshotId` 与期望不符记 `snapshot_mismatch`），尝试次数自动计；`budget` 记预算读数与当时的回执 id；`resume` 列未取、待重试（不到 3 次）与放弃的；`verify` 比第一次与最后一次读数：额度下降或出现新回执为 `deduction_seen`、都可读且相同为 `no_change_seen`、读数缺或 `unconfigured` 为 `unconfirmed`（看不出扣费，也不能证明没扣），有扣费迹象或快照不符退出码 2。输出的 `observation` 只有调用次数、预算读数与回执 id。
-- `corpus agree`：双跑标注比对（S 部分）。先按 `schemas/data/corpus-label-vocabulary.json` 收敛词表（function 近义项合并，relation 同时成立时取更具体的），再比 function、relation、infoMode（有交集算一致）；任一项不一致记 `labelConfidence: low`。`--out` 写一份带 `labelConfidence` 的副本，low 的 `quality.label` 记 `low`；`corpus filter` 把 low 的列为 `label_low`，不进通过名单。
+- `corpus agree`：双跑标注比对（S 部分）。先按 `data/corpus-label-vocabulary.json` 收敛词表（function 近义项合并，relation 同时成立时取更具体的），再比 function、relation、infoMode（有交集算一致）；任一项不一致记 `labelConfidence: low`。`--out` 写一份带 `labelConfidence` 的副本，low 的 `quality.label` 记 `low`；`corpus filter` 把 low 的列为 `label_low`，不进通过名单。
 - `corpus defaults`：从语料重算随包统计——各形态的语速、停顿占比、单集时长、交换中位时长（都带 n），以及每张题材禁词表在本题材与别的题材里各出现多少、哪些词得到语料印证。候选新词可能带系列专有词，只写进 `--out`（项目目录）；随包数据文件只放统计量与原有词表。
 - `feedback-ingest --out <空目录>`：全路由派生。句级、来回级、话题级、场结构、信息承载 → 反例；带改法的句级 → 人工正例；来回／话题级 → 对照对草稿；信息承载、对象约定、独白与同类 ≥2 次 → 约定草稿，同类 ≥2 次另起草新问；程序、事实 → 底账修订提案与 K1 卡草稿；决定 → 决定队列条目（`decided`，`humanWords` 是原话）。每个派生物带 `fromNotes` 与 `status: drafted`，`--purge <noteId>` 按 id 清掉。输入另认 `### ` 分节的批注记录、`--section <标题>` 指定的 md 一节（表格每行一条）、追问单回答记录（文件或目录；落在程序依赖上、或 `defectKind` 为 `contradicts_reality` 的 notHolds）。`--target <台词目标>` 时，起草的约定写进升版的台词目标（新 `revision`，`changelog` 记一条，原文件不动）。
 - `contract-check dialogue-target`：有 `changelog` 时要有本修订的一条（新的在前、在后都认）；引用旧修订的任务照旧能过。`context-pack` 不装没有来源（`provenance` 或 `fromNotes`）的对照对。

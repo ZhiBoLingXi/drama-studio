@@ -2,6 +2,12 @@
 
 技能 `skills/drama-studio/` 与随包工具的变化，按版本倒序。写法参照 Keep a Changelog，分「新增／变更／退役／修正」。只记技能与工具本身，不记任何项目的剧情、人物或台词。各阶段的验收证据见 [docs/d6/](docs/d6/README.md)。
 
+## 0.7.4 — 2026-10-26（技能包目录打平）
+
+### 变更
+
+- 技能包目录最多一层，以适配 WorkBuddy 的「根目录/二级目录/文件」限制：`scripts/checks/*.py` 移到 `scripts/`，`scripts/checks/corpus/*.py` 改名 `scripts/corpus_*.py`；`references/workstations/README.md` 改为 `references/workstations.md`，其余工位文件改为 `references/workstation-*.md`；`schemas/examples/` 移到 `examples/`，`schemas/data/` 移到 `data/`。命令行用法（`drama_tools.py` 子命令）不变；直接调用旧路径脚本的需改用新路径。`validate.py` 新增检查，拒绝更深的嵌套。
+
 ## 0.7.3 — 2026-10-19（文档措辞统一与工具对齐）
 
 ### 变更

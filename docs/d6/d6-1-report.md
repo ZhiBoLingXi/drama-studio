@@ -36,7 +36,7 @@
 
 | 流 | 文件 | 测试 |
 | --- | --- | --- |
-| A schema 与契约 | 18 个新 schema（含 `defect-register`）、各一份合成例子、`schemas/data/` 的 3 份数据文件与题材词表；`task`、`review-record`、`run-handoff`、`context-snapshot`／`selection`、`knowledge-card` 字段扩展，旧例子仍通过；`contract_check.py` 的新规则、旧写法识别与跨文件上下文；`validate.py` 放宽 `schemas/data/` | `test_schemas_d6` 81，`test_contracts` 增补 |
+| A schema 与契约 | 18 个新 schema（含 `defect-register`）、各一份合成例子、`data/` 的 3 份数据文件与题材词表；`task`、`review-record`、`run-handoff`、`context-snapshot`／`selection`、`knowledge-card` 字段扩展，旧例子仍通过；`contract_check.py` 的新规则、旧写法识别与跨文件上下文；`validate.py` 放宽 `data/` | `test_schemas_d6` 81，`test_contracts` 增补 |
 | B 底账与计划 | `ledger.py`、`plan_check.py`、`season_plan_check.py`、`capacity.py`、`decision.py`、`function_map.py`（含 `topics`、`defects build`） | 100 |
 | C 容量与核对 | `answers_check.py`、`retell_check.py`、`consistency.py`、`dialogue_plan_check.py`、`plan_text_consistency.py`、`diagnose.py`、`feedback_ingest.py`、`text_lines.py`；`dup_check --list-hits`；`episode_check` 口播量 | 53＋格式测试增补 |
 | D 语料 | `checks/corpus/{segment,label,filter,lexicon,rate,transcript}.py`（fetch 留到 D6-4） | 23 |

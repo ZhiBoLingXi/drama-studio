@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-CHECKS = ROOT / "skills/drama-studio/scripts/checks"
+CHECKS = ROOT / "skills/drama-studio/scripts"
 PY = [sys.executable, "-B"]
 
 

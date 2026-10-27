@@ -13,11 +13,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/drama-studio/scripts"
 TOOL = SCRIPTS / "drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 sys.path.insert(0, str(SCRIPTS))
-sys.path.insert(0, str(SCRIPTS / "checks/corpus"))
-from checks import contract_check as contracts  # noqa: E402
-import defaults as corpus_defaults  # noqa: E402
+import contract_check as contracts  # noqa: E402
+import corpus_defaults  # noqa: E402
 
 
 def example(name):
@@ -158,10 +157,10 @@ class CorpusDefaults(unittest.TestCase):
         self.assertEqual((bazong["evaluable"], bazong["n"]["exchanges"]), (False, 0))
 
     def test_the_bundled_files_carry_n(self):
-        media = json.loads((ROOT / "skills/drama-studio/schemas/data/default-media-profile.json").read_text(encoding="utf-8"))
+        media = json.loads((ROOT / "skills/drama-studio/data/default-media-profile.json").read_text(encoding="utf-8"))
         self.assertTrue(all("n" in v for v in media["formatDefault"].values()))
         self.assertTrue(all("n" in v for v in media["exchangeMedianSec"].values()))
-        lexicon = json.loads((ROOT / "skills/drama-studio/schemas/data/genre-lexicon.json").read_text(encoding="utf-8"))
+        lexicon = json.loads((ROOT / "skills/drama-studio/data/genre-lexicon.json").read_text(encoding="utf-8"))
         self.assertTrue(all("n" in entry["measured"] for entry in lexicon["lists"]))
         self.assertTrue(all("candidates" not in entry["measured"] for entry in lexicon["lists"]))  # no corpus words beyond the lists
 

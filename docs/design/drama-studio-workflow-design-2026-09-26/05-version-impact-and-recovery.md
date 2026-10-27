@@ -96,7 +96,7 @@ P0 支持现有 `场11-1 地点 夜 外`，以及已出现的 `### 11-1 地点 �
 
 ## Where
 
-复用 `skills/drama-studio/references/recovery.md`、`approval-flow.md`、`scripts/drama_tools.py`、`scripts/checks/episode_check.py`、`tests/test_distribution.py`。
+复用 `skills/drama-studio/references/recovery.md`、`approval-flow.md`、`scripts/drama_tools.py`、`scripts/episode_check.py`、`tests/test_distribution.py`。
 
 拟新增 `references/artifact-contract.md`、`templates/artifact-manifest.md`，以及公共契约/覆盖检查；拟议 `workflow-check` 为只读核验入口，**当前不存在**。具体文件拆分在实现时确定，不引入新依赖。
 

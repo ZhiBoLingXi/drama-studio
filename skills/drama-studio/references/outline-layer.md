@@ -1,6 +1,6 @@
 # 集纲层：功能地图、底账、季编排与分集计划
 
-本页是集纲层的操作手册，写给执行的 AI：每一步做什么、产物放哪、跑哪条命令、退出码怎么读。新项目和新写的集纲默认走这里；人物、选题、送审的安排仍按 [策划](planning.md) 与 [两次审批](approval-flow.md)。工位对象的契约见 [工位契约](workstations/README.md)。
+本页是集纲层的操作手册，写给执行的 AI：每一步做什么、产物放哪、跑哪条命令、退出码怎么读。新项目和新写的集纲默认走这里；人物、选题、送审的安排仍按 [策划](planning.md) 与 [两次审批](approval-flow.md)。工位对象的契约见 [工位契约](workstations.md)。
 
 每条规矩标层级：**S** 是随包脚本能核的，**R** 是 mali-story 服务端保证的，**M** 是模型照做的约定。验收只引用 S／R；M 项写进记录作证据，不作通过条件。随包脚本永不联网、不调模型。
 
@@ -39,7 +39,7 @@ C1 定位与 C2 人物不变，C2 只写人：欲望、顾虑、策略、关系�
 
 ## 2. 功能地图（功能句、候选、步骤与 `origin`、`losesFunctions`）
 
-工位的输入、产出与交接见 [C3a 功能地图](workstations/c3a-function-map.md)。
+工位的输入、产出与交接见 [C3a 功能地图](workstation-c3a-function-map.md)。
 
 **线与功能。** 一部剧拆成若干线（`threads[]`），每条线若干功能。功能句分三半写，三半都要有：
 
@@ -77,7 +77,7 @@ C1 定位与 C2 人物不变，C2 只写人：欲望、顾虑、策略、关系�
 
 ## 3. 前提层与 C3a 内的顺序
 
-写作任务书的随包条款与装包见 [C3a 功能地图](workstations/c3a-function-map.md)。
+写作任务书的随包条款与装包见 [C3a 功能地图](workstation-c3a-function-map.md)。
 
 C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
@@ -99,7 +99,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 ## 4. 六类账与条目状态（含时间线子型 `state`、两轨、戏剧假定 `license_pending`／`accepted_license`）
 
-底账是功能地图、季编排、分集计划、正文共用的状态对象。工位的输入、产出与交接见 [C3b 底账](workstations/c3b-ledger.md)。全剧级事实只在这里定：分段作者读它、引用它、提议改它（`changeProposal` 到 C3b），不自己写。
+底账是功能地图、季编排、分集计划、正文共用的状态对象。工位的输入、产出与交接见 [C3b 底账](workstation-c3b-ledger.md)。全剧级事实只在这里定：分段作者读它、引用它、提议改它（`changeProposal` 到 C3b），不自己写。
 
 **通用字段**：`id`（稳定，如 `L-obj-003`）、`kind`、`title`、`origin`（另有 `derived_from_text`：正文写出来后登记的）、`status`、`introducedAt`（`pre` 或集号）、`realityRef[]`（K1 卡，引到条）、`inquiryRef[]`、`notAsked`、`tension`（不互斥但别扭，只登记）、`dependents[]`（功能与集）、`patchCount`、`history[]`。
 
@@ -154,7 +154,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 **对象。** 一个候选实现（`candidate`）、一个前提（`premise`）、一个关键动作（`move`，C4 与修订时）或一条底账条目（`ledgerEntry`）。**作答的是新上下文的核对方（`--role fact_check` 装包；包里的 K1 卡 `usage` 不能是 `evaluation_only`），不是作者。** 标准是 K1 卡；以往审查的结论只作旁证。
 
-**问题单**是随包数据 `schemas/data/reality-check-questions.json`（当前 v1），题干以数据文件为准。「材料全程没写」类结论要写 `searchScope`（见下文回答记录）。
+**问题单**是随包数据 `data/reality-check-questions.json`（当前 v1），题干以数据文件为准。「材料全程没写」类结论要写 `searchScope`（见下文回答记录）。
 
 | 组 | 问 | 要点 |
 | --- | --- | --- |
@@ -175,7 +175,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 | | 15 是不是用户给定 | **信息题** |
 | F 知情 | 16 凭什么知道他据以行动的事实 | 信息来源是哪一环 |
 
-每问带 `answerKind`：第 14、15 问是 `informational`，照答，不参与 `outcome`；其余是 `tristate`。项目可以增问（带 `source`），不能删问（`contract-check question-set --base-questions` 核，S）。本轮只问部分题时在记录里写 `askedSubset`。问题单不必复制进项目，装包时选材写 `{"kind": "local_file", "id": "question-set:reality-check-questions@v1"}`，`context-pack` 从随包 `schemas/data/` 按 id 读。
+每问带 `answerKind`：第 14、15 问是 `informational`，照答，不参与 `outcome`；其余是 `tristate`。项目可以增问（带 `source`），不能删问（`contract-check question-set --base-questions` 核，S）。本轮只问部分题时在记录里写 `askedSubset`。问题单不必复制进项目，装包时选材写 `{"kind": "local_file", "id": "question-set:reality-check-questions@v1"}`，`context-pack` 从随包 `data/` 按 id 读。
 
 真正问得出东西的是 A、B、E 三组（动机、他人与机构、总账）；C 组多半只查出「没有出处」。知识、图谋、时间线三类断言不靠追问逐条落，由底账脚本管（`knowledge-monotonic`、`speaker-knows`、`why-missing`、`agenda-exclusive`）；`assertion: absence` 的断言由总账视图与 `why-missing` 核。
 
@@ -256,7 +256,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 ## 8. 季编排与容量（两口径、动作 rearrange／split／drop_function，删线不作默认，数字不当裁判）
 
-工位的输入、产出与交接见 [C3c 季编排](workstations/c3c-season-plan.md)。
+工位的输入、产出与交接见 [C3c 季编排](workstation-c3c-season-plan.md)。
 
 **季编排对象**（`planning/season-plan.json`）：`revision`、`basedOn: {functionMap, ledgerRev, mediaProfile}`、`episodes[]`（每集 `episode`、`functions[]`、`eventsRough[]`、`star`、`capacity`）、`threads[]`（`plantId`、`plantedAt`、`payAt`）、`decisions[]`。原剧情框架的分卷蓝图（每卷戏核、压力源、代价、兑现、进出状态）保留为季编排的卷级视图；原框架的分集节拍表不再写。
 
@@ -264,7 +264,7 @@ C3a 与 C3b 交错进行，按下面的顺序，不是先写完候选再查：
 
 **容量怎么算。** 媒介档案（`media-profile`）只含物理量：目标时长、语速、停顿比；画面拍时长在量出来之前标 `pictureBeatSec: assumed`。粗估 = 信息条数 × 同类处境语料交换中位时长 ＋ 画面拍 × 画面拍时长。`capacity` 同时报两个口径（A：每条信息都按一次交换算；B：只算靠对白承载的信息，画面承载的按画面拍算），不给区间判定，退出码恒为 0（输入读不出时为 1）。
 
-**没有项目档案或语料时**：不给 `--media` 就用随包默认档案 `schemas/data/default-media-profile.json`；不给 `--corpus`、`--exchange-median-sec` 时交换中位时长取默认 10.8 秒（真人剧语料 138 条量出）。漫剧没量过这个数，`--format anime` 又没有语料时要自己给 `--exchange-median-sec`。用了默认值的输出标 `basis.status: default_unmeasured`，`basis.defaults` 列出用到的默认项，退出码仍是 0。这些是别的剧量出的统计，不是本项目的测量；有了项目语料或项目档案（`planning/media-profile.json`）就换掉。
+**没有项目档案或语料时**：不给 `--media` 就用随包默认档案 `data/default-media-profile.json`；不给 `--corpus`、`--exchange-median-sec` 时交换中位时长取默认 10.8 秒（真人剧语料 138 条量出）。漫剧没量过这个数，`--format anime` 又没有语料时要自己给 `--exchange-median-sec`。用了默认值的输出标 `basis.status: default_unmeasured`，`basis.defaults` 列出用到的默认项，退出码仍是 0。这些是别的剧量出的统计，不是本项目的测量；有了项目语料或项目档案（`planning/media-profile.json`）就换掉。
 
 **超出时必须选一个动作**，记在该集 `capacity.action` 与 `actionDetail`（S：`exceeds` 而无 `action` 被拒）：
 
@@ -327,7 +327,7 @@ C4 按季编排的分配把一集写成计划。输入：季编排本集条目�
 - 跨工位的上游变更（如 C4 提给 C3、C5 提给 C4）：运行交接里的 `changeProposals` 用 `decision add planning/decisions.json --from-handoff <交接>` 登记，缺默认就登记不进去。
 - 同一工位内的上游变更（C3b、C3c 提给 C3a，C5b 提给 C5a）：写进交接的 `unfinished`，用 `decision add planning/decisions.json --entry <条目>` 登记 `kind: upstream_change`、带默认，由编排方开一次上游运行。
 - 用户说了话才能改成 `decided`（用户在对话里的原话就算）：`decision decide --id <id> --option <optionId> --human-words "<原话>"`，原话照记。之后 `affects[]` 列出要重写的集，按 §7 修订。
-- 修订预算用完后审读意见仍在的，用 `decision add planning/decisions.json --entry <条目文件>` 直接登记、带默认（通常默认「按现稿交付」，另一选项是追加一次修订），受影响的分集计划在 `pending[]` 引用这条；`--from-handoff` 只用于交接里指向上游层的变更提案。完整做法见 [修订预算按运行层解释](workstations/README.md#修订预算按运行层解释)。
+- 修订预算用完后审读意见仍在的，用 `decision add planning/decisions.json --entry <条目文件>` 直接登记、带默认（通常默认「按现稿交付」，另一选项是追加一次修订），受影响的分集计划在 `pending[]` 引用这条；`--from-handoff` 只用于交接里指向上游层的变更提案。完整做法见 [修订预算按运行层解释](workstations.md#修订预算按运行层解释)。
 - 编剧、顾问的意见经 `feedback-ingest` 记成 `writer-note`。决定类意见只有来源是用户本人时才写 `decided`（带 `humanWords` 用户原话与 `decidedBy`）；编剧、顾问来源的写 `pending`、带默认，依据的原话记在 `basisWords`（`basisBy` 是谁说的，`basisRole` 是身份），不写 `humanWords`，等用户定。来源靠 `--author-role user|writer|advisor` 或 `--user-name <名字>` 认，认不出算非用户。
 
 ## 11. 用户给定设定的处理（`user_given`／`user_given_modified`、不成立时默认保留并标 `license_pending`）

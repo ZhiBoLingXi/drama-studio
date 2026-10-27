@@ -12,7 +12,7 @@ import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKS = ROOT / "skills/drama-studio/scripts/checks"
+CHECKS = ROOT / "skills/drama-studio/scripts"
 TOOL = ["python3", "-B", str(CHECKS / "capacity.py")]
 VERDICT_WORDS = ("within", "outside", "fits", "exceeds", "pass", "over", "under", "verdict", "ok_by")
 

@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 TEXT = "# 第3集\n\n场3-1 镇口小卖部 上午\n△刘叔递过一包烟。\n刘叔：你那箱子，该不会也在里头？\n老陈（愣住）：哪个仓库？\n"
 COMMANDS = ["ledger", "plan-check", "season-plan-check", "capacity", "decision", "function-map", "defects build", "check-answers",
             "retell-check", "answers-consistency", "dialogue-plan-check", "plan-text-consistency", "dialogue-diagnose",

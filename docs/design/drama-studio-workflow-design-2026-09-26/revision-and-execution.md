@@ -23,7 +23,7 @@
 
 源仓库：`/Users/jason/dev/drama-studio`，基线 HEAD `0e8b6be8581e88ec4b22a4b134518c137f7dfbd8`。起始源码工作区干净，本轮变更保留为未提交工作区改动；写入该仓库已按权限请求获准。
 
-- `skills/drama-studio/scripts/checks/episode_check.py`：兼容“场11-1”和“### 11-1”（含### 场）；增加已知时段；验证所属集/正场序/重复场号；忽略排版分隔线；拒绝会混入假集号的代码围栏；新增逐集parse_coverage。未知格式仍警告，不猜场地。
+- `skills/drama-studio/scripts/episode_check.py`：兼容“场11-1”和“### 11-1”（含### 场）；增加已知时段；验证所属集/正场序/重复场号；忽略排版分隔线；拒绝会混入假集号的代码围栏；新增逐集parse_coverage。未知格式仍警告，不猜场地。
 - `tests/test_episode_scene_formats.py`：14项原创合成回归，覆盖两种格式、时段、坏标题、未知标签、跨集/重复/零编号、空正文、集前/引用/围栏示例、部分覆盖及不改输入字节。
 - `skills/drama-studio/references/production-pilot.md` 与 `templates/production-pilot.md`：先手工验证的指南和交接卡；加入技能路由、delivery-readiness链接和README说明。
 - `references/episode-check.md`：解释格式与覆盖语义；保留默认不配置验收阈值、schema_version=2、passed=null和review_status=not_run。

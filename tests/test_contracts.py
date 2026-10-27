@@ -9,8 +9,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
-spec = importlib.util.spec_from_file_location("contract_check", ROOT / "skills/drama-studio/scripts/checks/contract_check.py")
+EXAMPLES = ROOT / "skills/drama-studio/examples"
+spec = importlib.util.spec_from_file_location("contract_check", ROOT / "skills/drama-studio/scripts/contract_check.py")
 contracts = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(contracts)
 
@@ -236,7 +236,7 @@ class D6ExtensionTests(unittest.TestCase):
         spec_install.loader.exec_module(install)
         files = install.inventory(install.SOURCE)
         for name in ("reality-check-questions.json", "dialogue-check-questions.json", "constraint-blocklist.json"):
-            self.assertIn(f"schemas/data/{name}", files)
+            self.assertIn(f"data/{name}", files)
 
 
 if __name__ == "__main__":

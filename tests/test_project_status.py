@@ -14,11 +14,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
 FIXTURES = ROOT / "tests/fixtures/mcp-synthetic"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 sys.path.insert(0, str(ROOT / "skills/drama-studio/scripts"))
 sys.dont_write_bytecode = True
-from checks import project_status, receipt  # noqa: E402
-from checks.contract_check import check_contract  # noqa: E402
+import project_status, receipt  # noqa: E402
+from contract_check import check_contract  # noqa: E402
 
 ART1 = "9e3f6a2c-4b1d-4c8e-9a57-2d6b1f0c8e41"
 CHUNKS = [f"08-read-chunk-{i}.response.json" for i in range(1, 5)]
@@ -1682,7 +1682,7 @@ class InvariantTests(unittest.TestCase):
         self.assertEqual(result["contracts"], names)
 
     def test_module_imports_only_the_standard_library_and_sibling_checks(self):
-        source = (ROOT / "skills/drama-studio/scripts/checks/project_status.py").read_text(encoding="utf-8")
+        source = (ROOT / "skills/drama-studio/scripts/project_status.py").read_text(encoding="utf-8")
         imported, names, called = set(), set(), set()
         for node in ast.walk(ast.parse(source)):
             if isinstance(node, ast.Import):
@@ -1692,7 +1692,7 @@ class InvariantTests(unittest.TestCase):
                 names.update(alias.name for alias in node.names)
             elif isinstance(node, ast.Call):
                 called.add(node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", ""))
-        self.assertEqual(imported, {"__future__", "datetime", "hashlib", "json", "pathlib", "shlex", ".contract_check", ".knowledge_store", ".receipt"})
+        self.assertEqual(imported, {"__future__", "datetime", "hashlib", "json", "pathlib", "shlex", "contract_check", "knowledge_store", "receipt"})
         writers = {"open", "write", "write_text", "write_bytes", "mkdir", "makedirs", "unlink", "rmdir", "rename", "replace", "touch",
                    "link", "symlink_to", "atomic_write", "publish_new", "manifest_lock", "cache", "record_receipt"}
         self.assertEqual((called | names) & writers, set())

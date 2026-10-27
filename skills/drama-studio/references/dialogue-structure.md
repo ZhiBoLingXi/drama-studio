@@ -1,6 +1,6 @@
 # 台词层：对话表、正文与五读
 
-[工位契约](workstations/README.md) · [单集工位流程](writing.md#工位流程) · [集纲层](outline-layer.md)
+[工位契约](workstations.md) · [单集工位流程](writing.md#工位流程) · [集纲层](outline-layer.md)
 
 本页是台词层的操作手册，写给执行的 AI：每一步做什么、产物放哪、跑哪条命令、退出码怎么读。前提是一个判断：短剧的一集是几段靠对白承载信息的对话交换，每段对话几个来回、话长话短，要由处境推出来。处境就是谁对谁说、想要什么、对方已知什么、两人什么关系、此刻什么情绪、观众要明白什么。所以先写对话表，再照表写正文；质量靠冷读复述、处境对照、设计依据一致性三件事判，加上原有的首读、次读。数字只做容量算术、诊断提示和描述，不作通过条件。
 
@@ -21,7 +21,7 @@
 | C6 设计依据一致性 | 正文走法与对话表写的处境、理由对不对得上 | 脚本＋审读方 | `plan-text-consistency` 记录（`.drama/checks/`） |
 | 修订 | 先改对话表，再改正文；修订稿存为新的页面修订，改后再冷读、再处境对照 | 原 C5a／C5b 角色 | 新对话表修订、新正文修订 |
 
-五读是首读、次读、冷读复述、处境对照、设计依据一致性，读的都是 C5b 写完后已存为页面修订的那一稿。首读按批，其余四读逐集；冷读复述、处境对照、设计依据一致性取代原来的台词遍与台词读（各读的装包与记录见 [C6](workstations/c6-review.md)）。首读封存：首读那份 `review-record` 写 `sealedSha256`，值是去掉这个字段之后、按规范 JSON（键排序、无空格）算的 sha256；旧做法的 `.sha256` 旁注文件照样认。`season-check` 的首读、次读规则只认审读对象是本集正文的记录。
+五读是首读、次读、冷读复述、处境对照、设计依据一致性，读的都是 C5b 写完后已存为页面修订的那一稿。首读按批，其余四读逐集；冷读复述、处境对照、设计依据一致性取代原来的台词遍与台词读（各读的装包与记录见 [C6](workstation-c6-review.md)）。首读封存：首读那份 `review-record` 写 `sealedSha256`，值是去掉这个字段之后、按规范 JSON（键排序、无空格）算的 sha256；旧做法的 `.sha256` 旁注文件照样认。`season-check` 的首读、次读规则只认审读对象是本集正文的记录。
 
 **输入从集纲层来。** 分集计划的 `infoLedger[].facts[]`（观众本集必须拿到的事实）、`events`（场与拍）、`capacity.status`；底账知识账给出谁此刻知道什么。台词层不重新声明信息，只引用（[集纲层](outline-layer.md#9-分集计划字段14-字段summary-可选)）。
 
@@ -33,7 +33,7 @@
 
 ## 2. 台词目标与裁决顺序
 
-**台词目标**（`dialogue-target`，项目级、版本化，放 `planning/dialogue-target.json`；项目第一次做 C5a 之前从随包例子 `schemas/examples/dialogue-target.json` 起步建好，之后经 `feedback-ingest --target` 升版）：`targetId`、`revision`（版本字段）、`mediaProfile`（只含物理量；写 `null` 时用随包默认档案）、`corpusManifest`（用的哪版语料；项目没有语料时写 `null`，并必须写 `noCorpusReason`）、`checkQuestions`（对话问题单版本）、`conventions[]`（每条 `text`、`status: confirmed|drafted`、`sourceNotes[]`、`conflictsWith[]`）、`infoCarriageDefault: dialogue`（信息默认由对白承载）、`changelog[]`。目标里没有任何数值区间或「超了不许存」的项；结构项（信息有承载、切换前有收尾）在对话表 schema 里由 `contract-check` 核。
+**台词目标**（`dialogue-target`，项目级、版本化，放 `planning/dialogue-target.json`；项目第一次做 C5a 之前从随包例子 `examples/dialogue-target.json` 起步建好，之后经 `feedback-ingest --target` 升版）：`targetId`、`revision`（版本字段）、`mediaProfile`（只含物理量；写 `null` 时用随包默认档案）、`corpusManifest`（用的哪版语料；项目没有语料时写 `null`，并必须写 `noCorpusReason`）、`checkQuestions`（对话问题单版本）、`conventions[]`（每条 `text`、`status: confirmed|drafted`、`sourceNotes[]`、`conflictsWith[]`）、`infoCarriageDefault: dialogue`（信息默认由对白承载）、`changelog[]`。目标里没有任何数值区间或「超了不许存」的项；结构项（信息有承载、切换前有收尾）在对话表 schema 里由 `contract-check` 核。
 
 C5a、C5b、C6 次读与修订任务都引用同一个 `targetId@revision`（`task.dialogueTarget`，S）；对话表的 `basedOn.target` 也引它（`season-check` 的 `target-ref`，S）。目标改版只有三个来源：语料快照更新、`feedback-ingest`（新约定、新问）、用户有记录的决定。审读不能改它，认为缺一条就写 `changeProposal`。
 
@@ -138,7 +138,7 @@ C5b 照它写出来，仓管就是一问一答、一次报一件；正文里如�
 
 ## 5. 写正文（C5b）：照表写，信息由对白承载，重复须有处境理由
 
-**作者包**（`context-pack --role author`，任务 `layer: C5b`）：本集分集计划 `planning/episodes/episode-plan-<NNN>.json`（`season-check` 的 `author-plan` 要求它在包里）、本集对话表（须过 `contract-check dialogue-plan`，否则退出码 2）、台词目标、对话表引用过的正例、本剧题材的禁词表、入口状态记录、前一集已保存的正文原文。只装本集分集计划；后一集要埋的东西经底账与本集计划的 `ledgerDelta` 进来。第 1 集的入口见 [整季分批](workstations/season-run.md)（开播前底账加 `--at 0 --track actual --md` 导出的 `after-ep-000.md`）。除此之外不装别的设计材料，不装对照对，不装新样本。
+**作者包**（`context-pack --role author`，任务 `layer: C5b`）：本集分集计划 `planning/episodes/episode-plan-<NNN>.json`（`season-check` 的 `author-plan` 要求它在包里）、本集对话表（须过 `contract-check dialogue-plan`，否则退出码 2）、台词目标、对话表引用过的正例、本剧题材的禁词表、入口状态记录、前一集已保存的正文原文。只装本集分集计划；后一集要埋的东西经底账与本集计划的 `ledgerDelta` 进来。第 1 集的入口见 [整季分批](workstation-season-run.md)（开播前底账加 `--at 0 --track actual --md` 导出的 `after-ep-000.md`）。除此之外不装别的设计材料，不装对照对，不装新样本。
 
 **写法**（M）：
 
@@ -169,7 +169,7 @@ C5b 照它写出来，仓管就是一问一答、一次报一件；正文里如�
 
 `retell-check <复述> --plan <对话表> --episode-plan <分集计划>` 对照每个 fact 给出 `retold／partial／missing`，恒为退出码 0。`missing` 的 fact：对话表没给它分配来回的回 C5a；分配了、正文没写出来的回 C5b。提示词版本不同的两次冷读不直接比。
 
-**处境对照**。新上下文，`--role situation_checker`。对正文里每个话题，拿这段正文、该话题的 `situation` 与 `shape.reason`、对话表引用的正例（带 `walkthrough`）与对照对（带 `whyNotHere`），按随包对话问题单 `schemas/data/dialogue-check-questions.json`（当前 v1，17 问，题干以数据文件为准）逐问作答：
+**处境对照**。新上下文，`--role situation_checker`。对正文里每个话题，拿这段正文、该话题的 `situation` 与 `shape.reason`、对话表引用的正例（带 `walkthrough`）与对照对（带 `whyNotHere`），按随包对话问题单 `data/dialogue-check-questions.json`（当前 v1，17 问，题干以数据文件为准）逐问作答：
 
 | 组 | 问的是什么 |
 | --- | --- |
@@ -219,13 +219,13 @@ C5b 照它写出来，仓管就是一问一答、一次报一件；正文里如�
 - 修订单**不写替换台词，也不写数值指令**：含「人物：台词」格式行或「少 40 字」这类指令的，`contract-check revision-list` 退出码 2（S）。定位字段（`id`、`where`、`cites`、`layer`、`target`、`basis`、`ref`）不扫；「本轮不改：…」「原因：…」这类标签行不算台词。收尾时 `season-check` 的 `fixlist-no-lines` 按同一规则再核一遍：它先按本集人物名单（对话表的说话人或对照表的 `speaker`）认台词行，只有「人物名：」开头的才算；没有名单时退回启发式，「照表」「按表」这类写法算标签不算台词。
 - 任务也**不写数值指令**：「少 40 字」「不超过 3 行」「加一次换人」这类，`contract-check task` 按随包 `constraint-blocklist.json` 拒绝，不论来源（S）。编排方约束要标来源，`orchestrator` 来源须引用台词目标条款（`season-check` 的 `constraint-origin`）。
 
-**预算**：修订预算（`task.revisionBudget`）在 C5a 算对话表修订次数，在 C5b 算正文修订次数，默认都是 1；用完之后的处理（写进交接 `unfinished`、`status.goal` 记 `partially_met`、用 `decision add --entry` 带默认登记进决定队列、选了「再改一次」怎么另开运行）只写在 [修订预算按运行层解释](workstations/README.md#修订预算按运行层解释)。不在预算外悄悄再改。
+**预算**：修订预算（`task.revisionBudget`）在 C5a 算对话表修订次数，在 C5b 算正文修订次数，默认都是 1；用完之后的处理（写进交接 `unfinished`、`status.goal` 记 `partially_met`、用 `decision add --entry` 带默认登记进决定队列、选了「再改一次」怎么另开运行）只写在 [修订预算按运行层解释](workstations.md#修订预算按运行层解释)。不在预算外悄悄再改。
 
 **修订后必做**：修订稿存为新的页面修订，再做一次冷读复述与处境对照，记录在才算修订完成（`season-check` 的 `retell-after-revise`：冷读之后又改了正文而没有再冷读，即失败，S）。
 
 **超出本层的问题**：C5b 发现是对话表的问题，属于同一工位内的上游：写进交接 `unfinished`，用 `decision add planning/decisions.json --entry <条目>` 登记 `kind: upstream_change`、带默认，由编排方开一次 C5a 运行。属于分集计划或季编排的（信息没有对象、装不下、事件要挪）是跨工位的：写进交接的 `changeProposals`（`targetLayer: C4` 或 `C3`，带默认；交接只认 C1–C6，是 C3c 的写在提案正文里；对话表自带的 `changeProposals` 另是一个对象，那里写 `C4` 或 `C3c`），用 `decision add planning/decisions.json --from-handoff <交接>` 登记。流程都按默认继续，不在正文里悄悄改上游。
 
-**`preserved`（不许动）只认人工来源**：每项写成 `{item, noteId}`（引人工批注）或 `{item, humanWords}`（人的原话）。模型审读认为的「亮点」写进记录，不进不许动清单。启用了台词层的项目由 `season-check` 的 `preserved-human-source` 核（S），已有审读记录里的 `preserved` 也一并按新规则核，这是有意的：启用台词层后，把旧记录的 `preserved` 迁成 `{item, noteId}` 或 `{item, humanWords}`，查不到人工来源的挪进 `goalAssessments[].evidence`。没有启用台词层的旧项目，纯字符串写法照旧放行。各读怎么记、迁移的细节见 [C6](workstations/c6-review.md)。
+**`preserved`（不许动）只认人工来源**：每项写成 `{item, noteId}`（引人工批注）或 `{item, humanWords}`（人的原话）。模型审读认为的「亮点」写进记录，不进不许动清单。启用了台词层的项目由 `season-check` 的 `preserved-human-source` 核（S），已有审读记录里的 `preserved` 也一并按新规则核，这是有意的：启用台词层后，把旧记录的 `preserved` 迁成 `{item, noteId}` 或 `{item, humanWords}`，查不到人工来源的挪进 `goalAssessments[].evidence`。没有启用台词层的旧项目，纯字符串写法照旧放行。各读怎么记、迁移的细节见 [C6](workstation-c6-review.md)。
 
 ## 9. 人工反馈的吸收（`writer-note`、`verbatimFrom`、`preserved` 只认人工来源）
 

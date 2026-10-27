@@ -20,7 +20,7 @@ import sys
 
 STREAM = "ledger"
 ROOT = Path(__file__).resolve().parents[2]
-CHECKS = ROOT / "skills/drama-studio/scripts/checks"
+CHECKS = ROOT / "skills/drama-studio/scripts"
 MEDIA = ["--media", "../pilot-ep006/media-profile-v0.json"]
 CORPUS = ["--corpus", "../pilot-ep006/corpus/exchanges.jsonl"]
 PLANS = (("005", "r6/ledger-ep000.v1.1.json"), ("006A", "r8/ledger-ep005.planned.json"), ("006B", "r8/ledger-ep006A.planned.json"))

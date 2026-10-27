@@ -1,0 +1,81 @@
+# 整季分批编排
+
+[工位契约](workstations.md) · [单集工位流程](writing.md#工位流程)
+
+一次要写或改多集时（如“按集纲写第 31–80 集”“整季精修”“整季压缩”）按本文件编排。每一集仍走 [单集工位流程](writing.md#工位流程)：装包、C5a 对话表、C5b 正文、机械核对、保存为页面修订、C6 五读（读的就是这份修订）、先改表再改文的修订、修订稿再保存为新修订并复读、交接。本文件只管集与集、批与批之间怎么接。
+
+下面的规则来自一部 60 集剧的整季实践（逐集改稿、分批精修、压缩、跨段连续性复查、并行写入冲突）；实践记录不随技能分发，要遵守的都写在这里。
+
+## 1. 开工前
+
+- **项目目录**：先 `drama_tools.py status <项目>`，没有项目就 `init-project`。用户集纲（输入）、前文、设定转成文本放进 `runs/input/`。
+- **远端项目**：先确认 mali-story 工具可用、远端项目存在。离线只有两种情况：（a）项目从未绑定远端、用户明确同意只交本地稿：把原话记进 `PROJECT.md`，之后 `season-check` 加 `--allow-offline`；（b）已绑定远端、暂时断线：可以继续写，保存记 `not_sent`，连上后补发，补发前关口按失败处理（`--allow-offline` 对已绑定项目不放行，这是有意的）。补发前先读回远端当前修订：远端没有新修订、补发内容的 sha256 与离线稿相同时，已做的 C6 记录照旧有效，不重做；远端有别人的新修订时按 `VERSION_CONFLICT` 处理。没有工具、也没有远端项目时，先问用户。集纲侧（`--outline`）与正文侧同法：分集计划的可读稿离线保存，回执记 `not_sent`。
+- **上游 C1–C4**：各写一份交接（`run-handoff`）：C1 定位、C2 人物、C3a 功能地图、C3b 开播前底账（`planning/ledger/ledger-ep000.json`）、C3c 季编排（`planning/season-plan.json`）、C4 逐集分集计划（`planning/episodes/episode-plan-<NNN>.json`，带计划轨 `ledgerDelta`）。从用户集纲或设定起步也一样：用户材料放 `runs/input/`，进系统时拆成功能与底账条目（标 `origin: user_given`），追问照问，不成立时按默认保留并登记，见 [用户给定设定的处理](outline-layer.md#11-用户给定设定的处理user_givenuser_given_modified不成立时默认保留并标-license_pending)；交接里写明“采用用户给定”。C4 发现前提不成立、装不下，写进 `changeProposals`，并用 `decision add planning/decisions.json --from-handoff <交接>` 登记进决定队列、带默认，流程按默认继续。
+- **入口状态记录**：来自底账实际轨，不来自分集计划。每集正文保存后，把交接里的 `stateChangeProposals[].ledgerDelta` 写成 `planning/ledger/delta-ep<NNN>.actual.json`，再用 `ledger replay planning/ledger/ledger-ep000.json --delta planning/ledger/ --at <集号> --track actual --md`（目录按集序取 `delta-*.json`）导出，输出存为 `runs/state/after-ep-<NNN>.md`，下一集的作者包装它。第 1 集没有前一集：前文一项装开播前底账 `planning/ledger/ledger-ep000.json`（`season-check` 的 `author-previous-text` 认这份文件，是第 1 集的例外），入口状态装 `ledger replay planning/ledger/ledger-ep000.json --at 0 --track actual --md` 导出的 `runs/state/after-ep-000.md`。某集还没有实际轨时 `replay` 用它的计划轨代替，列在导出文件开头的「重放说明」里；导出后看这一节，正文已保存的集不应出现在里面。应用出错时退出码 2，错误同时打到 stderr，这时不用这份导出。这份文件是导出物，不手改；要改就改实际轨的 delta 再导出。实际轨与计划轨的差异（`ledger diff`）交下一集 C4 作输入。前文缺失时如实写缺失，不用分集计划假装前文已经发生。
+- **篇幅与时长**：按项目规格定，依据是已有各集的实际篇幅、用户原话或项目规则文件。都没有就先问：这是开工前要问清的例外，不进决定队列，也不自己降标准。规格写成 `episode-check --config` 能读的规则文件，每批都核对。时长只能按约定口径估算时，标明口径和“未经实测校准”，这样的估算只能比较前后变化，不能当作片长。
+- **写入范围**：列出本次要写的页面（每集一个 `episode` 页面，带 `episode_ref`），以及只读不写的材料。
+
+## 2. 按因果依赖分批
+
+- 一批是因果连续的一段，默认不超过 10 集，用户指定了就用用户的值。一批是审读和交接的单位，正文仍逐集写：每集一个作者运行，包里有本集分集计划、前一集最新稿原文和入口状态记录。前一集正文已保存（有 confirmed 回执；离线时 `not_sent` 回执已写）且入口状态记录已导出，才给下一集装包。
+- **每个页面只有一个写者**：一集一个页面，一批只写本批的集。两个运行基于同一修订写同一页面时，后到的会收到 409 `VERSION_CONFLICT`，回执记 `rejected_conflict`。这时不自动合并、不用同一 requestId 重发；409 的两种情形（`VERSION_CONFLICT`、`IDEMPOTENCY_CONFLICT`）各怎么处理见 [页面读写、版本标签与恢复](mali-story.md#页面读写版本标签与恢复) 第 3 步，被拒的正文留在本地供比对。
+- **同一事项只交给一批**：统一叫法、铺垫一条伏笔、交付一件证据，这类跨集事项要指定由哪一批、哪一集负责。实践中出现过两段把同一辆车的叫法往相反方向统一，一条旧伤的铺垫被三段各放了一处，相邻两段在同一事项上重复落点。
+- **新写正文按顺序写**：前一批的出口就是后一批的入口，前一批保存好之后才给后一批装包。只有入口已经固定的工作（如按改稿单改已有全稿、精修、压缩）可以几批并行，并行完要做跨段对账，见第 6 节。
+- **前一批没保存，后一批不审**：C6 首读要装前一集的已保存稿，前一批还没保存时就不给后一批装审读包。
+
+## 3. 每批的固定步骤
+
+1. **C4**：确认本批每集分集计划可写（整季的写法见 [C4](workstation-c4-episode-outline.md#整季集纲怎么写)，写完过 `season-check --outline`），容量状态为 `fits` 或带默认的提案；如果是改已有稿，逐集写改稿单：只写“改什么、为什么”，不写替换文字，并列出哪些场保留不动。改稿单是改已有全稿的输入，与 C6 之后的修订单（`revision-list`）不是同一件东西，两者都受 `season-check` 的 `fixlist-no-lines` 同一规则。
+2. **C5a**：逐集装 `--role dialogue_designer` 包（本集分集计划、按场的知识账导出 `.drama/checks/knows-ep<NNN>.json`、入口状态记录、台词目标、按处境检索的样本），写对话表，过 `dialogue-plan-check` 与 `contract-check dialogue-plan`，见 [C5a](workstation-c5a-dialogue-plan.md)。
+3. **C5b**：装 `--role author` 包（任务 `layer: C5b`；本集分集计划、对话表、它引用的正例、前一集最新稿原文、入口状态记录、所需的其他前文原场面），照表写或改正文，同时写对照表 `runs/<批>/ep-<NNN>.plan-text-map.json`。保留场逐字不动。状态变化先留在交接的 `stateChangeProposals` 里，到第 10 步本集修订完、最后一稿保存后才写进底账实际轨。见 [C5b](workstation-c5b-text.md)。
+4. **机械核对**：`plan-text-consistency` 核正文与对话表的对齐；`dup-check --list-hits` 按 8 字档与 13 字档各列一次；`corpus lexicon` 扫题材禁词；有原稿时保留场逐场 sha256 等于原稿，场头集合没有意外增减；需要篇幅统计时跑 `episode-check`，估时用 `capacity text`，数字只报不判。
+5. **保存**：每一稿都存为页面修订。机械核对过了就逐字核对、写成页面修订、记回执、读回比对指纹后缓存（第 5 节）；C6 读的就是这份修订。
+6. **C6 首读**（按批）：在没看过分集计划和作者说明的新上下文里，装 `--role reader_effect` 包，本批正文按播出顺序排，加上前一集；一次不超过 `season-check --batch-size`（默认 10 集）。前一集已经精修或修订过，就装最新的已保存稿，不装原稿。首读记录写完按 [C6](workstation-c6-review.md#正文侧五读) 封存。
+7. **C6 次读**（逐集）：另起一个上下文，用 `--role evaluation` 装包（不能开子代理时见 [离线与单代理降级](writing.md#离线与单代理降级)），再加上分集计划、对话表或改稿单、台词目标、入口状态记录和改动集的原稿。问题分事实、目标、偏好三类，每条带 `cites`，并标明归哪个运行层。
+8. **C6 其余三读**（逐集）：冷读复述（只装本集正文）、处境对照（对话问题单）与设计依据一致性，见 [C6 正文侧五读](workstation-c6-review.md#正文侧五读)。
+9. **修订**：先改对话表再改正文，由原 C5a、C5b 作者完成；修订单写成 `revision-list` 记录放 `.drama/checks/`，写好先跑 `contract-check revision-list <文件>`；不写替换台词与数值指令（`season-check` 的 `fixlist-no-lines` 再核）。修订稿重做机械核对，再存为新的页面修订，并再做冷读复述与处境对照。修订预算与用完后的处理见 [修订预算按运行层解释](workstations.md#修订预算按运行层解释)；分集计划及以上的问题（集纲前提、人物或主线）写进 C6 交接的 `changeProposals`，用 `decision add planning/decisions.json --from-handoff <交接>` 登记、带默认，流程按默认继续。
+10. **交接**：每次运行（C4、C5a、C5b、C6、修订）各写一份 `run-handoff` 到 `.drama/runs/`，用 `contract-check` 校验；每集最后一稿保存后，才把 `stateChangeProposals[].ledgerDelta` 写成实际轨 delta、导出下一集的入口状态记录（第 1 节）；一批结束时在 `PROJECT.md` 记下本批各集的页面修订号、审读记录、未决提案和下一批的入口状态。
+
+## 4. 修订时的两条约束
+
+- **改稿单的事实前提和前文对不上时先上报**：C5a／C5b 作者不照改，把不符之处报给编排方，编排方改单（标明“C5b 回报更正”）之后再写正文。实践中出现过改稿单把地点名记错、上一段对账改掉了下一段改稿单所依赖的证据前提。
+- **补的交代不能读起来像后补的**：能用动作就不用台词；不让人物复述对方已经知道的事；新台词要合这个人物的口吻。实践中第一批的首读就指出，新加的交代读起来像解说词。
+
+## 5. 保存逐字核对
+
+模型转写长正文时会悄悄改字，实践中出现过直引号变弯引号、省略号变破折号。所以：
+
+1. 先把要传的正文写成文件，用 `cmp` 与本地稿比对一致后，才把这个文件的内容放进保存输入；不凭记忆或重新输入一遍正文。
+2. 保存后用 `read_page` 读回全文，比对服务端 `fingerprint` 与本地稿的 sha256，一致才算保存的是这份稿，然后 `receipt cache`。
+3. 不一致时只纠错重存一次：新 requestId（原 ID 加 `-fix`），`expected_revision` 取刚才那个错误修订号，正文按第 1 条重新准备。错误修订留在远端，不打验收标签，在 `run-handoff` 的 `unknowns` 或 `unfinished` 里写明它的修订号和错在哪里。纠错后仍不一致就停下告知用户。
+
+完整步骤见 [保存正文逐字保真](mali-story.md#保存正文逐字保真)。
+
+## 6. 断线与对账
+
+- 写入结果未知（响应丢失、超时、`MCP_OUTCOME_UNKNOWN`、5xx）时，回执记 `unknown`，**不换新 requestId 重试**。重连后先 `drama_tools.py status <项目>`，再 `receipt pending <项目>`，按它给出的两条路之一对账：用 `list_page_revisions` 按正文指纹和 producer 找 `expected_revision` 之后的修订（宿主判断），或用原 requestId 和完全相同的输入原样重发（服务端重放，可核实）。对账结果另记一份回执，用 `--reconciles <原 requestId>` 指向原回执。实践中整季压缩稿保存时遇到连接中断，按“先列举、同一 requestId 重发”处理，没有产生重复版本。
+- 对账完再继续本批剩下的集。未决回执没清掉之前，不给依赖它的下一批装包。
+- 前文出了新修订（返修、对账更正）后，运行 `drama_tools.py impact <项目> --page <pageId> --revision <新修订号>`，标为 `stale` 的快照和运行由人决定是否重新装包重跑。
+- **跨段对账**（并行批次合并后，或下一批开工前）：逐条比对上一批的出口与下一批的入口，以及同一事项在各批的落点。只在段与段之间才暴露的问题（叫法反向统一、同一铺垫重复落点、删减后下一行主语换人）都靠这一步和下一批审读发现，没有工具能证明“全季无矛盾”。
+
+## 7. 并行子代理
+
+- 每个子代理只写本批的页面和自己的文件；临时文件名带 runId 或集号（如 `tmp-ep45-c5-save.json`），不共用 scratchpad 里的辅助脚本、日志或输入文件，也不改别人的文件。共用一个辅助脚本时，后启动的会覆盖先启动的。
+- 需要共享的只读材料（规则、入口状态记录、改稿单）由编排方先写好再分发；各子代理的产出各写各的文件，由编排方汇总、做跨段对账。
+- 子代理的审读与作者属于同一模型家族时，`review-record.claimsIndependence` 写 false；“独立上下文”只说明没共享会话，不说明是跨模型验证。
+
+## 8. 每批完成时应能看到的证据
+
+| 证据 | 位置 |
+| --- | --- |
+| 项目目录与本批输入 | `PROJECT.md`、`.drama/project.json`、`runs/input/` |
+| 对话表包、正文作者包、首读包、次读包、冷读包、处境对照包、修订包的快照 ID | `.drama/snapshots/`，`run-handoff.contextSnapshotId`／`additionalSnapshotIds` |
+| 首读记录（`sealedSha256` 为封存值；旧项目的 `.sha256` 旁注文件照认）、次读记录，审读对象都是本集正文 | `.drama/reviews/`（`review-record`，`contract-check` 通过） |
+| 对话表、对照表与修订依据 | 对话表 `planning/dialogue/`；对照表 `runs/<批>/ep-<NNN>.plan-text-map.json`；修订后的对话表与正文修订 |
+| 冷读复述、处境对照、设计依据一致性、字面重合与题材禁词扫描 | `.drama/checks/` |
+| 每次页面写入与读回的回执；离线时 `not_sent` | `.drama/receipts/` |
+| 每次运行的交接、未决提案与下一步 | `.drama/runs/` |
+| 篇幅统计与估时 | `episode-check`、`capacity text` 输出 |
+| 入口状态记录 | `runs/state/after-ep-<NNN>.md`，每集一份 |
+
+每批结束和交付前运行 `drama_tools.py season-check <项目> --episodes <起-止>`，它逐集核对上表的证据：上游 C1–C4 交接、一集一个作者运行、作者包里有本集分集计划、前一集最新稿和更新过的入口状态、封存的首读和次读、对话表与台词目标引用、正文与对话表的对齐记录、冷读复述（改过正文后要再做一次）、处境对照、字面重合两档与题材禁词扫描、任务约束的来源与禁词、修订单不含替换台词、confirmed 保存回执、各次运行的用量不是抄的。结论原样写进交付说明。台词侧规则只对有对话表记录的项目核；复查旧项目的声音卡、台词遍、台词读记录时加 `--legacy-dialogue`（`--skip-dialogue` 也只为旧记录保留）；`--batch-size` 定一次首读最多覆盖几集，默认 10。不通过的集要补齐证据或重做；没补之前写明缺了什么、为什么缺，不能写成“已按流程完成”。写了或改了分集计划时另跑 `season-check <项目> --outline <起-止>`：一段一个 C4 运行且不超过 15 集，按顺序不并行，C4 作者包里有季编排、入口底账修订、功能地图、前一集分集计划和已写正文的入口状态记录，有新上下文或真人的集纲侧审读，集纲可读稿有 confirmed 保存回执。它只查记录，不评正文好坏。它按“顺序新写正文”来查；按改稿单改已有全稿、精修、压缩时入口已经固定，可以一批一个作者运行，这时用 `season-check --revise`：“一集一个作者运行”、前一集正文和入口状态几条不查，C4 只要求改稿之前有一份改稿单的交接，其余照查；同一项目改过几版时加 `--since <本版开始时间>`。交付说明里写明用的是哪一种。整季结束后按 [接续与交付](recovery.md#交付) 核对集号连续、结局存在、批次边界与结尾回收。

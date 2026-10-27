@@ -23,7 +23,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-DATA = ROOT / "skills/drama-studio/schemas/data"
+DATA = ROOT / "skills/drama-studio/data"
 ANIME = "Q18WPQSB6ZEZ9Q3405FZX44VGC"
 
 

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/checks/decision.py")]
+TOOL = ["python3", "-B", str(ROOT / "skills/drama-studio/scripts/decision.py")]
 
 
 def entry(eid="DQ-1", **extra):

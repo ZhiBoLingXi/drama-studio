@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "skills/drama-studio/scripts/drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 EP1 = "第一集：林晚推开门，雨声灌进屋里。她把湿透的信放在桌上，父亲没有抬头。\n" * 8
 EP2 = "第二集：父亲终于开口，说那封信是他十年前寄出的。林晚攥紧了伞柄。\n" * 8
 PLAN = "第三集集纲：林晚决定离开小镇，父亲在车站追上她，却只递过一把伞。\n"

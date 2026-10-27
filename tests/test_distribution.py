@@ -136,8 +136,13 @@ class DistributionTests(unittest.TestCase):
         with zipfile.ZipFile(archive) as bundle:
             self.assertEqual(set(bundle.namelist()), set(installer.inventory(installer.SOURCE)))
             text = bundle.read("SKILL.md").decode()
-            for field in ("description_zh:", "description_en:", "version:", "author:"):
+            for field in ("display_name:", "display_name_en:", "description_zh:", "description_en:", "examples_zh:", "examples_en:", "version:", "author:"):
                 self.assertIn(field, text.split("---")[1])
+            self.assertIn("\nname: mali-drama-studio\n", text.split("---")[1])
+            for field in ("examples_zh:", "examples_en:"):  # WorkBuddy accepts at most 3 each
+                block = text.split("---")[1].split(field)[1].split("\n")[1:]
+                items = next(i for i, line in enumerate(block) if not line.startswith("- "))
+                self.assertTrue(1 <= items <= 3, field)
             self.assertIn("references/provenance.md", bundle.namelist())
             bundle.extractall(self.base / "extracted")
         result = subprocess.run([sys.executable, "-B", str(self.base / "extracted/scripts/drama_tools.py"), "doctor"],
@@ -338,7 +343,7 @@ class DupListHitsTests(unittest.TestCase):
         self.new.write_text("场1-1 镇上 日 内\n人物：老陈\n老陈：今天天气真好适合出门走走看看风景啊。\n△老陈推门出去。\n", encoding="utf-8")
 
     def hits(self, *args):
-        run = subprocess.run([sys.executable, "-B", str(ROOT / "skills/drama-studio/scripts/checks/dup_check.py"),
+        run = subprocess.run([sys.executable, "-B", str(ROOT / "skills/drama-studio/scripts/dup_check.py"),
                               "--new", str(self.new), "--list-hits", *map(str, args)], capture_output=True, text=True)
         return run.returncode, json.loads(run.stdout or run.stderr)
 

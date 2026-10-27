@@ -1,6 +1,6 @@
 """D6-3 walkthrough fixes (docs/d6/d6-3-decisions.md §6, the T items): one passing and one failing case per rule.
 
-Synthetic fixtures from schemas/examples/ and the season-check fixtures. Numbers in comments follow the decision table.
+Synthetic fixtures from examples/ and the season-check fixtures. Numbers in comments follow the decision table.
 """
 import copy
 import hashlib
@@ -14,12 +14,12 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/drama-studio/scripts"
 TOOL = SCRIPTS / "drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(Path(__file__).parent))
-from checks import contract_check as contracts  # noqa: E402
-from checks import ledger as L  # noqa: E402
-from checks.episode_check import SCENE_DETAIL_RE  # noqa: E402
+import contract_check as contracts  # noqa: E402
+import ledger as L  # noqa: E402
+from episode_check import SCENE_DETAIL_RE  # noqa: E402
 from test_season_check import Season, run  # noqa: E402
 from test_season_check_d6 import DialogueLayer, put  # noqa: E402
 

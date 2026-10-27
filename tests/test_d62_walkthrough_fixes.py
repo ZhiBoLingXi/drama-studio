@@ -1,6 +1,6 @@
 """D6-2 walkthrough fixes (docs/d6/d6-2-decisions.md §5, the T items): one passing and one failing case per rule.
 
-Synthetic fixtures from schemas/examples/ only. Numbers in test names follow the decision table.
+Synthetic fixtures from examples/ only. Numbers in test names follow the decision table.
 """
 import copy
 import importlib.util
@@ -14,10 +14,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/drama-studio/scripts"
 TOOL = SCRIPTS / "drama_tools.py"
-EXAMPLES = ROOT / "skills/drama-studio/schemas/examples"
+EXAMPLES = ROOT / "skills/drama-studio/examples"
 sys.path.insert(0, str(SCRIPTS))
-from checks import contract_check as contracts  # noqa: E402
-from checks import function_map  # noqa: E402
+import contract_check as contracts  # noqa: E402
+import function_map  # noqa: E402
 
 
 def example(name):
@@ -81,7 +81,7 @@ class CapacityDefaults(Temp):  # 2
         self.assertEqual(code, 1, out)
 
     def test_the_default_profile_passes_contract_check(self):
-        code, out, _ = tool("contract-check", "media-profile", ROOT / "skills/drama-studio/schemas/data/default-media-profile.json")
+        code, out, _ = tool("contract-check", "media-profile", ROOT / "skills/drama-studio/data/default-media-profile.json")
         self.assertEqual(code, 0, out)
 
 
